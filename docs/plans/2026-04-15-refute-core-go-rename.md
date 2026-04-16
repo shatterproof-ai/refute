@@ -1,6 +1,6 @@
 # refute: Core Infrastructure + Go Rename — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build the core `refute` CLI that can rename Go symbols via gopls, proving the entire architecture end-to-end.
 
@@ -69,14 +69,14 @@ go.sum
 - Create: `cmd/refute/main.go`
 - Create: all directories listed in file structure
 
-- [ ] **Step 1: Initialize Go module**
+- [x] **Step 1: Initialize Go module**
 
 ```bash
 cd /home/ketan/project/refute
 go mod init github.com/shatterproof-ai/refute
 ```
 
-- [ ] **Step 2: Create directory structure**
+- [x] **Step 2: Create directory structure**
 
 ```bash
 mkdir -p cmd/refute
@@ -88,7 +88,7 @@ mkdir -p internal/cli
 mkdir -p testdata/fixtures/go/rename/util
 ```
 
-- [ ] **Step 3: Write minimal main.go**
+- [x] **Step 3: Write minimal main.go**
 
 Create `cmd/refute/main.go`:
 
@@ -112,7 +112,7 @@ func main() {
 }
 ```
 
-- [ ] **Step 4: Verify it builds and runs**
+- [x] **Step 4: Verify it builds and runs**
 
 ```bash
 go build -o refute ./cmd/refute && ./refute version
@@ -120,7 +120,7 @@ go build -o refute ./cmd/refute && ./refute version
 
 Expected: `refute 0.1.0-dev`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add go.mod cmd/ internal/ testdata/
@@ -136,7 +136,7 @@ git commit -m "feat: scaffold project structure and minimal main"
 - Create: `internal/symbol/types.go`
 - Create: `internal/backend/backend.go`
 
-- [ ] **Step 1: Write edit types**
+- [x] **Step 1: Write edit types**
 
 Create `internal/edit/types.go`:
 
@@ -175,7 +175,7 @@ type WorkspaceEdit struct {
 }
 ```
 
-- [ ] **Step 2: Write symbol types**
+- [x] **Step 2: Write symbol types**
 
 Create `internal/symbol/types.go`:
 
@@ -252,7 +252,7 @@ func (q Query) Tier() int {
 }
 ```
 
-- [ ] **Step 3: Write backend interface**
+- [x] **Step 3: Write backend interface**
 
 Create `internal/backend/backend.go`:
 
@@ -317,7 +317,7 @@ type RefactoringBackend interface {
 }
 ```
 
-- [ ] **Step 4: Verify compilation**
+- [x] **Step 4: Verify compilation**
 
 ```bash
 go build ./...
@@ -325,7 +325,7 @@ go build ./...
 
 Expected: clean build, no errors.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/edit/types.go internal/symbol/types.go internal/backend/backend.go
@@ -340,7 +340,7 @@ git commit -m "feat: define core types — WorkspaceEdit, Symbol, RefactoringBac
 - Create: `internal/edit/applier.go`
 - Create: `internal/edit/applier_test.go`
 
-- [ ] **Step 1: Write the failing test — single file edit**
+- [x] **Step 1: Write the failing test — single file edit**
 
 Create `internal/edit/applier_test.go`:
 
@@ -517,7 +517,7 @@ func TestApply_RollbackOnFailure(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 cd /home/ketan/project/refute && go test ./internal/edit/...
@@ -525,7 +525,7 @@ cd /home/ketan/project/refute && go test ./internal/edit/...
 
 Expected: compilation error — `edit.Apply` not defined.
 
-- [ ] **Step 3: Implement the edit applier**
+- [x] **Step 3: Implement the edit applier**
 
 Create `internal/edit/applier.go`:
 
@@ -655,7 +655,7 @@ func positionToOffset(content []byte, pos Position) int {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 cd /home/ketan/project/refute && go test ./internal/edit/... -v
@@ -663,7 +663,7 @@ cd /home/ketan/project/refute && go test ./internal/edit/... -v
 
 Expected: all 4 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/edit/applier.go internal/edit/applier_test.go
@@ -678,13 +678,13 @@ git commit -m "feat: implement atomic edit applier with rollback"
 - Create: `internal/edit/diff.go`
 - Create: `internal/edit/diff_test.go`
 
-- [ ] **Step 1: Add go-difflib dependency**
+- [x] **Step 1: Add go-difflib dependency**
 
 ```bash
 cd /home/ketan/project/refute && go get github.com/pmezard/go-difflib/difflib
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `internal/edit/diff_test.go`:
 
@@ -747,7 +747,7 @@ func TestRenderDiff_NoEdits(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 ```bash
 go test ./internal/edit/... -run TestRenderDiff
@@ -755,7 +755,7 @@ go test ./internal/edit/... -run TestRenderDiff
 
 Expected: compilation error — `edit.RenderDiff` not defined.
 
-- [ ] **Step 4: Implement the diff renderer**
+- [x] **Step 4: Implement the diff renderer**
 
 Create `internal/edit/diff.go`:
 
@@ -811,7 +811,7 @@ func RenderDiff(we *WorkspaceEdit) (string, error) {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 ```bash
 go test ./internal/edit/... -v
@@ -819,7 +819,7 @@ go test ./internal/edit/... -v
 
 Expected: all tests pass (including applier tests from Task 3).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/edit/diff.go internal/edit/diff_test.go go.mod go.sum
@@ -834,7 +834,7 @@ git commit -m "feat: implement diff renderer for dry-run preview"
 - Create: `internal/config/config.go`
 - Create: `internal/config/config_test.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/config/config_test.go`:
 
@@ -907,7 +907,7 @@ func TestLoad_ExplicitPath(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/config/...
@@ -915,7 +915,7 @@ go test ./internal/config/...
 
 Expected: compilation error — `config` package not defined.
 
-- [ ] **Step 3: Implement the config system**
+- [x] **Step 3: Implement the config system**
 
 Create `internal/config/config.go`:
 
@@ -1048,7 +1048,7 @@ func mergeFromFile(cfg *Config, path string) error {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 go test ./internal/config/... -v
@@ -1056,7 +1056,7 @@ go test ./internal/config/... -v
 
 Expected: all 3 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/config/config.go internal/config/config_test.go
@@ -1071,7 +1071,7 @@ git commit -m "feat: implement config loading with defaults and merge"
 - Create: `internal/backend/lsp/transport.go`
 - Create: `internal/backend/lsp/transport_test.go`
 
-- [ ] **Step 1: Write the failing test — message framing**
+- [x] **Step 1: Write the failing test — message framing**
 
 Create `internal/backend/lsp/transport_test.go`:
 
@@ -1224,7 +1224,7 @@ func TestTransport_ReadMultipleMessages(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/backend/lsp/... -run TestTransport
@@ -1232,7 +1232,7 @@ go test ./internal/backend/lsp/... -run TestTransport
 
 Expected: compilation error — `lsp.NewTransport` not defined.
 
-- [ ] **Step 3: Implement the transport**
+- [x] **Step 3: Implement the transport**
 
 Create `internal/backend/lsp/transport.go`:
 
@@ -1317,7 +1317,7 @@ func (t *Transport) Read() ([]byte, error) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 go test ./internal/backend/lsp/... -run TestTransport -v
@@ -1325,7 +1325,7 @@ go test ./internal/backend/lsp/... -run TestTransport -v
 
 Expected: both tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/backend/lsp/transport.go internal/backend/lsp/transport_test.go
@@ -1340,7 +1340,7 @@ git commit -m "feat: implement LSP JSON-RPC transport with Content-Length framin
 - Create: `internal/backend/lsp/client.go`
 - Create: `internal/backend/lsp/client_test.go`
 
-- [ ] **Step 1: Write the failing integration test**
+- [x] **Step 1: Write the failing integration test**
 
 This test requires `gopls` installed. It verifies the full LSP lifecycle: initialize, didOpen, rename, shutdown.
 
@@ -1435,7 +1435,7 @@ func TestClient_Rename(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/backend/lsp/... -run TestClient -v
@@ -1443,7 +1443,7 @@ go test ./internal/backend/lsp/... -run TestClient -v
 
 Expected: compilation error — `lsp.StartClient` not defined.
 
-- [ ] **Step 3: Implement the LSP client**
+- [x] **Step 3: Implement the LSP client**
 
 Create `internal/backend/lsp/client.go`:
 
@@ -1811,7 +1811,7 @@ func uriToFile(uri string) string {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 go test ./internal/backend/lsp/... -run TestClient -v -timeout 30s
@@ -1819,7 +1819,7 @@ go test ./internal/backend/lsp/... -run TestClient -v -timeout 30s
 
 Expected: both `TestClient_Initialize` and `TestClient_Rename` pass (or skip if gopls not installed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/backend/lsp/client.go internal/backend/lsp/client_test.go
@@ -1834,7 +1834,7 @@ git commit -m "feat: implement LSP client with initialize, rename, shutdown"
 - Create: `internal/backend/lsp/adapter.go`
 - Create: `internal/backend/lsp/adapter_test.go`
 
-- [ ] **Step 1: Write the failing integration test**
+- [x] **Step 1: Write the failing integration test**
 
 Create `internal/backend/lsp/adapter_test.go`:
 
@@ -1921,7 +1921,7 @@ func TestAdapter_Capabilities(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/backend/lsp/... -run TestAdapter -v
@@ -1929,7 +1929,7 @@ go test ./internal/backend/lsp/... -run TestAdapter -v
 
 Expected: compilation error — `lsp.NewAdapter` not defined.
 
-- [ ] **Step 3: Implement the adapter**
+- [x] **Step 3: Implement the adapter**
 
 Create `internal/backend/lsp/adapter.go`:
 
@@ -2026,7 +2026,7 @@ func (a *Adapter) Capabilities() []backend.Capability {
 var _ backend.RefactoringBackend = (*Adapter)(nil)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 go test ./internal/backend/lsp/... -run TestAdapter -v -timeout 30s
@@ -2034,7 +2034,7 @@ go test ./internal/backend/lsp/... -run TestAdapter -v -timeout 30s
 
 Expected: both tests pass (or skip if gopls not installed).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/backend/lsp/adapter.go internal/backend/lsp/adapter_test.go
