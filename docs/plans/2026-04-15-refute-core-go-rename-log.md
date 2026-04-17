@@ -3,7 +3,7 @@
 **Plan:** `docs/plans/2026-04-15-refute-core-go-rename.md`
 **Spec:** `docs/specs/2026-04-15-refute-design.md`
 **Started:** 2026-04-15
-**Status:** Tasks 1-8 complete, Tasks 9-11 remaining
+**Status:** All 11 tasks complete. Verification checklist passed.
 
 ## Completed Work
 
@@ -45,45 +45,40 @@
 
 ## Test Results
 
-All 12 tests pass (including gopls integration tests):
+All 20 unit tests + 2 integration tests pass:
 
 ```
 internal/backend/lsp    — 6 tests (transport: 2, client: 2, adapter: 2)
 internal/config         — 3 tests
 internal/edit           — 6 tests (applier: 4, diff: 2)
+internal/symbol         — 5 tests (resolver: 5)
+internal (integration)  — 2 tests (e2e rename, e2e dry-run)
 ```
 
 gopls integration tests verified with gopls v0.21.1 (installed during session).
 
-## Remaining Work
+### Task 9: Symbol Resolution (commit `7b07985`)
+- `internal/symbol/resolver.go` — Resolve() dispatches to Tier 2 (file+line+name → scan line for column) or Tier 3 (file+line+col → passthrough). Returns 1-indexed Location.
+- `internal/symbol/resolver_test.go` — 5 tests: Tier 3 exact position, Tier 2 find name on line, name not found, multiple occurrences (first match), invalid tier
 
-### Task 9: Symbol Resolution (Tiers 2 & 3)
-- Create `internal/symbol/resolver.go` and `resolver_test.go`
-- Resolve() function: Tier 2 (file+line+name → scan line, find column), Tier 3 (file+line+col → pass through)
-- 5 unit tests
+### Task 10: CLI Rename Commands (commit `53603fd`)
+- `internal/cli/root.go` — Cobra root command with --config, --dry-run, --verbose global flags, version subcommand
+- `internal/cli/rename.go` — 9 rename subcommands (rename, rename-function, rename-class, rename-field, rename-variable, rename-parameter, rename-type, rename-method). Wires symbol.Resolve → config.Load → detectLanguage → lsp.NewAdapter → adapter.Rename → edit.Apply/RenderDiff. findWorkspaceRoot(), detectLanguage() helpers.
+- Updated `cmd/refute/main.go` to delegate to cobra
+- Added dependencies: cobra, fatih/color
 
-### Task 10: CLI Rename Commands
-- Create `internal/cli/root.go` and `internal/cli/rename.go`
-- Update `cmd/refute/main.go` to use cobra
-- Add dependencies: cobra, fatih/color
-- Rename subcommands: rename, rename-function, rename-class, rename-field, rename-variable, rename-parameter, rename-type, rename-method
-- Flags: --file, --line, --col, --name, --new-name, --symbol, --dry-run, --verbose, --config
-- Wiring: symbol.Resolve → config.Load → detectLanguage → lsp.NewAdapter → adapter.Rename → edit.Apply or edit.RenderDiff
-- findWorkspaceRoot() walks up to find go.mod/package.json/etc.
-- detectLanguage() maps file extensions to LSP language IDs
+### Task 11: E2E Integration Test (commit `d675cec`)
+- `testdata/fixtures/go/rename/` — Multi-file Go project (main.go imports util/helper.go with FormatGreeting cross-package reference)
+- `internal/integration_test.go` (build tag: `integration`) — 2 tests: TestEndToEnd_RenameGoFunction (build binary, rename, verify cross-file update, verify compilation), TestEndToEnd_DryRun (verify diff output, files unchanged)
 
-### Task 11: End-to-End Integration Test
-- Create Go fixture project in testdata/fixtures/go/rename/ (multi-file with cross-package reference)
-- Create `internal/integration_test.go` (build tag: integration)
-- TestEndToEnd_RenameGoFunction: build refute, rename FormatGreeting→BuildGreeting, verify cross-file update, verify compilation
-- TestEndToEnd_DryRun: same rename with --dry-run, verify diff output, verify files unchanged
-
-### Verification Checklist (after all tasks)
-- Build and run `refute version`
-- `refute rename-function --help` shows flags
-- Dry-run rename on fixture project shows diff
-- Apply rename, verify compilation
-- All tests pass
+### Verification Checklist — Passed
+- `go build -o refute ./cmd/refute` — clean build
+- `./refute version` → `refute 0.1.0-dev`
+- `./refute rename-function --help` — all flags listed
+- Dry-run rename on fixture → unified diff showing rename across 2 files
+- Applied rename → `ok Modified 2 file(s): util/helper.go main.go`
+- Fixture still compiles after rename
+- All 20 unit tests pass, 2 integration tests pass
 
 ## Notes
 

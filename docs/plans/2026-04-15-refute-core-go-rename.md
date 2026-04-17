@@ -2049,7 +2049,7 @@ git commit -m "feat: implement LSP backend adapter with rename support"
 - Create: `internal/symbol/resolver.go`
 - Create: `internal/symbol/resolver_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `internal/symbol/resolver_test.go`:
 
@@ -2158,7 +2158,7 @@ func TestResolve_InvalidTier(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/symbol/... -v
@@ -2166,7 +2166,7 @@ go test ./internal/symbol/... -v
 
 Expected: compilation error — `symbol.Resolve` not defined.
 
-- [ ] **Step 3: Implement the resolver**
+- [x] **Step 3: Implement the resolver**
 
 Create `internal/symbol/resolver.go`:
 
@@ -2232,7 +2232,7 @@ func resolveTier2(query Query) (Location, error) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 go test ./internal/symbol/... -v
@@ -2240,7 +2240,7 @@ go test ./internal/symbol/... -v
 
 Expected: all 5 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/symbol/resolver.go internal/symbol/resolver_test.go
@@ -2256,19 +2256,19 @@ git commit -m "feat: implement symbol resolution for tiers 2 and 3"
 - Create: `internal/cli/root.go`
 - Create: `internal/cli/rename.go`
 
-- [ ] **Step 1: Add cobra dependency**
+- [x] **Step 1: Add cobra dependency**
 
 ```bash
 cd /home/ketan/project/refute && go get github.com/spf13/cobra
 ```
 
-- [ ] **Step 2: Add color dependency**
+- [x] **Step 2: Add color dependency**
 
 ```bash
 go get github.com/fatih/color
 ```
 
-- [ ] **Step 3: Implement the root command**
+- [x] **Step 3: Implement the root command**
 
 Create `internal/cli/root.go`:
 
@@ -2312,7 +2312,7 @@ func init() {
 }
 ```
 
-- [ ] **Step 4: Implement the rename commands**
+- [x] **Step 4: Implement the rename commands**
 
 Create `internal/cli/rename.go`:
 
@@ -2532,7 +2532,7 @@ func detectLanguage(filePath string) string {
 }
 ```
 
-- [ ] **Step 5: Update main.go to use cobra**
+- [x] **Step 5: Update main.go to use cobra**
 
 Replace `cmd/refute/main.go`:
 
@@ -2554,7 +2554,7 @@ func main() {
 }
 ```
 
-- [ ] **Step 6: Verify it builds and shows help**
+- [x] **Step 6: Verify it builds and shows help**
 
 ```bash
 go build -o refute ./cmd/refute && ./refute --help
@@ -2568,7 +2568,7 @@ Expected: help output listing rename, rename-function, rename-class, etc.
 
 Expected: `refute 0.1.0-dev`
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add cmd/refute/main.go internal/cli/root.go internal/cli/rename.go go.mod go.sum
@@ -2585,7 +2585,7 @@ git commit -m "feat: implement CLI with rename commands via cobra"
 - Create: `testdata/fixtures/go/rename/util/helper.go`
 - Create: `internal/integration_test.go`
 
-- [ ] **Step 1: Create the Go fixture project**
+- [x] **Step 1: Create the Go fixture project**
 
 Create `testdata/fixtures/go/rename/go.mod`:
 
@@ -2619,7 +2619,7 @@ func FormatGreeting(name string) string {
 }
 ```
 
-- [ ] **Step 2: Verify the fixture compiles**
+- [x] **Step 2: Verify the fixture compiles**
 
 ```bash
 cd /home/ketan/project/refute/testdata/fixtures/go/rename && go build ./...
@@ -2631,7 +2631,7 @@ Expected: clean build.
 cd /home/ketan/project/refute
 ```
 
-- [ ] **Step 3: Write the end-to-end test**
+- [x] **Step 3: Write the end-to-end test**
 
 Create `internal/integration_test.go`:
 
@@ -2779,7 +2779,7 @@ func copyDir(t *testing.T, src, dst string) {
 }
 ```
 
-- [ ] **Step 4: Run the integration tests**
+- [x] **Step 4: Run the integration tests**
 
 ```bash
 cd /home/ketan/project/refute && go test -tags integration ./internal/ -v -timeout 60s
@@ -2787,7 +2787,7 @@ cd /home/ketan/project/refute && go test -tags integration ./internal/ -v -timeo
 
 Expected: both `TestEndToEnd_RenameGoFunction` and `TestEndToEnd_DryRun` pass (or skip if gopls not installed).
 
-- [ ] **Step 5: Run all tests to verify nothing is broken**
+- [x] **Step 5: Run all tests to verify nothing is broken**
 
 ```bash
 go test ./... -v -timeout 60s
@@ -2795,7 +2795,7 @@ go test ./... -v -timeout 60s
 
 Expected: all tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add testdata/fixtures/ internal/integration_test.go
