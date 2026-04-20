@@ -1,23 +1,24 @@
 {
-  "active_task": {
-    "base_head": "d1dce01206d7e25575a3c5be288c06d360f5dd49",
-    "branch": "rust-support-01-config-detect",
-    "kind": "task",
-    "number": 1,
-    "slug": "config-detect",
-    "started_at": "2026-04-20T02:36:46Z",
-    "worktree": "/home/ketan/project/rust-support-01-config-detect"
-  },
+  "active_task": null,
   "base_branch": "rust-support",
   "base_worktree": "/home/ketan/project/refute-rust-support",
   "created_at": "2026-04-19T21:05:10Z",
   "expedition": "rust-support",
-  "last_completed": null,
-  "next_action": "Complete work on `rust-support-01-config-detect` in `/home/ketan/project/rust-support-01-config-detect`.",
-  "next_task_number": 1,
+  "last_completed": {
+    "branch": "rust-support-01-config-detect",
+    "completed_at": "2026-04-20T14:29:52Z",
+    "kind": "task",
+    "number": 1,
+    "outcome": "kept",
+    "slug": "config-detect",
+    "summary": "Added rust-analyzer to builtins and Cargo markers to workspace detection",
+    "worktree": "/home/ketan/project/rust-support-01-config-detect"
+  },
+  "next_action": "Create the next task branch from the rebased expedition base branch.",
+  "next_task_number": 2,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "task_in_progress",
-  "updated_at": "2026-04-20T02:36:46Z"
+  "status": "ready_for_task",
+  "updated_at": "2026-04-20T14:29:52Z"
 }

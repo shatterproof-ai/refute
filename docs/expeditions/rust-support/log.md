@@ -27,14 +27,21 @@
 - Base head at branch creation: `d1dce01206d7e25575a3c5be288c06d360f5dd49`.
 
 
+### 2026-04-20T14:29:52Z — Closed task
+- Branch: `rust-support-01-config-detect`.
+- Outcome: `kept`.
+- Summary: Added rust-analyzer to builtins and Cargo markers to workspace detection
+- Base branch rebased onto the primary branch.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `rust-support`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `rust-support`
 - Base worktree: `/home/ketan/project/refute-rust-support`
-- Active task branch: `rust-support-01-config-detect`
-- Active task worktree: `/home/ketan/project/rust-support-01-config-detect`
-- Last completed: `none`
-- Next action: Complete work on `rust-support-01-config-detect` in `/home/ketan/project/rust-support-01-config-detect`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `rust-support-01-config-detect (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 <!-- expedition-resume:end -->
