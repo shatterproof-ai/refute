@@ -43,6 +43,10 @@ var builtinServers = map[string]ServerConfig{
 		Command: "typescript-language-server",
 		Args:    []string{"--stdio"},
 	},
+	"javascript": {
+		Command: "typescript-language-server",
+		Args:    []string{"--stdio"},
+	},
 	"python": {
 		Command: "pyright-langserver",
 		Args:    []string{"--stdio"},
