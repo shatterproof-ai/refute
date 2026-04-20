@@ -27,14 +27,21 @@
 - Base head at branch creation: `8c639e750271422966af823616ffef4257b2d9b6`.
 
 
+### 2026-04-20T14:34:14Z — Closed task
+- Branch: `java-language-support-01-jdtls-lsp-config`.
+- Outcome: `kept`.
+- Summary: Added jdtls and kotlin-language-server to builtinServers; added Maven/Gradle workspace markers. All 4 config tests pass.
+- Base branch rebased onto the primary branch.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `java-language-support`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `java-language-support`
 - Base worktree: `/home/ketan/project/refute-java`
-- Active task branch: `java-language-support-01-jdtls-lsp-config`
-- Active task worktree: `/home/ketan/project/java-language-support-01-jdtls-lsp-config`
-- Last completed: `none`
-- Next action: Complete work on `java-language-support-01-jdtls-lsp-config` in `/home/ketan/project/java-language-support-01-jdtls-lsp-config`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `java-language-support-01-jdtls-lsp-config (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 <!-- expedition-resume:end -->
