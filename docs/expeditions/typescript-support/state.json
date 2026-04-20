@@ -1,5 +1,13 @@
 {
-  "active_task": null,
+  "active_task": {
+    "base_head": "59b989b53ef9645d6b75611272a2f1483e21dee0",
+    "branch": "typescript-support-04-ts-e2e",
+    "kind": "task",
+    "number": 4,
+    "slug": "ts-e2e",
+    "started_at": "2026-04-20T14:36:48Z",
+    "worktree": "/home/ketan/project/typescript-support-04-ts-e2e"
+  },
   "base_branch": "typescript-support",
   "base_worktree": "/home/ketan/project/refute-typescript-support",
   "created_at": "2026-04-19T21:04:28Z",
@@ -14,11 +22,11 @@
     "summary": "Add TypeScript rename fixture (greeter.ts + main.ts)",
     "worktree": "/home/ketan/project/typescript-support-03-ts-fixtures"
   },
-  "next_action": "Create the next task branch from the rebased expedition base branch.",
+  "next_action": "Complete work on `typescript-support-04-ts-e2e` in `/home/ketan/project/typescript-support-04-ts-e2e`.",
   "next_task_number": 4,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "ready_for_task",
-  "updated_at": "2026-04-20T14:36:42Z"
+  "status": "task_in_progress",
+  "updated_at": "2026-04-20T14:36:48Z"
 }
