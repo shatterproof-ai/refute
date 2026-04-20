@@ -3,9 +3,9 @@
 - Expedition: `typescript-support`
 - Base branch: `typescript-support`
 - Base worktree: `/home/ketan/project/refute-typescript-support`
-- Status: `ready_for_task`
-- Active task branch: `none`
-- Active task worktree: `none`
+- Status: `task_in_progress`
+- Active task branch: `typescript-support-01-lang-id`
+- Active task worktree: `/home/ketan/project/typescript-support-01-lang-id`
 - Last completed: `none`
-- Next action: Create the first task branch from the expedition base branch.
+- Next action: Complete work on `typescript-support-01-lang-id` in `/home/ketan/project/typescript-support-01-lang-id`.
 - Primary branch: `main`
