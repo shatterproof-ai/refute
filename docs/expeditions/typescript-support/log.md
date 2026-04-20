@@ -66,14 +66,21 @@
 - Base head at branch creation: `59b989b53ef9645d6b75611272a2f1483e21dee0`.
 
 
+### 2026-04-20T14:39:21Z — Closed task
+- Branch: `typescript-support-04-ts-e2e`.
+- Outcome: `kept`.
+- Summary: Add TypeScript end-to-end integration tests
+- Base branch rebased onto the primary branch.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `typescript-support`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `typescript-support`
 - Base worktree: `/home/ketan/project/refute-typescript-support`
-- Active task branch: `typescript-support-04-ts-e2e`
-- Active task worktree: `/home/ketan/project/typescript-support-04-ts-e2e`
-- Last completed: `typescript-support-03-ts-fixtures (kept)`
-- Next action: Complete work on `typescript-support-04-ts-e2e` in `/home/ketan/project/typescript-support-04-ts-e2e`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `typescript-support-04-ts-e2e (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 <!-- expedition-resume:end -->
