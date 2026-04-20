@@ -117,6 +117,99 @@ func TestEndToEnd_DryRun(t *testing.T) {
 	}
 }
 
+func TestEndToEnd_RenameTypeScriptFunction(t *testing.T) {
+	if _, err := exec.LookPath("typescript-language-server"); err != nil {
+		t.Skip("typescript-language-server not found on PATH")
+	}
+
+	srcDir := filepath.Join("../testdata/fixtures/typescript/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := filepath.Join(t.TempDir(), "refute")
+	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
+	build.Dir = filepath.Join("..")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build failed: %s\n%s", err, out)
+	}
+
+	// Rename greet → welcome.
+	greeterFile := filepath.Join(dir, "src", "greeter.ts")
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", greeterFile,
+		"--line", "1",
+		"--name", "greet",
+		"--new-name", "welcome",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+
+	greeterContent, _ := os.ReadFile(greeterFile)
+	if strings.Contains(string(greeterContent), "greet") {
+		t.Error("greeter.ts still contains old name 'greet'")
+	}
+	if !strings.Contains(string(greeterContent), "welcome") {
+		t.Error("greeter.ts missing new name 'welcome'")
+	}
+
+	// Verify cross-file rename: main.ts imports and calls greet.
+	mainFile := filepath.Join(dir, "src", "main.ts")
+	mainContent, _ := os.ReadFile(mainFile)
+	if strings.Contains(string(mainContent), "greet") {
+		t.Error("main.ts still contains old name 'greet' after cross-file rename")
+	}
+	if !strings.Contains(string(mainContent), "welcome") {
+		t.Error("main.ts missing 'welcome' after cross-file rename")
+	}
+}
+
+func TestEndToEnd_TypeScriptDryRun(t *testing.T) {
+	if _, err := exec.LookPath("typescript-language-server"); err != nil {
+		t.Skip("typescript-language-server not found on PATH")
+	}
+
+	srcDir := filepath.Join("../testdata/fixtures/typescript/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := filepath.Join(t.TempDir(), "refute")
+	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
+	build.Dir = filepath.Join("..")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build failed: %s\n%s", err, out)
+	}
+
+	greeterFile := filepath.Join(dir, "src", "greeter.ts")
+	originalContent, _ := os.ReadFile(greeterFile)
+
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", greeterFile,
+		"--line", "1",
+		"--name", "greet",
+		"--new-name", "welcome",
+		"--dry-run",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute dry-run failed: %s\n%s", err, out)
+	}
+
+	if !strings.Contains(string(out), "greet") || !strings.Contains(string(out), "welcome") {
+		t.Errorf("dry-run output should show diff, got:\n%s", out)
+	}
+
+	afterContent, _ := os.ReadFile(greeterFile)
+	if string(afterContent) != string(originalContent) {
+		t.Error("dry-run should not modify files")
+	}
+}
+
 // copyDir recursively copies a directory tree.
 func copyDir(t *testing.T, src, dst string) {
 	t.Helper()

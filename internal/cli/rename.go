@@ -105,13 +105,14 @@ func runRename(kind symbol.SymbolKind) error {
 	}
 
 	// Detect language and create adapter.
-	language := detectLanguage(loc.File)
-	serverCfg := cfg.Server(language)
+	serverKey := detectServerKey(loc.File)
+	serverCfg := cfg.Server(serverKey)
 	if serverCfg.Command == "" {
-		return fmt.Errorf("no server configured for language %q", language)
+		return fmt.Errorf("no server configured for language %q", serverKey)
 	}
 
-	adapter := lsp.NewAdapter(serverCfg, language, nil)
+	languageID := detectLanguageID(loc.File)
+	adapter := lsp.NewAdapter(serverCfg, languageID, nil)
 	if err := adapter.Initialize(workspaceRoot); err != nil {
 		return fmt.Errorf("initializing backend: %w", err)
 	}
@@ -187,16 +188,43 @@ func findWorkspaceRoot(filePath string) (string, error) {
 	}
 }
 
-// detectLanguage returns the LSP language ID based on file extension.
-func detectLanguage(filePath string) string {
-	ext := filepath.Ext(filePath)
-	switch ext {
+// detectServerKey returns the server config key for a file based on its extension.
+// This is used to look up the language server in the config.
+func detectServerKey(filePath string) string {
+	switch filepath.Ext(filePath) {
 	case ".go":
 		return "go"
-	case ".ts", ".tsx":
+	case ".ts", ".tsx", ".js", ".jsx":
 		return "typescript"
-	case ".js", ".jsx":
+	case ".py":
+		return "python"
+	case ".java":
+		return "java"
+	case ".kt":
+		return "kotlin"
+	case ".rs":
+		return "rust"
+	case ".cs":
+		return "csharp"
+	default:
+		return ""
+	}
+}
+
+// detectLanguageID returns the LSP language ID for a file based on its extension.
+// This is passed to the LSP server's textDocument/didOpen notification.
+func detectLanguageID(filePath string) string {
+	switch filepath.Ext(filePath) {
+	case ".ts":
+		return "typescript"
+	case ".tsx":
+		return "typescriptreact"
+	case ".js":
 		return "javascript"
+	case ".jsx":
+		return "javascriptreact"
+	case ".go":
+		return "go"
 	case ".py":
 		return "python"
 	case ".java":
