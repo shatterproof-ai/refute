@@ -171,7 +171,7 @@ func runRename(kind symbol.SymbolKind) error {
 // package.json, or similar project markers.
 func findWorkspaceRoot(filePath string) (string, error) {
 	dir := filepath.Dir(filePath)
-	markers := []string{"Cargo.toml", "Cargo.lock", "go.mod", "go.work", "package.json", "tsconfig.json", "pyproject.toml", "setup.py"}
+	markers := []string{"Cargo.toml", "Cargo.lock", "go.mod", "go.work", "package.json", "tsconfig.json", "pyproject.toml", "setup.py", "pom.xml", "build.gradle", "build.gradle.kts"}
 
 	for {
 		for _, m := range markers {
