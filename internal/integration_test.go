@@ -210,6 +210,66 @@ func TestEndToEnd_TypeScriptDryRun(t *testing.T) {
 	}
 }
 
+func TestEndToEnd_RenameRustFunction(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+
+	// Copy fixture to temp dir so we don't modify the original.
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	// Build refute.
+	refuteBin := filepath.Join(t.TempDir(), "refute")
+	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
+	build.Dir = filepath.Join("..")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build failed: %s\n%s", err, out)
+	}
+
+	// Run rename: format_greeting → build_greeting.
+	libFile := filepath.Join(dir, "src", "lib.rs")
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", libFile,
+		"--line", "1",
+		"--name", "format_greeting",
+		"--new-name", "build_greeting",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+
+	// Verify lib.rs was updated.
+	libContent, _ := os.ReadFile(libFile)
+	if strings.Contains(string(libContent), "format_greeting") {
+		t.Error("lib.rs still contains format_greeting")
+	}
+	if !strings.Contains(string(libContent), "build_greeting") {
+		t.Error("lib.rs missing build_greeting")
+	}
+
+	// Verify main.rs cross-file reference was updated.
+	mainFile := filepath.Join(dir, "src", "main.rs")
+	mainContent, _ := os.ReadFile(mainFile)
+	if strings.Contains(string(mainContent), "format_greeting") {
+		t.Error("main.rs still contains format_greeting after cross-file rename")
+	}
+	if !strings.Contains(string(mainContent), "build_greeting") {
+		t.Error("main.rs missing build_greeting")
+	}
+
+	// Verify: project still compiles.
+	cargoCheck := exec.Command("cargo", "build")
+	cargoCheck.Dir = dir
+	if out, err := cargoCheck.CombinedOutput(); err != nil {
+		t.Fatalf("project no longer compiles after rename:\n%s", out)
+	}
+}
+
 // copyDir recursively copies a directory tree.
 func copyDir(t *testing.T, src, dst string) {
 	t.Helper()

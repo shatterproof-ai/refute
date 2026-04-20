@@ -1,8 +1,11 @@
 package lsp
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/config"
@@ -50,6 +53,15 @@ func (a *Adapter) Initialize(workspaceRoot string) error {
 		_ = PrimeTSWorkspace(a.client, absRoot)
 	}
 
+	// Wait for the server to finish its initial indexing pass. LSP servers like
+	// rust-analyzer emit $/progress notifications while indexing and cannot
+	// reliably serve rename requests until indexing is complete.
+	const indexingTimeout = 120 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), indexingTimeout)
+	defer cancel()
+	if err := client.WaitForIdle(ctx); err != nil {
+		return fmt.Errorf("waiting for server ready: %w", err)
+	}
 	return nil
 }
 
@@ -81,9 +93,36 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 		return nil, fmt.Errorf("DidOpen %s: %w", loc.File, err)
 	}
 
-	fileEdits, err := a.client.Rename(loc.File, lspLine, lspCharacter, newName)
-	if err != nil {
-		return nil, fmt.Errorf("rename: %w", err)
+	// Wait for any DidOpen-triggered analysis to settle before sending rename.
+	const analysisTimeout = 30 * time.Second
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), analysisTimeout)
+	defer waitCancel()
+	if err := a.client.WaitForIdle(waitCtx); err != nil {
+		return nil, fmt.Errorf("waiting for analysis: %w", err)
+	}
+
+	// Retry on ContentModified: servers like rust-analyzer cancel rename
+	// requests when background salsa invalidation races with the request.
+	const (
+		renameMaxRetries = 5
+		renameRetryDelay = 750 * time.Millisecond
+	)
+	var fileEdits []edit.FileEdit
+	for attempt := 0; attempt < renameMaxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(renameRetryDelay)
+		}
+		var err error
+		fileEdits, err = a.client.Rename(loc.File, lspLine, lspCharacter, newName)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, ErrContentModified) {
+			return nil, fmt.Errorf("rename: %w", err)
+		}
+		if attempt == renameMaxRetries-1 {
+			return nil, fmt.Errorf("rename: server state did not settle after %d attempts: %w", renameMaxRetries, err)
+		}
 	}
 
 	return &edit.WorkspaceEdit{FileEdits: fileEdits}, nil
