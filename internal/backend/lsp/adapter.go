@@ -45,6 +45,11 @@ func (a *Adapter) Initialize(workspaceRoot string) error {
 	}
 
 	a.client = client
+
+	if isTSFamily(a.languageID) {
+		_ = PrimeTSWorkspace(a.client, absRoot)
+	}
+
 	return nil
 }
 
