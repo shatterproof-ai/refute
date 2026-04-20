@@ -1,5 +1,13 @@
 {
-  "active_task": null,
+  "active_task": {
+    "base_head": "6cf65ce0701d029caa1ae1262b95cdf8aa0cfaff",
+    "branch": "typescript-support-02-ts-priming",
+    "kind": "task",
+    "number": 2,
+    "slug": "ts-priming",
+    "started_at": "2026-04-20T14:25:38Z",
+    "worktree": "/home/ketan/project/typescript-support-02-ts-priming"
+  },
   "base_branch": "typescript-support",
   "base_worktree": "/home/ketan/project/refute-typescript-support",
   "created_at": "2026-04-19T21:04:28Z",
@@ -14,11 +22,11 @@
     "summary": "Fix LSP language ID separation; add JS server config",
     "worktree": "/home/ketan/project/typescript-support-01-lang-id"
   },
-  "next_action": "Create the next task branch from the rebased expedition base branch.",
+  "next_action": "Complete work on `typescript-support-02-ts-priming` in `/home/ketan/project/typescript-support-02-ts-priming`.",
   "next_task_number": 2,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "ready_for_task",
-  "updated_at": "2026-04-20T14:25:34Z"
+  "status": "task_in_progress",
+  "updated_at": "2026-04-20T14:25:38Z"
 }
