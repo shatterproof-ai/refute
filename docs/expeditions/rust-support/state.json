@@ -1,5 +1,13 @@
 {
-  "active_task": null,
+  "active_task": {
+    "base_head": "83915dea24aff938732a933d2c7acee6abf5c40e",
+    "branch": "rust-support-02-rust-fixture-and-test",
+    "kind": "task",
+    "number": 2,
+    "slug": "rust-fixture-and-test",
+    "started_at": "2026-04-20T14:29:56Z",
+    "worktree": "/home/ketan/project/rust-support-02-rust-fixture-and-test"
+  },
   "base_branch": "rust-support",
   "base_worktree": "/home/ketan/project/refute-rust-support",
   "created_at": "2026-04-19T21:05:10Z",
@@ -14,11 +22,11 @@
     "summary": "Added rust-analyzer to builtins and Cargo markers to workspace detection",
     "worktree": "/home/ketan/project/rust-support-01-config-detect"
   },
-  "next_action": "Create the next task branch from the rebased expedition base branch.",
+  "next_action": "Complete work on `rust-support-02-rust-fixture-and-test` in `/home/ketan/project/rust-support-02-rust-fixture-and-test`.",
   "next_task_number": 2,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "ready_for_task",
-  "updated_at": "2026-04-20T14:29:52Z"
+  "status": "task_in_progress",
+  "updated_at": "2026-04-20T14:29:56Z"
 }
