@@ -47,14 +47,20 @@
 - Base branch rebased onto the primary branch.
 
 
+### 2026-04-20T14:34:22Z — Started task
+- Branch: `typescript-support-03-ts-fixtures`.
+- Worktree: `/home/ketan/project/typescript-support-03-ts-fixtures`.
+- Base head at branch creation: `3b0f68c76ec4b7abc7d20884329ad5c9d07666d2`.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `typescript-support`
-- Status: `ready_for_task`
+- Status: `task_in_progress`
 - Base branch: `typescript-support`
 - Base worktree: `/home/ketan/project/refute-typescript-support`
-- Active task branch: `none`
-- Active task worktree: `none`
+- Active task branch: `typescript-support-03-ts-fixtures`
+- Active task worktree: `/home/ketan/project/typescript-support-03-ts-fixtures`
 - Last completed: `typescript-support-02-ts-priming (kept)`
-- Next action: Create the next task branch from the rebased expedition base branch.
+- Next action: Complete work on `typescript-support-03-ts-fixtures` in `/home/ketan/project/typescript-support-03-ts-fixtures`.
 <!-- expedition-resume:end -->
