@@ -25,6 +25,11 @@ func TestLoad_Defaults(t *testing.T) {
 	if goServer.Command != "gopls" {
 		t.Errorf("go server command: got %q, want %q", goServer.Command, "gopls")
 	}
+
+	rustServer := cfg.Server("rust")
+	if rustServer.Command != "rust-analyzer" {
+		t.Errorf("rust server command: got %q, want %q", rustServer.Command, "rust-analyzer")
+	}
 }
 
 func TestLoad_ProjectConfig(t *testing.T) {

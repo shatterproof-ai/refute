@@ -39,6 +39,9 @@ var builtinServers = map[string]ServerConfig{
 		Command: "gopls",
 		Args:    []string{"serve"},
 	},
+	"rust": {
+		Command: "rust-analyzer",
+	},
 	"typescript": {
 		Command: "typescript-language-server",
 		Args:    []string{"--stdio"},
