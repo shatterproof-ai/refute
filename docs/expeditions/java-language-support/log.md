@@ -34,14 +34,20 @@
 - Base branch rebased onto the primary branch.
 
 
+### 2026-04-20T14:34:46Z — Started task
+- Branch: `java-language-support-02-java-fixtures`.
+- Worktree: `/home/ketan/project/java-language-support-02-java-fixtures`.
+- Base head at branch creation: `8ae1d0501387225a38fb55b84458f58a46e18bff`.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `java-language-support`
-- Status: `ready_for_task`
+- Status: `task_in_progress`
 - Base branch: `java-language-support`
 - Base worktree: `/home/ketan/project/refute-java`
-- Active task branch: `none`
-- Active task worktree: `none`
+- Active task branch: `java-language-support-02-java-fixtures`
+- Active task worktree: `/home/ketan/project/java-language-support-02-java-fixtures`
 - Last completed: `java-language-support-01-jdtls-lsp-config (kept)`
-- Next action: Create the next task branch from the rebased expedition base branch.
+- Next action: Complete work on `java-language-support-02-java-fixtures` in `/home/ketan/project/java-language-support-02-java-fixtures`.
 <!-- expedition-resume:end -->

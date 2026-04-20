@@ -1,5 +1,13 @@
 {
-  "active_task": null,
+  "active_task": {
+    "base_head": "8ae1d0501387225a38fb55b84458f58a46e18bff",
+    "branch": "java-language-support-02-java-fixtures",
+    "kind": "task",
+    "number": 2,
+    "slug": "java-fixtures",
+    "started_at": "2026-04-20T14:34:46Z",
+    "worktree": "/home/ketan/project/java-language-support-02-java-fixtures"
+  },
   "base_branch": "java-language-support",
   "base_worktree": "/home/ketan/project/refute-java",
   "created_at": "2026-04-19T22:36:37Z",
@@ -14,11 +22,11 @@
     "summary": "Added jdtls and kotlin-language-server to builtinServers; added Maven/Gradle workspace markers. All 4 config tests pass.",
     "worktree": "/home/ketan/project/java-language-support-01-jdtls-lsp-config"
   },
-  "next_action": "Create the next task branch from the rebased expedition base branch.",
+  "next_action": "Complete work on `java-language-support-02-java-fixtures` in `/home/ketan/project/java-language-support-02-java-fixtures`.",
   "next_task_number": 2,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "ready_for_task",
-  "updated_at": "2026-04-20T14:34:14Z"
+  "status": "task_in_progress",
+  "updated_at": "2026-04-20T14:34:46Z"
 }
