@@ -21,14 +21,20 @@
 - Next action: create the first serial task branch.
 
 
+### 2026-04-20T02:36:46Z — Started task
+- Branch: `rust-support-01-config-detect`.
+- Worktree: `/home/ketan/project/rust-support-01-config-detect`.
+- Base head at branch creation: `d1dce01206d7e25575a3c5be288c06d360f5dd49`.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `rust-support`
-- Status: `ready_for_task`
+- Status: `task_in_progress`
 - Base branch: `rust-support`
 - Base worktree: `/home/ketan/project/refute-rust-support`
-- Active task branch: `none`
-- Active task worktree: `none`
+- Active task branch: `rust-support-01-config-detect`
+- Active task worktree: `/home/ketan/project/rust-support-01-config-detect`
 - Last completed: `none`
-- Next action: Create the first task branch from the expedition base branch.
+- Next action: Complete work on `rust-support-01-config-detect` in `/home/ketan/project/rust-support-01-config-detect`.
 <!-- expedition-resume:end -->
