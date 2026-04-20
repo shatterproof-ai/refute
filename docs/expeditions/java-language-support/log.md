@@ -47,14 +47,20 @@
 - Base branch rebased onto the primary branch.
 
 
+### 2026-04-20T14:39:30Z — Started task
+- Branch: `java-language-support-03-openrewrite-jvm-wrapper`.
+- Worktree: `/home/ketan/project/java-language-support-03-openrewrite-jvm-wrapper`.
+- Base head at branch creation: `1c32d1fbbb91d523db1af6500871322e70b3ff82`.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `java-language-support`
-- Status: `ready_for_task`
+- Status: `task_in_progress`
 - Base branch: `java-language-support`
 - Base worktree: `/home/ketan/project/refute-java`
-- Active task branch: `none`
-- Active task worktree: `none`
+- Active task branch: `java-language-support-03-openrewrite-jvm-wrapper`
+- Active task worktree: `/home/ketan/project/java-language-support-03-openrewrite-jvm-wrapper`
 - Last completed: `java-language-support-02-java-fixtures (kept)`
-- Next action: Create the next task branch from the rebased expedition base branch.
+- Next action: Complete work on `java-language-support-03-openrewrite-jvm-wrapper` in `/home/ketan/project/java-language-support-03-openrewrite-jvm-wrapper`.
 <!-- expedition-resume:end -->
