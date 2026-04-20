@@ -60,14 +60,20 @@
 - Base branch rebased onto the primary branch.
 
 
+### 2026-04-20T18:47:46Z — Started task
+- Branch: `java-language-support-04-openrewrite-go-adapter`.
+- Worktree: `/home/ketan/project/java-language-support-04-openrewrite-go-adapter`.
+- Base head at branch creation: `2486f670b2c5c68c909a298571d4c5d5b4f60761`.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `java-language-support`
-- Status: `ready_for_task`
+- Status: `task_in_progress`
 - Base branch: `java-language-support`
 - Base worktree: `/home/ketan/project/refute-java`
-- Active task branch: `none`
-- Active task worktree: `none`
+- Active task branch: `java-language-support-04-openrewrite-go-adapter`
+- Active task worktree: `/home/ketan/project/java-language-support-04-openrewrite-go-adapter`
 - Last completed: `java-language-support-03-openrewrite-jvm-wrapper (kept)`
-- Next action: Create the next task branch from the rebased expedition base branch.
+- Next action: Complete work on `java-language-support-04-openrewrite-go-adapter` in `/home/ketan/project/java-language-support-04-openrewrite-go-adapter`.
 <!-- expedition-resume:end -->
