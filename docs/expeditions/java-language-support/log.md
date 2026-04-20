@@ -53,14 +53,21 @@
 - Base head at branch creation: `1c32d1fbbb91d523db1af6500871322e70b3ff82`.
 
 
+### 2026-04-20T18:47:42Z — Closed task
+- Branch: `java-language-support-03-openrewrite-jvm-wrapper`.
+- Outcome: `kept`.
+- Summary: Added adapters/openrewrite/ Maven project: Main.java (JSON-RPC loop), RenameHandler.java (ChangeMethodName + ChangeType via OpenRewrite 8.33). Builds to fat JAR via maven-shade-plugin.
+- Base branch rebased onto the primary branch.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `java-language-support`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `java-language-support`
 - Base worktree: `/home/ketan/project/refute-java`
-- Active task branch: `java-language-support-03-openrewrite-jvm-wrapper`
-- Active task worktree: `/home/ketan/project/java-language-support-03-openrewrite-jvm-wrapper`
-- Last completed: `java-language-support-02-java-fixtures (kept)`
-- Next action: Complete work on `java-language-support-03-openrewrite-jvm-wrapper` in `/home/ketan/project/java-language-support-03-openrewrite-jvm-wrapper`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `java-language-support-03-openrewrite-jvm-wrapper (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 <!-- expedition-resume:end -->
