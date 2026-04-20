@@ -27,14 +27,21 @@
 - Base head at branch creation: `55b4be130f86c99caa69a8e995e1a663aefc8570`.
 
 
+### 2026-04-20T14:25:34Z — Closed task
+- Branch: `typescript-support-01-lang-id`.
+- Outcome: `kept`.
+- Summary: Fix LSP language ID separation; add JS server config
+- Base branch rebased onto the primary branch.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `typescript-support`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `typescript-support`
 - Base worktree: `/home/ketan/project/refute-typescript-support`
-- Active task branch: `typescript-support-01-lang-id`
-- Active task worktree: `/home/ketan/project/typescript-support-01-lang-id`
-- Last completed: `none`
-- Next action: Complete work on `typescript-support-01-lang-id` in `/home/ketan/project/typescript-support-01-lang-id`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `typescript-support-01-lang-id (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 <!-- expedition-resume:end -->
