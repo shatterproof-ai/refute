@@ -1,15 +1,23 @@
 {
-  "active_task": null,
+  "active_task": {
+    "base_head": "8c639e750271422966af823616ffef4257b2d9b6",
+    "branch": "java-language-support-01-jdtls-lsp-config",
+    "kind": "task",
+    "number": 1,
+    "slug": "jdtls-lsp-config",
+    "started_at": "2026-04-20T02:40:00Z",
+    "worktree": "/home/ketan/project/java-language-support-01-jdtls-lsp-config"
+  },
   "base_branch": "java-language-support",
   "base_worktree": "/home/ketan/project/refute-java",
   "created_at": "2026-04-19T22:36:37Z",
   "expedition": "java-language-support",
   "last_completed": null,
-  "next_action": "Create the first task branch from the expedition base branch.",
+  "next_action": "Complete work on `java-language-support-01-jdtls-lsp-config` in `/home/ketan/project/java-language-support-01-jdtls-lsp-config`.",
   "next_task_number": 1,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "ready_for_task",
-  "updated_at": "2026-04-19T22:36:37Z"
+  "status": "task_in_progress",
+  "updated_at": "2026-04-20T02:40:00Z"
 }

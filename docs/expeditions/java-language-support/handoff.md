@@ -3,9 +3,9 @@
 - Expedition: `java-language-support`
 - Base branch: `java-language-support`
 - Base worktree: `/home/ketan/project/refute-java`
-- Status: `ready_for_task`
-- Active task branch: `none`
-- Active task worktree: `none`
+- Status: `task_in_progress`
+- Active task branch: `java-language-support-01-jdtls-lsp-config`
+- Active task worktree: `/home/ketan/project/java-language-support-01-jdtls-lsp-config`
 - Last completed: `none`
-- Next action: Create the first task branch from the expedition base branch.
+- Next action: Complete work on `java-language-support-01-jdtls-lsp-config` in `/home/ketan/project/java-language-support-01-jdtls-lsp-config`.
 - Primary branch: `main`

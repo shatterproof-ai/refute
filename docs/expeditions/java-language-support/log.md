@@ -21,14 +21,20 @@
 - Next action: create the first serial task branch.
 
 
+### 2026-04-20T02:40:00Z — Started task
+- Branch: `java-language-support-01-jdtls-lsp-config`.
+- Worktree: `/home/ketan/project/java-language-support-01-jdtls-lsp-config`.
+- Base head at branch creation: `8c639e750271422966af823616ffef4257b2d9b6`.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `java-language-support`
-- Status: `ready_for_task`
+- Status: `task_in_progress`
 - Base branch: `java-language-support`
 - Base worktree: `/home/ketan/project/refute-java`
-- Active task branch: `none`
-- Active task worktree: `none`
+- Active task branch: `java-language-support-01-jdtls-lsp-config`
+- Active task worktree: `/home/ketan/project/java-language-support-01-jdtls-lsp-config`
 - Last completed: `none`
-- Next action: Create the first task branch from the expedition base branch.
+- Next action: Complete work on `java-language-support-01-jdtls-lsp-config` in `/home/ketan/project/java-language-support-01-jdtls-lsp-config`.
 <!-- expedition-resume:end -->
