@@ -125,8 +125,7 @@ func runRename(kind symbol.SymbolKind) error {
 	}
 
 	if len(we.FileEdits) == 0 {
-		fmt.Fprintln(os.Stderr, "No changes produced.")
-		os.Exit(2)
+		return NoEditsError()
 	}
 
 	// Dry-run: show diff and exit.
