@@ -40,14 +40,21 @@
 - Base head at branch creation: `6c508f37cca2020bdc2a622432c4cf9b101db3da`.
 
 
+### 2026-04-21T01:50:34Z — Closed task
+- Branch: `go-code-actions-02-exit-code-error`.
+- Outcome: `kept`.
+- Summary: Add ExitCodeError; replace os.Exit(2) in rename; wire cli.Run into main
+- Base branch rebased onto the primary branch.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `go-code-actions`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `go-code-actions`
 - Base worktree: `/home/ketan/project/refute-go-code-actions`
-- Active task branch: `go-code-actions-02-exit-code-error`
-- Active task worktree: `/home/ketan/project/go-code-actions-02-exit-code-error`
-- Last completed: `go-code-actions-01-workspace-helpers (kept)`
-- Next action: Complete work on `go-code-actions-02-exit-code-error` in `/home/ketan/project/go-code-actions-02-exit-code-error`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `go-code-actions-02-exit-code-error (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 <!-- expedition-resume:end -->

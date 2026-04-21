@@ -1,32 +1,24 @@
 {
-  "active_task": {
-    "base_head": "6c508f37cca2020bdc2a622432c4cf9b101db3da",
-    "branch": "go-code-actions-02-exit-code-error",
-    "kind": "task",
-    "number": 2,
-    "slug": "exit-code-error",
-    "started_at": "2026-04-21T01:43:12Z",
-    "worktree": "/home/ketan/project/go-code-actions-02-exit-code-error"
-  },
+  "active_task": null,
   "base_branch": "go-code-actions",
   "base_worktree": "/home/ketan/project/refute-go-code-actions",
   "created_at": "2026-04-21T00:18:24Z",
   "expedition": "go-code-actions",
   "last_completed": {
-    "branch": "go-code-actions-01-workspace-helpers",
-    "completed_at": "2026-04-21T01:43:06Z",
+    "branch": "go-code-actions-02-exit-code-error",
+    "completed_at": "2026-04-21T01:50:34Z",
     "kind": "task",
-    "number": 1,
+    "number": 2,
     "outcome": "kept",
-    "slug": "workspace-helpers",
-    "summary": "Extract workspace helpers into cli/workspace.go",
-    "worktree": "/home/ketan/project/go-code-actions-01-workspace-helpers"
+    "slug": "exit-code-error",
+    "summary": "Add ExitCodeError; replace os.Exit(2) in rename; wire cli.Run into main",
+    "worktree": "/home/ketan/project/go-code-actions-02-exit-code-error"
   },
-  "next_action": "Complete work on `go-code-actions-02-exit-code-error` in `/home/ketan/project/go-code-actions-02-exit-code-error`.",
-  "next_task_number": 2,
+  "next_action": "Create the next task branch from the rebased expedition base branch.",
+  "next_task_number": 3,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "task_in_progress",
-  "updated_at": "2026-04-21T01:43:12Z"
+  "status": "ready_for_task",
+  "updated_at": "2026-04-21T01:50:34Z"
 }
