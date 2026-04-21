@@ -1,15 +1,23 @@
 {
-  "active_task": null,
+  "active_task": {
+    "base_head": "87639cd74e4c85242b0f7faaab5dee5616c5a93e",
+    "branch": "go-code-actions-01-workspace-helpers",
+    "kind": "task",
+    "number": 1,
+    "slug": "workspace-helpers",
+    "started_at": "2026-04-21T01:30:46Z",
+    "worktree": "/home/ketan/project/go-code-actions-01-workspace-helpers"
+  },
   "base_branch": "go-code-actions",
   "base_worktree": "/home/ketan/project/refute-go-code-actions",
   "created_at": "2026-04-21T00:18:24Z",
   "expedition": "go-code-actions",
   "last_completed": null,
-  "next_action": "Create the first task branch from the expedition base branch.",
+  "next_action": "Complete work on `go-code-actions-01-workspace-helpers` in `/home/ketan/project/go-code-actions-01-workspace-helpers`.",
   "next_task_number": 1,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "ready_for_task",
-  "updated_at": "2026-04-21T00:18:24Z"
+  "status": "task_in_progress",
+  "updated_at": "2026-04-21T01:30:46Z"
 }
