@@ -1,5 +1,13 @@
 {
-  "active_task": null,
+  "active_task": {
+    "base_head": "238a1fb71f7b6f81fca8e0b2ca8f51a95a23dc99",
+    "branch": "go-code-actions-04-go-priming",
+    "kind": "task",
+    "number": 4,
+    "slug": "go-priming",
+    "started_at": "2026-04-21T02:12:28Z",
+    "worktree": "/home/ketan/project/go-code-actions-04-go-priming"
+  },
   "base_branch": "go-code-actions",
   "base_worktree": "/home/ketan/project/refute-go-code-actions",
   "created_at": "2026-04-21T00:18:24Z",
@@ -14,11 +22,11 @@
     "summary": "Add CodeActions, ResolveCodeActionEdit, WorkspaceSymbol to LSP client",
     "worktree": "/home/ketan/project/go-code-actions-03-lsp-client"
   },
-  "next_action": "Create the next task branch from the expedition base branch.",
+  "next_action": "Complete work on `go-code-actions-04-go-priming` in `/home/ketan/project/go-code-actions-04-go-priming`.",
   "next_task_number": 4,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "ready_for_task",
-  "updated_at": "2026-04-21T02:10:00Z"
+  "status": "task_in_progress",
+  "updated_at": "2026-04-21T02:12:28Z"
 }
