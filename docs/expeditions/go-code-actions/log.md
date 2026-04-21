@@ -72,14 +72,21 @@
 - Base head at branch creation: `f2055b7a475ffb31974abb94f5b66edb33696e6c`.
 
 
+### 2026-04-21T02:59:08Z — Closed task
+- Branch: `go-code-actions-05-find-symbol`.
+- Outcome: `kept`.
+- Summary: Implement FindSymbol (Tier 1) in adapter
+- Base branch rebased onto the primary branch.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `go-code-actions`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `go-code-actions`
 - Base worktree: `/home/ketan/project/refute-go-code-actions`
-- Active task branch: `go-code-actions-05-find-symbol`
-- Active task worktree: `/home/ketan/project/go-code-actions-05-find-symbol`
-- Last completed: `go-code-actions-04-go-priming (kept)`
-- Next action: Complete work on `go-code-actions-05-find-symbol` in `/home/ketan/project/go-code-actions-05-find-symbol`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `go-code-actions-05-find-symbol (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 <!-- expedition-resume:end -->
