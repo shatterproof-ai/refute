@@ -79,14 +79,20 @@
 - Base branch rebased onto the primary branch.
 
 
+### 2026-04-21T02:59:20Z — Started task
+- Branch: `java-language-support-06-fix-class-rename-fqn`.
+- Worktree: `/home/ketan/project/java-language-support-06-fix-class-rename-fqn`.
+- Base head at branch creation: `644db8f5818142b76712a7c7b1adcc19387d9d30`.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `java-language-support`
-- Status: `ready_for_task`
+- Status: `task_in_progress`
 - Base branch: `java-language-support`
 - Base worktree: `/home/ketan/project/refute-java`
-- Active task branch: `none`
-- Active task worktree: `none`
+- Active task branch: `java-language-support-06-fix-class-rename-fqn`
+- Active task worktree: `/home/ketan/project/java-language-support-06-fix-class-rename-fqn`
 - Last completed: `java-language-support-05-backend-selector (kept)`
-- Next action: Create the next task branch from the rebased expedition base branch.
+- Next action: Complete work on `java-language-support-06-fix-class-rename-fqn` in `/home/ketan/project/java-language-support-06-fix-class-rename-fqn`.
 <!-- expedition-resume:end -->

@@ -1,5 +1,13 @@
 {
-  "active_task": null,
+  "active_task": {
+    "base_head": "644db8f5818142b76712a7c7b1adcc19387d9d30",
+    "branch": "java-language-support-06-fix-class-rename-fqn",
+    "kind": "task",
+    "number": 6,
+    "slug": "fix-class-rename-fqn",
+    "started_at": "2026-04-21T02:59:20Z",
+    "worktree": "/home/ketan/project/java-language-support-06-fix-class-rename-fqn"
+  },
   "base_branch": "java-language-support",
   "base_worktree": "/home/ketan/project/refute-java",
   "created_at": "2026-04-19T22:36:37Z",
@@ -14,11 +22,11 @@
     "summary": "Added selectBackend() in cli/rename.go: prefers OpenRewrite for .java/.kt, falls back to jdtls LSP. 31 tests pass.",
     "worktree": "/home/ketan/project/java-language-support-05-backend-selector"
   },
-  "next_action": "Create the next task branch from the rebased expedition base branch.",
+  "next_action": "Complete work on `java-language-support-06-fix-class-rename-fqn` in `/home/ketan/project/java-language-support-06-fix-class-rename-fqn`.",
   "next_task_number": 6,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "ready_for_task",
-  "updated_at": "2026-04-21T01:50:29Z"
+  "status": "task_in_progress",
+  "updated_at": "2026-04-21T02:59:20Z"
 }
