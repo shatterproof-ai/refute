@@ -79,14 +79,20 @@
 - Base branch rebased onto the primary branch.
 
 
+### 2026-04-21T02:59:17Z — Started task
+- Branch: `go-code-actions-06-extract`.
+- Worktree: `/home/ketan/project/go-code-actions-06-extract`.
+- Base head at branch creation: `8d88e3b69c5673d32d697edca326bf2cd26730e4`.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `go-code-actions`
-- Status: `ready_for_task`
+- Status: `task_in_progress`
 - Base branch: `go-code-actions`
 - Base worktree: `/home/ketan/project/refute-go-code-actions`
-- Active task branch: `none`
-- Active task worktree: `none`
+- Active task branch: `go-code-actions-06-extract`
+- Active task worktree: `/home/ketan/project/go-code-actions-06-extract`
 - Last completed: `go-code-actions-05-find-symbol (kept)`
-- Next action: Create the next task branch from the rebased expedition base branch.
+- Next action: Complete work on `go-code-actions-06-extract` in `/home/ketan/project/go-code-actions-06-extract`.
 <!-- expedition-resume:end -->
