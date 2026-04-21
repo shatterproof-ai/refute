@@ -72,14 +72,21 @@
 - Base head at branch creation: `3b6de93f4778b62888662368826ec5fa00d62531`.
 
 
+### 2026-04-21T01:50:29Z — Closed task
+- Branch: `java-language-support-05-backend-selector`.
+- Outcome: `kept`.
+- Summary: Added selectBackend() in cli/rename.go: prefers OpenRewrite for .java/.kt, falls back to jdtls LSP. 31 tests pass.
+- Base branch rebased onto the primary branch.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `java-language-support`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `java-language-support`
 - Base worktree: `/home/ketan/project/refute-java`
-- Active task branch: `java-language-support-05-backend-selector`
-- Active task worktree: `/home/ketan/project/java-language-support-05-backend-selector`
-- Last completed: `java-language-support-04-openrewrite-go-adapter (kept)`
-- Next action: Complete work on `java-language-support-05-backend-selector` in `/home/ketan/project/java-language-support-05-backend-selector`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `java-language-support-05-backend-selector (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 <!-- expedition-resume:end -->
