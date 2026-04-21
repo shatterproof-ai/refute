@@ -1,32 +1,24 @@
 {
-  "active_task": {
-    "base_head": "2486f670b2c5c68c909a298571d4c5d5b4f60761",
-    "branch": "java-language-support-04-openrewrite-go-adapter",
-    "kind": "task",
-    "number": 4,
-    "slug": "openrewrite-go-adapter",
-    "started_at": "2026-04-20T18:47:46Z",
-    "worktree": "/home/ketan/project/java-language-support-04-openrewrite-go-adapter"
-  },
+  "active_task": null,
   "base_branch": "java-language-support",
   "base_worktree": "/home/ketan/project/refute-java",
   "created_at": "2026-04-19T22:36:37Z",
   "expedition": "java-language-support",
   "last_completed": {
-    "branch": "java-language-support-03-openrewrite-jvm-wrapper",
-    "completed_at": "2026-04-20T18:47:42Z",
+    "branch": "java-language-support-04-openrewrite-go-adapter",
+    "completed_at": "2026-04-20T19:10:00Z",
     "kind": "task",
-    "number": 3,
+    "number": 4,
     "outcome": "kept",
-    "slug": "openrewrite-jvm-wrapper",
-    "summary": "Added adapters/openrewrite/ Maven project: Main.java (JSON-RPC loop), RenameHandler.java (ChangeMethodName + ChangeType via OpenRewrite 8.33). Builds to fat JAR via maven-shade-plugin.",
-    "worktree": "/home/ketan/project/java-language-support-03-openrewrite-jvm-wrapper"
+    "slug": "openrewrite-go-adapter",
+    "summary": "Added internal/backend/openrewrite/ Go adapter with JSON-RPC subprocess management, parseJavaPackage/parseJavaClass helpers, and 10 unit tests. 31 total tests pass.",
+    "worktree": "/home/ketan/project/java-language-support-04-openrewrite-go-adapter"
   },
-  "next_action": "Complete work on `java-language-support-04-openrewrite-go-adapter` in `/home/ketan/project/java-language-support-04-openrewrite-go-adapter`.",
-  "next_task_number": 4,
+  "next_action": "Create task 5: backend-selector — register OpenRewrite as primary for .java/.kt, jdtls as fallback. Wire selector into CLI rename flow.",
+  "next_task_number": 5,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "task_in_progress",
-  "updated_at": "2026-04-20T18:47:46Z"
+  "status": "ready_for_task",
+  "updated_at": "2026-04-20T19:10:00Z"
 }
