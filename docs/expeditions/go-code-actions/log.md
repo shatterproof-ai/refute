@@ -27,14 +27,21 @@
 - Base head at branch creation: `87639cd74e4c85242b0f7faaab5dee5616c5a93e`.
 
 
+### 2026-04-21T01:43:06Z — Closed task
+- Branch: `go-code-actions-01-workspace-helpers`.
+- Outcome: `kept`.
+- Summary: Extract workspace helpers into cli/workspace.go
+- Base branch rebased onto the primary branch.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `go-code-actions`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `go-code-actions`
 - Base worktree: `/home/ketan/project/refute-go-code-actions`
-- Active task branch: `go-code-actions-01-workspace-helpers`
-- Active task worktree: `/home/ketan/project/go-code-actions-01-workspace-helpers`
-- Last completed: `none`
-- Next action: Complete work on `go-code-actions-01-workspace-helpers` in `/home/ketan/project/go-code-actions-01-workspace-helpers`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `go-code-actions-01-workspace-helpers (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 <!-- expedition-resume:end -->
