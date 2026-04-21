@@ -93,7 +93,7 @@ func runRename(kind symbol.SymbolKind) error {
 	}
 
 	// Determine workspace root (walk up to find go.mod or similar).
-	workspaceRoot, err := findWorkspaceRoot(loc.File)
+	workspaceRoot, err := FindWorkspaceRootFromFile(loc.File)
 	if err != nil {
 		return err
 	}
@@ -105,13 +105,13 @@ func runRename(kind symbol.SymbolKind) error {
 	}
 
 	// Detect language and create adapter.
-	serverKey := detectServerKey(loc.File)
+	serverKey := DetectServerKey(loc.File)
 	serverCfg := cfg.Server(serverKey)
 	if serverCfg.Command == "" {
 		return fmt.Errorf("no server configured for language %q", serverKey)
 	}
 
-	languageID := detectLanguageID(loc.File)
+	languageID := DetectLanguageID(loc.File)
 	adapter := lsp.NewAdapter(serverCfg, languageID, nil)
 	if err := adapter.Initialize(workspaceRoot); err != nil {
 		return fmt.Errorf("initializing backend: %w", err)
@@ -167,75 +167,3 @@ func runRename(kind symbol.SymbolKind) error {
 	return nil
 }
 
-// findWorkspaceRoot walks up from the file to find a directory with go.mod,
-// package.json, or similar project markers.
-func findWorkspaceRoot(filePath string) (string, error) {
-	dir := filepath.Dir(filePath)
-	markers := []string{"Cargo.toml", "Cargo.lock", "go.mod", "go.work", "package.json", "tsconfig.json", "pyproject.toml", "setup.py"}
-
-	for {
-		for _, m := range markers {
-			if _, err := os.Stat(filepath.Join(dir, m)); err == nil {
-				return dir, nil
-			}
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			// Reached filesystem root without finding a marker.
-			return filepath.Dir(filePath), nil
-		}
-		dir = parent
-	}
-}
-
-// detectServerKey returns the server config key for a file based on its extension.
-// This is used to look up the language server in the config.
-func detectServerKey(filePath string) string {
-	switch filepath.Ext(filePath) {
-	case ".go":
-		return "go"
-	case ".ts", ".tsx", ".js", ".jsx":
-		return "typescript"
-	case ".py":
-		return "python"
-	case ".java":
-		return "java"
-	case ".kt":
-		return "kotlin"
-	case ".rs":
-		return "rust"
-	case ".cs":
-		return "csharp"
-	default:
-		return ""
-	}
-}
-
-// detectLanguageID returns the LSP language ID for a file based on its extension.
-// This is passed to the LSP server's textDocument/didOpen notification.
-func detectLanguageID(filePath string) string {
-	switch filepath.Ext(filePath) {
-	case ".ts":
-		return "typescript"
-	case ".tsx":
-		return "typescriptreact"
-	case ".js":
-		return "javascript"
-	case ".jsx":
-		return "javascriptreact"
-	case ".go":
-		return "go"
-	case ".py":
-		return "python"
-	case ".java":
-		return "java"
-	case ".kt":
-		return "kotlin"
-	case ".rs":
-		return "rust"
-	case ".cs":
-		return "csharp"
-	default:
-		return ""
-	}
-}
