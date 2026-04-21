@@ -243,6 +243,44 @@ func TestEndToEnd_RenameRustFunction(t *testing.T) {
 	}
 }
 
+func TestEndToEnd_RustDryRun(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	libFile := filepath.Join(dir, "src", "lib.rs")
+	originalContent, _ := os.ReadFile(libFile)
+
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", libFile,
+		"--line", "1",
+		"--name", "format_greeting",
+		"--new-name", "build_greeting",
+		"--dry-run",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute dry-run failed: %s\n%s", err, out)
+	}
+
+	if !strings.Contains(string(out), "format_greeting") || !strings.Contains(string(out), "build_greeting") {
+		t.Errorf("dry-run output should show diff with both names, got:\n%s", out)
+	}
+
+	afterContent, _ := os.ReadFile(libFile)
+	if string(afterContent) != string(originalContent) {
+		t.Error("dry-run must not modify files")
+	}
+}
+
 // buildRefute compiles the refute binary into a temp dir and returns its path.
 func buildRefute(t *testing.T) string {
 	t.Helper()
