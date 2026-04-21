@@ -1,6 +1,7 @@
 package openrewrite
 
 import (
+	"os"
 	"testing"
 )
 
@@ -34,6 +35,59 @@ func TestParseJavaPackage(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestJavaTypeFQN(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name:    "packaged class",
+			content: "package com.example;\npublic class Greeter {}",
+			want:    "com.example.Greeter",
+		},
+		{
+			name:    "default package",
+			content: "public class Greeter {}",
+			want:    "Greeter",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := writeTempJava(t, tc.content)
+			got, err := javaTypeFQN(f)
+			if err != nil {
+				t.Fatalf("javaTypeFQN: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("javaTypeFQN: got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestJavaMethodPatternPrefix(t *testing.T) {
+	content := "package com.example;\npublic class Greeter { public String greet(String n) { return n; } }"
+	f := writeTempJava(t, content)
+	got, err := javaMethodPatternPrefix(f, "greet")
+	if err != nil {
+		t.Fatalf("javaMethodPatternPrefix: %v", err)
+	}
+	const want = "com.example.Greeter greet"
+	if got != want {
+		t.Errorf("javaMethodPatternPrefix: got %q, want %q", got, want)
+	}
+}
+
+func writeTempJava(t *testing.T, content string) string {
+	t.Helper()
+	f := t.TempDir() + "/Tmp.java"
+	if err := os.WriteFile(f, []byte(content), 0o644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+	return f
 }
 
 func TestParseJavaClass(t *testing.T) {

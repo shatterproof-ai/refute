@@ -153,21 +153,20 @@ func (a *Adapter) buildRenameParams(loc symbol.Location, newName string) (map[st
 
 	switch loc.Kind {
 	case symbol.KindClass, symbol.KindType:
-		fqn, err := javaFQN(loc.File, loc.Name)
+		// ChangeType expects the fully-qualified class name only: "com.example.Greeter".
+		fqn, err := javaTypeFQN(loc.File)
 		if err != nil {
 			return nil, fmt.Errorf("resolving FQN for type rename: %w", err)
 		}
 		params["oldFullyQualifiedName"] = fqn
 
 	default:
-		// Method, function, field — use wildcard parameter pattern.
-		fqn, err := javaFQN(loc.File, loc.Name)
+		// ChangeMethodName expects "<class> <method>(..)": "com.example.Greeter greet(..)".
+		prefix, err := javaMethodPatternPrefix(loc.File, loc.Name)
 		if err != nil {
 			return nil, fmt.Errorf("resolving FQN for method rename: %w", err)
 		}
-		// Replace the bare symbol name with a method pattern using (..) wildcard.
-		// fqn is "com.example.Greeter greet"; append "(..)" for ChangeMethodName.
-		params["methodPattern"] = fqn + "(..)"
+		params["methodPattern"] = prefix + "(..)"
 	}
 
 	return params, nil
@@ -263,9 +262,9 @@ func findCheckoutRoot(dir string) (string, error) {
 	}
 }
 
-// javaFQN reads a Java source file and returns "<package>.<ClassName> <symbolName>".
-// This is the prefix for an OpenRewrite method pattern or the base for a type FQN.
-func javaFQN(filePath, symbolName string) (string, error) {
+// javaTypeFQN reads a Java source file and returns the fully-qualified class
+// name, e.g. "com.example.Greeter". Used as oldFullyQualifiedName for ChangeType.
+func javaTypeFQN(filePath string) (string, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", fmt.Errorf("reading %s: %w", filePath, err)
@@ -277,12 +276,20 @@ func javaFQN(filePath, symbolName string) (string, error) {
 	if cls == "" {
 		return "", fmt.Errorf("could not find class declaration in %s", filePath)
 	}
-
-	qualified := cls
 	if pkg != "" {
-		qualified = pkg + "." + cls
+		return pkg + "." + cls, nil
 	}
-	return qualified + " " + symbolName, nil
+	return cls, nil
+}
+
+// javaMethodPatternPrefix returns "<package>.<ClassName> <methodName>", the
+// prefix of an OpenRewrite ChangeMethodName pattern before the parameter list.
+func javaMethodPatternPrefix(filePath, methodName string) (string, error) {
+	fqn, err := javaTypeFQN(filePath)
+	if err != nil {
+		return "", err
+	}
+	return fqn + " " + methodName, nil
 }
 
 // parseJavaPackage extracts the package name from Java source text.
