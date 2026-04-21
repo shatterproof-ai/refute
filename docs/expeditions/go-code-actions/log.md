@@ -59,14 +59,21 @@
 - Base head at branch creation: `238a1fb71f7b6f81fca8e0b2ca8f51a95a23dc99`.
 
 
+### 2026-04-21T02:17:33Z — Closed task
+- Branch: `go-code-actions-04-go-priming`.
+- Outcome: `kept`.
+- Summary: Add PrimeGoWorkspace to index Go packages before workspace/symbol
+- Base branch rebased onto the primary branch.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `go-code-actions`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `go-code-actions`
 - Base worktree: `/home/ketan/project/refute-go-code-actions`
-- Active task branch: `go-code-actions-04-go-priming`
-- Active task worktree: `/home/ketan/project/go-code-actions-04-go-priming`
-- Last completed: `go-code-actions-03-lsp-client (kept)`
-- Next action: Complete work on `go-code-actions-04-go-priming` in `/home/ketan/project/go-code-actions-04-go-priming`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `go-code-actions-04-go-priming (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 <!-- expedition-resume:end -->
