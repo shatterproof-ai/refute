@@ -277,7 +277,7 @@ func TestEndToEnd_RustDryRun(t *testing.T) {
 
 	afterContent, _ := os.ReadFile(libFile)
 	if string(afterContent) != string(originalContent) {
-		t.Error("dry-run must not modify files")
+		t.Error("dry-run should not modify files")
 	}
 }
 
