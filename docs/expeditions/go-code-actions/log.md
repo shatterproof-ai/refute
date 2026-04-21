@@ -66,14 +66,20 @@
 - Base branch rebased onto the primary branch.
 
 
+### 2026-04-21T02:21:34Z — Started task
+- Branch: `go-code-actions-05-find-symbol`.
+- Worktree: `/home/ketan/project/go-code-actions-05-find-symbol`.
+- Base head at branch creation: `f2055b7a475ffb31974abb94f5b66edb33696e6c`.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `go-code-actions`
-- Status: `ready_for_task`
+- Status: `task_in_progress`
 - Base branch: `go-code-actions`
 - Base worktree: `/home/ketan/project/refute-go-code-actions`
-- Active task branch: `none`
-- Active task worktree: `none`
+- Active task branch: `go-code-actions-05-find-symbol`
+- Active task worktree: `/home/ketan/project/go-code-actions-05-find-symbol`
 - Last completed: `go-code-actions-04-go-priming (kept)`
-- Next action: Create the next task branch from the rebased expedition base branch.
+- Next action: Complete work on `go-code-actions-05-find-symbol` in `/home/ketan/project/go-code-actions-05-find-symbol`.
 <!-- expedition-resume:end -->
