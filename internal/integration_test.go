@@ -281,6 +281,58 @@ func TestEndToEnd_RustDryRun(t *testing.T) {
 	}
 }
 
+func TestEndToEnd_RenameRustStruct(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	libFile := filepath.Join(dir, "src", "lib.rs")
+	cmd := exec.Command(refuteBin,
+		"rename-class",
+		"--file", libFile,
+		"--line", "5",
+		"--name", "Greeter",
+		"--new-name", "Welcomer",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+
+	// lib.rs: struct definition renamed.
+	libContent, _ := os.ReadFile(libFile)
+	if strings.Contains(string(libContent), "Greeter") {
+		t.Error("lib.rs still contains old name 'Greeter'")
+	}
+	if !strings.Contains(string(libContent), "Welcomer") {
+		t.Error("lib.rs missing new name 'Welcomer'")
+	}
+
+	// main.rs: cross-file usage renamed.
+	mainFile := filepath.Join(dir, "src", "main.rs")
+	mainContent, _ := os.ReadFile(mainFile)
+	if strings.Contains(string(mainContent), "Greeter") {
+		t.Error("main.rs still contains 'Greeter' after cross-file rename")
+	}
+	if !strings.Contains(string(mainContent), "Welcomer") {
+		t.Error("main.rs missing 'Welcomer' after cross-file rename")
+	}
+
+	// Project still compiles.
+	cargoCheck := exec.Command("cargo", "build")
+	cargoCheck.Dir = dir
+	if out, err := cargoCheck.CombinedOutput(); err != nil {
+		t.Fatalf("project no longer compiles after rename:\n%s", out)
+	}
+}
+
 // buildRefute compiles the refute binary into a temp dir and returns its path.
 func buildRefute(t *testing.T) string {
 	t.Helper()
