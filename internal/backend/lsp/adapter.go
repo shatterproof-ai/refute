@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/config"
@@ -73,9 +75,124 @@ func (a *Adapter) Shutdown() error {
 	return a.client.Shutdown()
 }
 
-// FindSymbol returns ErrUnsupported — not yet implemented via LSP.
-func (a *Adapter) FindSymbol(_ symbol.Query) ([]symbol.Location, error) {
-	return nil, backend.ErrUnsupported
+// DidOpen exposes the file-open notification for callers that need to prime
+// the server before issuing FindSymbol or other queries.
+func (a *Adapter) DidOpen(filePath string) error {
+	if a.client == nil {
+		return fmt.Errorf("adapter not initialized")
+	}
+	return a.client.DidOpen(filePath, a.languageID)
+}
+
+// FindSymbol resolves a Tier 1 qualified name via workspace/symbol.
+// Supported forms:
+//
+//	"Name"               — bare symbol name
+//	"pkg.Name"           — package-qualified (lowercase first component)
+//	"Type.Method"        — type-qualified (uppercase first component)
+//	"pkg.Type.Method"    — three-part: container must match Type
+//
+// Returns ErrSymbolNotFound when nothing matches.
+func (a *Adapter) FindSymbol(query symbol.Query) ([]symbol.Location, error) {
+	if a.client == nil {
+		return nil, fmt.Errorf("adapter not initialized")
+	}
+	parts := parseQualifiedName(query.QualifiedName)
+	if len(parts) == 0 || parts[len(parts)-1] == "" {
+		return nil, fmt.Errorf("empty qualified name")
+	}
+	leaf := parts[len(parts)-1]
+
+	syms, err := a.client.WorkspaceSymbol(leaf)
+	if err != nil {
+		return nil, err
+	}
+
+	var matches []symbol.Location
+	for _, s := range syms {
+		if s.Name != leaf {
+			continue
+		}
+		if !qualifiedNameMatches(parts, s) {
+			continue
+		}
+		if query.Kind != symbol.KindUnknown && lspKindToSymbolKind(s.Kind) != query.Kind {
+			continue
+		}
+		matches = append(matches, symbol.Location{
+			File:   uriToFile(s.Location.URI),
+			Line:   s.Location.Range.Start.Line + 1,
+			Column: s.Location.Range.Start.Character + 1,
+			Name:   s.Name,
+			Kind:   lspKindToSymbolKind(s.Kind),
+		})
+	}
+
+	if len(matches) == 0 {
+		return nil, backend.ErrSymbolNotFound
+	}
+	return matches, nil
+}
+
+func parseQualifiedName(name string) []string {
+	if name == "" {
+		return nil
+	}
+	return strings.Split(name, ".")
+}
+
+// qualifiedNameMatches reports whether workspace symbol s matches the
+// qualified-name parts per the disambiguation rules documented on FindSymbol.
+func qualifiedNameMatches(parts []string, s WorkspaceSymbolInfo) bool {
+	switch len(parts) {
+	case 1:
+		return true
+	case 2:
+		first := parts[0]
+		if startsUppercase(first) {
+			return s.ContainerName == first
+		}
+		return s.ContainerName == first ||
+			strings.HasSuffix(s.ContainerName, "/"+first)
+	case 3:
+		typeName := parts[1]
+		return s.ContainerName == typeName ||
+			strings.HasSuffix(s.ContainerName, "."+typeName) ||
+			strings.HasSuffix(s.ContainerName, "/"+typeName)
+	default:
+		return false
+	}
+}
+
+func startsUppercase(s string) bool {
+	if s == "" {
+		return false
+	}
+	return unicode.IsUpper([]rune(s)[0])
+}
+
+// lspKindToSymbolKind maps LSP SymbolKind integers to refute's SymbolKind.
+func lspKindToSymbolKind(lspKind int) symbol.SymbolKind {
+	switch lspKind {
+	case 5: // Class
+		return symbol.KindClass
+	case 6: // Method
+		return symbol.KindMethod
+	case 7, 8: // Property, Field
+		return symbol.KindField
+	case 12: // Function
+		return symbol.KindFunction
+	case 13, 14: // Variable, Constant
+		return symbol.KindVariable
+	case 22: // EnumMember
+		return symbol.KindField
+	case 23: // Struct
+		return symbol.KindType
+	case 26: // TypeParameter
+		return symbol.KindType
+	default:
+		return symbol.KindUnknown
+	}
 }
 
 // Rename converts the 1-indexed Location to a 0-indexed LSP position, calls

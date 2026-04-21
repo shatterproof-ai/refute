@@ -1,9 +1,11 @@
 package lsp_test
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
+	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/backend/lsp"
 	"github.com/shatterproof-ai/refute/internal/config"
 	"github.com/shatterproof-ai/refute/internal/symbol"
@@ -54,6 +56,59 @@ func TestAdapter_Rename(t *testing.T) {
 
 	if totalEdits < 2 {
 		t.Errorf("expected at least 2 edits (declaration + call site), got %d", totalEdits)
+	}
+}
+
+func TestAdapter_FindSymbol_barename(t *testing.T) {
+	requireGopls(t)
+	dir := setupGoProject(t)
+
+	cfg := config.ServerConfig{Command: "gopls", Args: []string{"serve"}}
+	adapter := lsp.NewAdapter(cfg, "go", []string{"*.go"})
+	if err := adapter.Initialize(dir); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	defer adapter.Shutdown()
+
+	if err := adapter.DidOpen(filepath.Join(dir, "main.go")); err != nil {
+		t.Fatalf("DidOpen: %v", err)
+	}
+
+	locs, err := adapter.FindSymbol(symbol.Query{
+		QualifiedName: "oldName",
+		Kind:          symbol.KindFunction,
+	})
+	if err != nil {
+		t.Fatalf("FindSymbol: %v", err)
+	}
+	if len(locs) == 0 {
+		t.Fatal("expected at least one location for oldName")
+	}
+	for _, l := range locs {
+		if l.Name != "oldName" {
+			t.Errorf("unexpected name in results: %s", l.Name)
+		}
+	}
+}
+
+func TestAdapter_FindSymbol_notFound(t *testing.T) {
+	requireGopls(t)
+	dir := setupGoProject(t)
+
+	cfg := config.ServerConfig{Command: "gopls", Args: []string{"serve"}}
+	adapter := lsp.NewAdapter(cfg, "go", []string{"*.go"})
+	if err := adapter.Initialize(dir); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	defer adapter.Shutdown()
+
+	if err := adapter.DidOpen(filepath.Join(dir, "main.go")); err != nil {
+		t.Fatalf("DidOpen: %v", err)
+	}
+
+	_, err := adapter.FindSymbol(symbol.Query{QualifiedName: "doesNotExist"})
+	if !errors.Is(err, backend.ErrSymbolNotFound) {
+		t.Errorf("expected ErrSymbolNotFound, got: %v", err)
 	}
 }
 
