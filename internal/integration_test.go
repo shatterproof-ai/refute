@@ -20,13 +20,7 @@ func TestEndToEnd_RenameGoFunction(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, srcDir, dir)
 
-	// Build refute.
-	refuteBin := filepath.Join(t.TempDir(), "refute")
-	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
-	build.Dir = filepath.Join("..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %s\n%s", err, out)
-	}
+	refuteBin := buildRefute(t)
 
 	// Run rename: FormatGreeting → BuildGreeting.
 	helperFile := filepath.Join(dir, "util", "helper.go")
@@ -78,12 +72,7 @@ func TestEndToEnd_DryRun(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, srcDir, dir)
 
-	refuteBin := filepath.Join(t.TempDir(), "refute")
-	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
-	build.Dir = filepath.Join("..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %s\n%s", err, out)
-	}
+	refuteBin := buildRefute(t)
 
 	helperFile := filepath.Join(dir, "util", "helper.go")
 
@@ -126,12 +115,7 @@ func TestEndToEnd_RenameTypeScriptFunction(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, srcDir, dir)
 
-	refuteBin := filepath.Join(t.TempDir(), "refute")
-	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
-	build.Dir = filepath.Join("..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %s\n%s", err, out)
-	}
+	refuteBin := buildRefute(t)
 
 	// Rename greet → welcome.
 	greeterFile := filepath.Join(dir, "src", "greeter.ts")
@@ -176,12 +160,7 @@ func TestEndToEnd_TypeScriptDryRun(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, srcDir, dir)
 
-	refuteBin := filepath.Join(t.TempDir(), "refute")
-	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
-	build.Dir = filepath.Join("..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %s\n%s", err, out)
-	}
+	refuteBin := buildRefute(t)
 
 	greeterFile := filepath.Join(dir, "src", "greeter.ts")
 	originalContent, _ := os.ReadFile(greeterFile)
@@ -220,13 +199,7 @@ func TestEndToEnd_RenameRustFunction(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, srcDir, dir)
 
-	// Build refute.
-	refuteBin := filepath.Join(t.TempDir(), "refute")
-	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
-	build.Dir = filepath.Join("..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %s\n%s", err, out)
-	}
+	refuteBin := buildRefute(t)
 
 	// Run rename: format_greeting → build_greeting.
 	libFile := filepath.Join(dir, "src", "lib.rs")
@@ -268,6 +241,18 @@ func TestEndToEnd_RenameRustFunction(t *testing.T) {
 	if out, err := cargoCheck.CombinedOutput(); err != nil {
 		t.Fatalf("project no longer compiles after rename:\n%s", out)
 	}
+}
+
+// buildRefute compiles the refute binary into a temp dir and returns its path.
+func buildRefute(t *testing.T) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "refute")
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/refute")
+	cmd.Dir = ".."
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build refute: %v\n%s", err, out)
+	}
+	return bin
 }
 
 // copyDir recursively copies a directory tree.
