@@ -1,5 +1,13 @@
 {
-  "active_task": null,
+  "active_task": {
+    "base_head": "fa4d602d6766f0408a785770fff4f3d9e9abc252",
+    "branch": "java-language-support-07-java-e2e-tests",
+    "kind": "task",
+    "number": 7,
+    "slug": "java-e2e-tests",
+    "started_at": "2026-04-22T03:17:54Z",
+    "worktree": "/home/ketan/project/java-language-support-07-java-e2e-tests"
+  },
   "base_branch": "java-language-support",
   "base_worktree": "/home/ketan/project/refute-java",
   "created_at": "2026-04-19T22:36:37Z",
@@ -14,11 +22,11 @@
     "summary": "Split javaFQN helper into javaTypeFQN (ChangeType) and javaMethodPatternPrefix (ChangeMethodName) to correct FQN construction for OpenRewrite class rename. Merged into base branch; base rebased onto main across parallel typescript-support and rust-support expedition commits.",
     "worktree": "/home/ketan/project/java-language-support-06-fix-class-rename-fqn"
   },
-  "next_action": "Run the final verification gates, commit the expedition-doc removal, and land the rebased base branch onto the primary branch.",
+  "next_action": "Complete work on `java-language-support-07-java-e2e-tests` in `/home/ketan/project/java-language-support-07-java-e2e-tests`.",
   "next_task_number": 7,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "ready_for_task",
-  "updated_at": "2026-04-21T12:00:00Z"
+  "status": "task_in_progress",
+  "updated_at": "2026-04-22T03:17:54Z"
 }

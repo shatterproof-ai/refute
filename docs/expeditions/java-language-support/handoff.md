@@ -3,9 +3,9 @@
 - Expedition: `java-language-support`
 - Base branch: `java-language-support`
 - Base worktree: `/home/ketan/project/refute-java`
-- Status: `ready_for_task`
-- Active task branch: (none)
-- Active task worktree: (none)
+- Status: `task_in_progress`
+- Active task branch: `java-language-support-07-java-e2e-tests`
+- Active task worktree: `/home/ketan/project/java-language-support-07-java-e2e-tests`
 - Last completed: `java-language-support-06-fix-class-rename-fqn (kept)`
-- Next action: Start task 7 (`java-e2e-tests`) to draft the Java E2E test plan, or run `finish` to land the expedition.
+- Next action: Complete work on `java-language-support-07-java-e2e-tests` in `/home/ketan/project/java-language-support-07-java-e2e-tests`.
 - Primary branch: `main`
