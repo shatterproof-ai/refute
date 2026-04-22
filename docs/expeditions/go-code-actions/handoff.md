@@ -3,9 +3,9 @@
 - Expedition: `go-code-actions`
 - Base branch: `go-code-actions`
 - Base worktree: `/home/ketan/project/refute-go-code-actions`
-- Status: `task_in_progress`
-- Active task branch: `go-code-actions-06-extract`
-- Active task worktree: `/home/ketan/project/go-code-actions-06-extract`
-- Last completed: `go-code-actions-05-find-symbol (kept)`
-- Next action: Complete work on `go-code-actions-06-extract` in `/home/ketan/project/go-code-actions-06-extract`.
+- Status: `ready_for_task`
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `go-code-actions-06-extract (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 - Primary branch: `main`

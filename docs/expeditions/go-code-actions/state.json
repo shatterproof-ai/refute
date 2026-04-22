@@ -1,32 +1,24 @@
 {
-  "active_task": {
-    "base_head": "8d88e3b69c5673d32d697edca326bf2cd26730e4",
-    "branch": "go-code-actions-06-extract",
-    "kind": "task",
-    "number": 6,
-    "slug": "extract",
-    "started_at": "2026-04-21T02:59:17Z",
-    "worktree": "/home/ketan/project/go-code-actions-06-extract"
-  },
+  "active_task": null,
   "base_branch": "go-code-actions",
   "base_worktree": "/home/ketan/project/refute-go-code-actions",
   "created_at": "2026-04-21T00:18:24Z",
   "expedition": "go-code-actions",
   "last_completed": {
-    "branch": "go-code-actions-05-find-symbol",
-    "completed_at": "2026-04-21T02:59:08Z",
+    "branch": "go-code-actions-06-extract",
+    "completed_at": "2026-04-22T03:03:04Z",
     "kind": "task",
-    "number": 5,
+    "number": 6,
     "outcome": "kept",
-    "slug": "find-symbol",
-    "summary": "Implement FindSymbol (Tier 1) in adapter",
-    "worktree": "/home/ketan/project/go-code-actions-05-find-symbol"
+    "slug": "extract",
+    "summary": "Task 6: ExtractFunction + ExtractVariable via gopls code actions; added codeAction.resolveSupport to init capabilities so gopls returns resolvable data-bearing actions; 2 new adapter tests pass.",
+    "worktree": "/home/ketan/project/go-code-actions-06-extract"
   },
-  "next_action": "Complete work on `go-code-actions-06-extract` in `/home/ketan/project/go-code-actions-06-extract`.",
-  "next_task_number": 6,
+  "next_action": "Create the next task branch from the rebased expedition base branch.",
+  "next_task_number": 7,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "task_in_progress",
-  "updated_at": "2026-04-21T02:59:17Z"
+  "status": "ready_for_task",
+  "updated_at": "2026-04-22T03:03:04Z"
 }

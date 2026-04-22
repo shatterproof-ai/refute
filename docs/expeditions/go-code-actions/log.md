@@ -85,14 +85,21 @@
 - Base head at branch creation: `8d88e3b69c5673d32d697edca326bf2cd26730e4`.
 
 
+### 2026-04-22T03:03:04Z — Closed task
+- Branch: `go-code-actions-06-extract`.
+- Outcome: `kept`.
+- Summary: Task 6: ExtractFunction + ExtractVariable via gopls code actions; added codeAction.resolveSupport to init capabilities so gopls returns resolvable data-bearing actions; 2 new adapter tests pass.
+- Base branch rebased onto the primary branch.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `go-code-actions`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `go-code-actions`
 - Base worktree: `/home/ketan/project/refute-go-code-actions`
-- Active task branch: `go-code-actions-06-extract`
-- Active task worktree: `/home/ketan/project/go-code-actions-06-extract`
-- Last completed: `go-code-actions-05-find-symbol (kept)`
-- Next action: Complete work on `go-code-actions-06-extract` in `/home/ketan/project/go-code-actions-06-extract`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `go-code-actions-06-extract (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 <!-- expedition-resume:end -->
