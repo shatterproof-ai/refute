@@ -54,6 +54,14 @@ var builtinServers = map[string]ServerConfig{
 		Command: "pyright-langserver",
 		Args:    []string{"--stdio"},
 	},
+	"java": {
+		Command: "jdtls",
+		Args:    []string{},
+	},
+	"kotlin": {
+		Command: "kotlin-language-server",
+		Args:    []string{},
+	},
 }
 
 // defaults returns a Config populated entirely with built-in defaults.

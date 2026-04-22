@@ -75,6 +75,23 @@ func TestLoad_ProjectConfig(t *testing.T) {
 	}
 }
 
+func TestLoad_JavaKotlinDefaults(t *testing.T) {
+	cfg, err := config.Load("", "/nonexistent/workspace/root")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	javaServer := cfg.Server("java")
+	if javaServer.Command != "jdtls" {
+		t.Errorf("java server command: got %q, want %q", javaServer.Command, "jdtls")
+	}
+
+	kotlinServer := cfg.Server("kotlin")
+	if kotlinServer.Command != "kotlin-language-server" {
+		t.Errorf("kotlin server command: got %q, want %q", kotlinServer.Command, "kotlin-language-server")
+	}
+}
+
 func TestLoad_ExplicitPath(t *testing.T) {
 	dir := t.TempDir()
 
