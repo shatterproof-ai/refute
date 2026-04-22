@@ -85,14 +85,21 @@
 - Base head at branch creation: `644db8f5818142b76712a7c7b1adcc19387d9d30`.
 
 
+### 2026-04-21T12:00:00Z — Closed task
+- Branch: `java-language-support-06-fix-class-rename-fqn`.
+- Outcome: `kept`.
+- Summary: Split javaFQN helper into javaTypeFQN (ChangeType) and javaMethodPatternPrefix (ChangeMethodName) to correct FQN construction for OpenRewrite class rename.
+- Base branch rebased onto the primary branch across parallel typescript-support and rust-support expedition commits. Rebase resolved a conflict in internal/integration_test.go by merging Java test alongside Rust test.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `java-language-support`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `java-language-support`
 - Base worktree: `/home/ketan/project/refute-java`
-- Active task branch: `java-language-support-06-fix-class-rename-fqn`
-- Active task worktree: `/home/ketan/project/java-language-support-06-fix-class-rename-fqn`
-- Last completed: `java-language-support-05-backend-selector (kept)`
-- Next action: Complete work on `java-language-support-06-fix-class-rename-fqn` in `/home/ketan/project/java-language-support-06-fix-class-rename-fqn`.
+- Active task branch: (none)
+- Active task worktree: (none)
+- Last completed: `java-language-support-06-fix-class-rename-fqn (kept)`
+- Next action: Start task 7 (`java-e2e-tests`) to draft the Java E2E test plan, or run `finish` to land the expedition.
 <!-- expedition-resume:end -->
