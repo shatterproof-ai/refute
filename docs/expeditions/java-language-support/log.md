@@ -98,14 +98,21 @@
 - Base head at branch creation: `fa4d602d6766f0408a785770fff4f3d9e9abc252`.
 
 
+### 2026-04-22T04:34:32Z — Closed task
+- Branch: `java-language-support-07-java-e2e-tests`.
+- Outcome: `kept`.
+- Summary: Drafted Java E2E test plan covering 7 scenarios (method/class rename across OpenRewrite and jdtls, dry-run, overload targeting, --symbol FQN, fallback). Plan document in docs/plans/2026-04-22-java-e2e-tests.md.
+- Base branch rebased onto the primary branch.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `java-language-support`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `java-language-support`
 - Base worktree: `/home/ketan/project/refute-java`
-- Active task branch: `java-language-support-07-java-e2e-tests`
-- Active task worktree: `/home/ketan/project/java-language-support-07-java-e2e-tests`
-- Last completed: `java-language-support-06-fix-class-rename-fqn (kept)`
-- Next action: Complete work on `java-language-support-07-java-e2e-tests` in `/home/ketan/project/java-language-support-07-java-e2e-tests`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `java-language-support-07-java-e2e-tests (kept)`
+- Next action: Create the next task branch from the rebased expedition base branch.
 <!-- expedition-resume:end -->
