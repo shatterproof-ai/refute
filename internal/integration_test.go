@@ -430,6 +430,83 @@ func TestEndToEnd_RenameTypeScriptClass(t *testing.T) {
 	}
 }
 
+func TestEndToEnd_SymbolNotFound(t *testing.T) {
+	srcDir := filepath.Join("../testdata/fixtures/go/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	helperFile := filepath.Join(dir, "util", "helper.go")
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", helperFile,
+		"--line", "4",
+		"--name", "NoSuchSymbol",
+		"--new-name", "NewName",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit for symbol-not-found, got success; output:\n%s", out)
+	}
+	if !strings.Contains(string(out), "not found on line") {
+		t.Errorf("expected 'not found on line' in output, got:\n%s", out)
+	}
+}
+
+func TestEndToEnd_BadServerConfig(t *testing.T) {
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	// Write a config that replaces rust-analyzer with a nonexistent binary.
+	cfgContent := `{"servers": {"rust": {"command": "nonexistent-lsp-server-xyz"}}}`
+	cfgFile := filepath.Join(t.TempDir(), "bad-config.json")
+	if err := os.WriteFile(cfgFile, []byte(cfgContent), 0o644); err != nil {
+		t.Fatalf("write bad config: %v", err)
+	}
+
+	libFile := filepath.Join(dir, "src", "lib.rs")
+	cmd := exec.Command(refuteBin,
+		"--config", cfgFile,
+		"rename-function",
+		"--file", libFile,
+		"--line", "1",
+		"--name", "format_greeting",
+		"--new-name", "build_greeting",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit for bad server, got success; output:\n%s", out)
+	}
+	if !strings.Contains(string(out), "initializing backend") {
+		t.Errorf("expected 'initializing backend' in output, got:\n%s", out)
+	}
+}
+
+func TestEndToEnd_FileNotFound(t *testing.T) {
+	refuteBin := buildRefute(t)
+
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", "/nonexistent/path/to/file.go",
+		"--line", "1",
+		"--name", "Foo",
+		"--new-name", "Bar",
+	)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit for nonexistent file, got success; output:\n%s", out)
+	}
+	if !strings.Contains(string(out), "no such file") {
+		t.Errorf("expected 'no such file' in output, got:\n%s", out)
+	}
+}
+
 // buildRefute compiles the refute binary into a temp dir and returns its path.
 func buildRefute(t *testing.T) string {
 	t.Helper()
