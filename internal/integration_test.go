@@ -20,13 +20,7 @@ func TestEndToEnd_RenameGoFunction(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, srcDir, dir)
 
-	// Build refute.
-	refuteBin := filepath.Join(t.TempDir(), "refute")
-	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
-	build.Dir = filepath.Join("..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %s\n%s", err, out)
-	}
+	refuteBin := buildRefute(t)
 
 	// Run rename: FormatGreeting → BuildGreeting.
 	helperFile := filepath.Join(dir, "util", "helper.go")
@@ -78,12 +72,7 @@ func TestEndToEnd_DryRun(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, srcDir, dir)
 
-	refuteBin := filepath.Join(t.TempDir(), "refute")
-	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
-	build.Dir = filepath.Join("..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %s\n%s", err, out)
-	}
+	refuteBin := buildRefute(t)
 
 	helperFile := filepath.Join(dir, "util", "helper.go")
 
@@ -126,12 +115,7 @@ func TestEndToEnd_RenameTypeScriptFunction(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, srcDir, dir)
 
-	refuteBin := filepath.Join(t.TempDir(), "refute")
-	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
-	build.Dir = filepath.Join("..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %s\n%s", err, out)
-	}
+	refuteBin := buildRefute(t)
 
 	// Rename greet → welcome.
 	greeterFile := filepath.Join(dir, "src", "greeter.ts")
@@ -176,12 +160,7 @@ func TestEndToEnd_TypeScriptDryRun(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, srcDir, dir)
 
-	refuteBin := filepath.Join(t.TempDir(), "refute")
-	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
-	build.Dir = filepath.Join("..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %s\n%s", err, out)
-	}
+	refuteBin := buildRefute(t)
 
 	greeterFile := filepath.Join(dir, "src", "greeter.ts")
 	originalContent, _ := os.ReadFile(greeterFile)
@@ -220,13 +199,7 @@ func TestEndToEnd_RenameRustFunction(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, srcDir, dir)
 
-	// Build refute.
-	refuteBin := filepath.Join(t.TempDir(), "refute")
-	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
-	build.Dir = filepath.Join("..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %s\n%s", err, out)
-	}
+	refuteBin := buildRefute(t)
 
 	// Run rename: format_greeting → build_greeting.
 	libFile := filepath.Join(dir, "src", "lib.rs")
@@ -279,12 +252,7 @@ func TestEndToEnd_RenameJavaMethod(t *testing.T) {
 	dir := t.TempDir()
 	copyDir(t, srcDir, dir)
 
-	refuteBin := filepath.Join(t.TempDir(), "refute")
-	build := exec.Command("go", "build", "-o", refuteBin, "./cmd/refute")
-	build.Dir = filepath.Join("..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build failed: %s\n%s", err, out)
-	}
+	refuteBin := buildRefute(t)
 
 	// greet() is declared on line 4 of Greeter.java (1-indexed).
 	greeterFile := filepath.Join(dir, "src", "main", "java", "com", "example", "Greeter.java")
@@ -317,6 +285,282 @@ func TestEndToEnd_RenameJavaMethod(t *testing.T) {
 	if !strings.Contains(string(mainContent), ".hello(") {
 		t.Error("Main.java missing .hello(")
 	}
+}
+
+func TestEndToEnd_RustDryRun(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	libFile := filepath.Join(dir, "src", "lib.rs")
+	originalContent, _ := os.ReadFile(libFile)
+
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", libFile,
+		"--line", "1",
+		"--name", "format_greeting",
+		"--new-name", "build_greeting",
+		"--dry-run",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute dry-run failed: %s\n%s", err, out)
+	}
+
+	if !strings.Contains(string(out), "format_greeting") || !strings.Contains(string(out), "build_greeting") {
+		t.Errorf("dry-run output should show diff with both names, got:\n%s", out)
+	}
+
+	afterContent, _ := os.ReadFile(libFile)
+	if string(afterContent) != string(originalContent) {
+		t.Error("dry-run should not modify files")
+	}
+}
+
+func TestEndToEnd_RenameRustStruct(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	libFile := filepath.Join(dir, "src", "lib.rs")
+	cmd := exec.Command(refuteBin,
+		"rename-class",
+		"--file", libFile,
+		"--line", "5",
+		"--name", "Greeter",
+		"--new-name", "Welcomer",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+
+	// lib.rs: struct definition renamed.
+	libContent, _ := os.ReadFile(libFile)
+	if strings.Contains(string(libContent), "Greeter") {
+		t.Error("lib.rs still contains old name 'Greeter'")
+	}
+	if !strings.Contains(string(libContent), "Welcomer") {
+		t.Error("lib.rs missing new name 'Welcomer'")
+	}
+
+	// main.rs: cross-file usage renamed.
+	mainFile := filepath.Join(dir, "src", "main.rs")
+	mainContent, _ := os.ReadFile(mainFile)
+	if strings.Contains(string(mainContent), "Greeter") {
+		t.Error("main.rs still contains 'Greeter' after cross-file rename")
+	}
+	if !strings.Contains(string(mainContent), "Welcomer") {
+		t.Error("main.rs missing 'Welcomer' after cross-file rename")
+	}
+
+	// Project still compiles.
+	cargoCheck := exec.Command("cargo", "build")
+	cargoCheck.Dir = dir
+	if out, err := cargoCheck.CombinedOutput(); err != nil {
+		t.Fatalf("project no longer compiles after rename:\n%s", out)
+	}
+}
+
+func TestEndToEnd_RenameGoType(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+
+	srcDir := filepath.Join("../testdata/fixtures/go/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	userFile := filepath.Join(dir, "util", "user.go")
+	cmd := exec.Command(refuteBin,
+		"rename-type",
+		"--file", userFile,
+		"--line", "4",
+		"--name", "User",
+		"--new-name", "Member",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+
+	// util/user.go: type definition renamed.
+	userContent, _ := os.ReadFile(userFile)
+	if strings.Contains(string(userContent), "type User struct") {
+		t.Error("user.go still contains 'type User struct'")
+	}
+	if !strings.Contains(string(userContent), "type Member struct") {
+		t.Error("user.go missing 'type Member struct'")
+	}
+
+	// main.go: cross-file usage renamed.
+	mainFile := filepath.Join(dir, "main.go")
+	mainContent, _ := os.ReadFile(mainFile)
+	if strings.Contains(string(mainContent), "util.User") {
+		t.Error("main.go still contains 'util.User' after cross-file rename")
+	}
+	if !strings.Contains(string(mainContent), "util.Member") {
+		t.Error("main.go missing 'util.Member' after cross-file rename")
+	}
+
+	// Project still compiles.
+	goCheck := exec.Command("go", "build", "./...")
+	goCheck.Dir = dir
+	if out, err := goCheck.CombinedOutput(); err != nil {
+		t.Fatalf("project no longer compiles after rename:\n%s", out)
+	}
+}
+
+func TestEndToEnd_RenameTypeScriptClass(t *testing.T) {
+	if _, err := exec.LookPath("typescript-language-server"); err != nil {
+		t.Skip("typescript-language-server not found on PATH")
+	}
+
+	srcDir := filepath.Join("../testdata/fixtures/typescript/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	personFile := filepath.Join(dir, "src", "person.ts")
+	cmd := exec.Command(refuteBin,
+		"rename-class",
+		"--file", personFile,
+		"--line", "1",
+		"--name", "Person",
+		"--new-name", "Individual",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+
+	// person.ts: class definition renamed.
+	personContent, _ := os.ReadFile(personFile)
+	if strings.Contains(string(personContent), "class Person") {
+		t.Error("person.ts still contains 'class Person'")
+	}
+	if !strings.Contains(string(personContent), "class Individual") {
+		t.Error("person.ts missing 'class Individual'")
+	}
+
+	// main.ts: import and usage renamed.
+	mainFile := filepath.Join(dir, "src", "main.ts")
+	mainContent, _ := os.ReadFile(mainFile)
+	if strings.Contains(string(mainContent), "Person") {
+		t.Error("main.ts still contains 'Person' after cross-file rename")
+	}
+	if !strings.Contains(string(mainContent), "Individual") {
+		t.Error("main.ts missing 'Individual' after cross-file rename")
+	}
+}
+
+func TestEndToEnd_SymbolNotFound(t *testing.T) {
+	srcDir := filepath.Join("../testdata/fixtures/go/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	helperFile := filepath.Join(dir, "util", "helper.go")
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", helperFile,
+		"--line", "4",
+		"--name", "NoSuchSymbol",
+		"--new-name", "NewName",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit for symbol-not-found, got success; output:\n%s", out)
+	}
+	if !strings.Contains(string(out), "not found on line") {
+		t.Errorf("expected 'not found on line' in output, got:\n%s", out)
+	}
+}
+
+func TestEndToEnd_BadServerConfig(t *testing.T) {
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	// Write a config that replaces rust-analyzer with a nonexistent binary.
+	cfgContent := `{"servers": {"rust": {"command": "nonexistent-lsp-server-xyz"}}}`
+	cfgFile := filepath.Join(t.TempDir(), "bad-config.json")
+	if err := os.WriteFile(cfgFile, []byte(cfgContent), 0o644); err != nil {
+		t.Fatalf("write bad config: %v", err)
+	}
+
+	libFile := filepath.Join(dir, "src", "lib.rs")
+	cmd := exec.Command(refuteBin,
+		"--config", cfgFile,
+		"rename-function",
+		"--file", libFile,
+		"--line", "1",
+		"--name", "format_greeting",
+		"--new-name", "build_greeting",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit for bad server, got success; output:\n%s", out)
+	}
+	if !strings.Contains(string(out), "initializing backend") {
+		t.Errorf("expected 'initializing backend' in output, got:\n%s", out)
+	}
+}
+
+func TestEndToEnd_FileNotFound(t *testing.T) {
+	refuteBin := buildRefute(t)
+
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", "/nonexistent/path/to/file.go",
+		"--line", "1",
+		"--name", "Foo",
+		"--new-name", "Bar",
+	)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit for nonexistent file, got success; output:\n%s", out)
+	}
+	if !strings.Contains(string(out), "no such file") {
+		t.Errorf("expected 'no such file' in output, got:\n%s", out)
+	}
+}
+
+// buildRefute compiles the refute binary into a temp dir and returns its path.
+func buildRefute(t *testing.T) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "refute")
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/refute")
+	cmd.Dir = ".."
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build refute: %v\n%s", err, out)
+	}
+	return bin
 }
 
 // copyDir recursively copies a directory tree.
