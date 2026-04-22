@@ -93,6 +93,17 @@ Add `TestEndToEnd_ExtractFunction`, `TestEndToEnd_Tier1Rename`,
 `TestEndToEnd_Tier1Ambiguous`, `TestEndToEnd_Tier1NotFound`.
 Update `testdata/fixtures/go/rename/main.go` with extractable expression.
 
+**Note from Task 6:** Modern gopls returns `refactor.extract.constant` —
+not `refactor.extract.function`/`.variable` — for constant expressions
+like `1 + 2`. Use these confirmed inputs in e2e tests:
+- ExtractFunction: multi-statement block, e.g. selecting three lines
+  (`x := 10; println(x); println(x+1)`) inside `func main()`.
+- ExtractVariable: a function-call result, e.g. selecting `src()` inside
+  `println(src())` where `src() int` is defined elsewhere.
+Also note Task 6 added `textDocument.codeAction.resolveSupport` +
+`dataSupport` to the LSP client's initialize capabilities so gopls
+returns resolvable data-bearing actions for refactor.extract.*.
+
 ### Task 14 — Document position encoding (`go-code-actions-14-docs`)
 Create `docs/position-encoding.md` describing byte vs UTF-16 column semantics.
 
