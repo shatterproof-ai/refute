@@ -425,8 +425,41 @@ func ReplaceWholeIdentForTest(s, old, newID string) string {
 	return replaceWholeIdent(s, old, newID)
 }
 
-// InlineSymbol returns ErrUnsupported — not yet implemented via LSP.
-func (a *Adapter) InlineSymbol(_ symbol.Location) (*edit.WorkspaceEdit, error) {
+// InlineSymbol requests a refactor.inline code action over the symbol's
+// identifier-width range. Gopls returns no actions for a zero-width range, so
+// the request covers the whole identifier (min 1 char).
+func (a *Adapter) InlineSymbol(loc symbol.Location) (*edit.WorkspaceEdit, error) {
+	if a.client == nil {
+		return nil, fmt.Errorf("adapter not initialized")
+	}
+	if err := a.client.DidOpen(loc.File, a.languageID); err != nil {
+		return nil, fmt.Errorf("DidOpen %s: %w", loc.File, err)
+	}
+	const analysisTimeout = 30 * time.Second
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), analysisTimeout)
+	defer waitCancel()
+	if err := a.client.WaitForIdle(waitCtx); err != nil {
+		return nil, fmt.Errorf("waiting for analysis: %w", err)
+	}
+
+	startLine := loc.Line - 1
+	startChar := loc.Column - 1
+	endChar := startChar + max(len(loc.Name), 1)
+
+	actions, err := a.client.CodeActions(
+		loc.File,
+		startLine, startChar, startLine, endChar,
+		[]string{"refactor.inline"},
+	)
+	if err != nil {
+		return nil, err
+	}
+	for _, action := range actions {
+		if strings.HasPrefix(action.Kind, "refactor.inline") ||
+			strings.Contains(strings.ToLower(action.Title), "inline") {
+			return a.resolveAction(action)
+		}
+	}
 	return nil, backend.ErrUnsupported
 }
 

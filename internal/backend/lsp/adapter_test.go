@@ -235,6 +235,52 @@ func main() {
 	}
 }
 
+func TestAdapter_InlineSymbol(t *testing.T) {
+	requireGopls(t)
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"),
+		[]byte("module example.com/test\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	mainSrc := `package main
+
+func add(a, b int) int { return a + b }
+
+func main() {
+	println(add(1, 2))
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(mainSrc), 0o644); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+
+	cfg := config.ServerConfig{Command: "gopls", Args: []string{"serve"}}
+	adapter := lsp.NewAdapter(cfg, "go", []string{"*.go"})
+	if err := adapter.Initialize(dir); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	defer adapter.Shutdown()
+
+	// main.go line 6 col 10 (1-indexed) points at 'add' inside println(add(1, 2)).
+	loc := symbol.Location{
+		File:   filepath.Join(dir, "main.go"),
+		Line:   6, Column: 10,
+		Name: "add",
+		Kind: symbol.KindFunction,
+	}
+	we, err := adapter.InlineSymbol(loc)
+	if err != nil {
+		if errors.Is(err, backend.ErrUnsupported) {
+			t.Skip("inline not supported by this gopls version")
+		}
+		t.Fatalf("InlineSymbol: %v", err)
+	}
+	if len(we.FileEdits) == 0 {
+		t.Fatal("expected file edits from inline")
+	}
+}
+
 func TestReplaceWholeIdent_respectsIdentifierBoundaries(t *testing.T) {
 	got := lsp.ReplaceWholeIdentForTest("newFunction()\nnewFunctionCall()\n_ = newFunction", "newFunction", "sum")
 	want := "sum()\nnewFunctionCall()\n_ = sum"
