@@ -1,32 +1,24 @@
 {
-  "active_task": {
-    "base_head": "86e344d55316b58509e933b2fe753eb84c19d11e",
-    "branch": "go-code-actions-07-inline",
-    "kind": "task",
-    "number": 7,
-    "slug": "inline",
-    "started_at": "2026-04-22T03:13:21Z",
-    "worktree": "/home/ketan/project/go-code-actions-07-inline"
-  },
+  "active_task": null,
   "base_branch": "go-code-actions",
   "base_worktree": "/home/ketan/project/refute-go-code-actions",
   "created_at": "2026-04-21T00:18:24Z",
   "expedition": "go-code-actions",
   "last_completed": {
-    "branch": "go-code-actions-06-extract",
-    "completed_at": "2026-04-22T03:03:04Z",
+    "branch": "go-code-actions-07-inline",
+    "completed_at": "2026-04-22T03:17:56Z",
     "kind": "task",
-    "number": 6,
+    "number": 7,
     "outcome": "kept",
-    "slug": "extract",
-    "summary": "Task 6: ExtractFunction + ExtractVariable via gopls code actions; added codeAction.resolveSupport to init capabilities so gopls returns resolvable data-bearing actions; 2 new adapter tests pass.",
-    "worktree": "/home/ketan/project/go-code-actions-06-extract"
+    "slug": "inline",
+    "summary": "Task 7: InlineSymbol via refactor.inline code actions with identifier-width range; 1 new adapter test passes.",
+    "worktree": "/home/ketan/project/go-code-actions-07-inline"
   },
-  "next_action": "Complete work on `go-code-actions-07-inline` in `/home/ketan/project/go-code-actions-07-inline`.",
-  "next_task_number": 7,
+  "next_action": "Create the next task branch from the rebased expedition base branch.",
+  "next_task_number": 8,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 1,
-  "status": "task_in_progress",
-  "updated_at": "2026-04-22T03:13:21Z"
+  "status": "ready_for_task",
+  "updated_at": "2026-04-22T03:17:56Z"
 }
