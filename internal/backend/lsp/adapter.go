@@ -245,14 +245,184 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 	return &edit.WorkspaceEdit{FileEdits: fileEdits}, nil
 }
 
-// ExtractFunction returns ErrUnsupported — not yet implemented via LSP.
-func (a *Adapter) ExtractFunction(_ symbol.SourceRange, _ string) (*edit.WorkspaceEdit, error) {
-	return nil, backend.ErrUnsupported
+func (a *Adapter) ExtractFunction(r symbol.SourceRange, name string) (*edit.WorkspaceEdit, error) {
+	we, placeholder, err := a.extractImpl(r, "function")
+	if err != nil {
+		return nil, err
+	}
+	if name != "" && placeholder != "" && placeholder != name {
+		rewritePlaceholder(we, placeholder, name)
+	}
+	return we, nil
 }
 
-// ExtractVariable returns ErrUnsupported — not yet implemented via LSP.
-func (a *Adapter) ExtractVariable(_ symbol.SourceRange, _ string) (*edit.WorkspaceEdit, error) {
-	return nil, backend.ErrUnsupported
+func (a *Adapter) ExtractVariable(r symbol.SourceRange, name string) (*edit.WorkspaceEdit, error) {
+	we, placeholder, err := a.extractImpl(r, "variable")
+	if err != nil {
+		return nil, err
+	}
+	if name != "" && placeholder != "" && placeholder != name {
+		rewritePlaceholder(we, placeholder, name)
+	}
+	return we, nil
+}
+
+func (a *Adapter) extractImpl(r symbol.SourceRange, kind string) (*edit.WorkspaceEdit, string, error) {
+	if a.client == nil {
+		return nil, "", fmt.Errorf("adapter not initialized")
+	}
+	if err := a.client.DidOpen(r.File, a.languageID); err != nil {
+		return nil, "", fmt.Errorf("DidOpen %s: %w", r.File, err)
+	}
+	const analysisTimeout = 30 * time.Second
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), analysisTimeout)
+	defer waitCancel()
+	if err := a.client.WaitForIdle(waitCtx); err != nil {
+		return nil, "", fmt.Errorf("waiting for analysis: %w", err)
+	}
+	actions, err := a.client.CodeActions(
+		r.File,
+		r.StartLine-1, r.StartCol-1,
+		r.EndLine-1, r.EndCol-1,
+		[]string{"refactor.extract"},
+	)
+	if err != nil {
+		return nil, "", err
+	}
+
+	kindSuffix := "refactor.extract." + kind
+	titleNeedle := kind
+
+	for _, action := range actions {
+		if !strings.HasPrefix(action.Kind, kindSuffix) &&
+			!strings.Contains(strings.ToLower(action.Title), titleNeedle) {
+			continue
+		}
+		we, err := a.resolveAction(action)
+		if err != nil {
+			return nil, "", err
+		}
+		placeholder := findExtractPlaceholder(we, kind)
+		return we, placeholder, nil
+	}
+	return nil, "", backend.ErrUnsupported
+}
+
+func (a *Adapter) resolveAction(action CodeAction) (*edit.WorkspaceEdit, error) {
+	var fileEdits []edit.FileEdit
+	var err error
+	if action.Edit != nil {
+		fileEdits, err = parseWorkspaceEdit(*action.Edit)
+	} else {
+		fileEdits, err = a.client.ResolveCodeActionEdit(action)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &edit.WorkspaceEdit{FileEdits: fileEdits}, nil
+}
+
+func findExtractPlaceholder(we *edit.WorkspaceEdit, kind string) string {
+	for _, fe := range we.FileEdits {
+		for _, te := range fe.Edits {
+			if te.NewText == "" {
+				continue
+			}
+			var id string
+			switch kind {
+			case "function":
+				id = matchIdentAfter(te.NewText, "func ")
+			case "variable":
+				id = matchIdentBefore(te.NewText, " :=")
+				if id == "" {
+					id = matchIdentBefore(te.NewText, ":=")
+				}
+			}
+			if id != "" {
+				return id
+			}
+		}
+	}
+	return ""
+}
+
+func matchIdentAfter(s, needle string) string {
+	i := strings.Index(s, needle)
+	if i < 0 {
+		return ""
+	}
+	rest := s[i+len(needle):]
+	end := 0
+	for end < len(rest) && isIdentByte(rest[end]) {
+		end++
+	}
+	if end == 0 {
+		return ""
+	}
+	return rest[:end]
+}
+
+func matchIdentBefore(s, needle string) string {
+	i := strings.Index(s, needle)
+	if i <= 0 {
+		return ""
+	}
+	start := i
+	for start > 0 && isIdentByte(s[start-1]) {
+		start--
+	}
+	if start == i {
+		return ""
+	}
+	return s[start:i]
+}
+
+func isIdentByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') ||
+		(b >= '0' && b <= '9') || b == '_'
+}
+
+func rewritePlaceholder(we *edit.WorkspaceEdit, old, newID string) {
+	for fi := range we.FileEdits {
+		for ei := range we.FileEdits[fi].Edits {
+			we.FileEdits[fi].Edits[ei].NewText = replaceWholeIdent(
+				we.FileEdits[fi].Edits[ei].NewText, old, newID,
+			)
+		}
+	}
+}
+
+func replaceWholeIdent(s, old, newID string) string {
+	if old == "" {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	i := 0
+	for i < len(s) {
+		j := strings.Index(s[i:], old)
+		if j < 0 {
+			b.WriteString(s[i:])
+			return b.String()
+		}
+		j += i
+		leftOK := j == 0 || !isIdentByte(s[j-1])
+		rightIdx := j + len(old)
+		rightOK := rightIdx >= len(s) || !isIdentByte(s[rightIdx])
+		b.WriteString(s[i:j])
+		if leftOK && rightOK {
+			b.WriteString(newID)
+		} else {
+			b.WriteString(old)
+		}
+		i = rightIdx
+	}
+	return b.String()
+}
+
+// ReplaceWholeIdentForTest is a test-only export of replaceWholeIdent.
+func ReplaceWholeIdentForTest(s, old, newID string) string {
+	return replaceWholeIdent(s, old, newID)
 }
 
 // InlineSymbol returns ErrUnsupported — not yet implemented via LSP.

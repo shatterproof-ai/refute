@@ -382,17 +382,40 @@ func (c *Client) initialize(workspaceRoot string) error {
 	}
 	rootURI := fileToURI(absRoot)
 
-	type clientCapabilities struct{}
+	// Advertise code action resolve support so servers like gopls return
+	// refactor.extract actions with resolvable Data (and compute the edit on
+	// codeAction/resolve) instead of command-based actions that require
+	// workspace/executeCommand + server-initiated workspace/applyEdit.
+	capabilities := map[string]any{
+		"textDocument": map[string]any{
+			"codeAction": map[string]any{
+				"dataSupport":    true,
+				"resolveSupport": map[string]any{"properties": []string{"edit"}},
+				"codeActionLiteralSupport": map[string]any{
+					"codeActionKind": map[string]any{
+						"valueSet": []string{
+							"quickfix",
+							"refactor",
+							"refactor.extract",
+							"refactor.inline",
+							"refactor.rewrite",
+							"source",
+						},
+					},
+				},
+			},
+		},
+	}
 	type initParams struct {
-		ProcessID    int                `json:"processId"`
-		RootURI      string             `json:"rootUri"`
-		Capabilities clientCapabilities `json:"capabilities"`
+		ProcessID    int            `json:"processId"`
+		RootURI      string         `json:"rootUri"`
+		Capabilities map[string]any `json:"capabilities"`
 	}
 
 	result, err := c.request("initialize", initParams{
 		ProcessID:    os.Getpid(),
 		RootURI:      rootURI,
-		Capabilities: clientCapabilities{},
+		Capabilities: capabilities,
 	})
 	if err != nil {
 		return fmt.Errorf("initialize request: %w", err)
@@ -521,10 +544,11 @@ func (c *Client) RenameProvider() bool {
 
 // CodeAction is an LSP code action (refactoring, quick fix, etc.).
 type CodeAction struct {
-	Title string           `json:"title"`
-	Kind  string           `json:"kind,omitempty"`
-	Edit  *json.RawMessage `json:"edit,omitempty"`
-	Data  *json.RawMessage `json:"data,omitempty"`
+	Title   string           `json:"title"`
+	Kind    string           `json:"kind,omitempty"`
+	Edit    *json.RawMessage `json:"edit,omitempty"`
+	Data    *json.RawMessage `json:"data,omitempty"`
+	Command *json.RawMessage `json:"command,omitempty"`
 }
 
 // WorkspaceSymbolInfo is a single result from workspace/symbol.
