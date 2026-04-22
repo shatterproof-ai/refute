@@ -333,6 +333,58 @@ func TestEndToEnd_RenameRustStruct(t *testing.T) {
 	}
 }
 
+func TestEndToEnd_RenameGoType(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+
+	srcDir := filepath.Join("../testdata/fixtures/go/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	userFile := filepath.Join(dir, "util", "user.go")
+	cmd := exec.Command(refuteBin,
+		"rename-type",
+		"--file", userFile,
+		"--line", "4",
+		"--name", "User",
+		"--new-name", "Member",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+
+	// util/user.go: type definition renamed.
+	userContent, _ := os.ReadFile(userFile)
+	if strings.Contains(string(userContent), "type User struct") {
+		t.Error("user.go still contains 'type User struct'")
+	}
+	if !strings.Contains(string(userContent), "type Member struct") {
+		t.Error("user.go missing 'type Member struct'")
+	}
+
+	// main.go: cross-file usage renamed.
+	mainFile := filepath.Join(dir, "main.go")
+	mainContent, _ := os.ReadFile(mainFile)
+	if strings.Contains(string(mainContent), "util.User") {
+		t.Error("main.go still contains 'util.User' after cross-file rename")
+	}
+	if !strings.Contains(string(mainContent), "util.Member") {
+		t.Error("main.go missing 'util.Member' after cross-file rename")
+	}
+
+	// Project still compiles.
+	goCheck := exec.Command("go", "build", "./...")
+	goCheck.Dir = dir
+	if out, err := goCheck.CombinedOutput(); err != nil {
+		t.Fatalf("project no longer compiles after rename:\n%s", out)
+	}
+}
+
 // buildRefute compiles the refute binary into a temp dir and returns its path.
 func buildRefute(t *testing.T) string {
 	t.Helper()
