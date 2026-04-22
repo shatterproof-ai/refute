@@ -385,6 +385,51 @@ func TestEndToEnd_RenameGoType(t *testing.T) {
 	}
 }
 
+func TestEndToEnd_RenameTypeScriptClass(t *testing.T) {
+	if _, err := exec.LookPath("typescript-language-server"); err != nil {
+		t.Skip("typescript-language-server not found on PATH")
+	}
+
+	srcDir := filepath.Join("../testdata/fixtures/typescript/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	personFile := filepath.Join(dir, "src", "person.ts")
+	cmd := exec.Command(refuteBin,
+		"rename-class",
+		"--file", personFile,
+		"--line", "1",
+		"--name", "Person",
+		"--new-name", "Individual",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+
+	// person.ts: class definition renamed.
+	personContent, _ := os.ReadFile(personFile)
+	if strings.Contains(string(personContent), "class Person") {
+		t.Error("person.ts still contains 'class Person'")
+	}
+	if !strings.Contains(string(personContent), "class Individual") {
+		t.Error("person.ts missing 'class Individual'")
+	}
+
+	// main.ts: import and usage renamed.
+	mainFile := filepath.Join(dir, "src", "main.ts")
+	mainContent, _ := os.ReadFile(mainFile)
+	if strings.Contains(string(mainContent), "Person") {
+		t.Error("main.ts still contains 'Person' after cross-file rename")
+	}
+	if !strings.Contains(string(mainContent), "Individual") {
+		t.Error("main.ts missing 'Individual' after cross-file rename")
+	}
+}
+
 // buildRefute compiles the refute binary into a temp dir and returns its path.
 func buildRefute(t *testing.T) string {
 	t.Helper()
