@@ -133,7 +133,7 @@ refute inline --symbol <qualified-name> --call-site <file>:<line>:<column>
 | H6 | `--language` flag help text includes `rust` | `internal/cli/rename.go`, `extract.go`, `inline.go` |
 
 H3 applies to every LSP-backed language; refactor is language-agnostic, Rust is the first beneficiary.
-H4 is triggered whenever a `WorkspaceEdit` contains `$N` / `${N:...}` / `${N|...|}` tokens in `newText`.
+H4 is triggered only for edits that originate from code-action resolution (extract/inline). Rename edits never pass through the stripper — rust-analyzer's rename path does not emit snippet placeholders, and applying the stripper universally risks mangling literal `$N` tokens that appear in user source (e.g., shell-script strings in a Rust macro).
 
 ## File Structure
 
