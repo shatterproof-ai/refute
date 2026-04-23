@@ -1,0 +1,15 @@
+{
+  "active_task": null,
+  "base_branch": "rust-parity",
+  "base_worktree": "/home/ketan/project/refute-rust-parity",
+  "created_at": "2026-04-23T17:21:21Z",
+  "expedition": "rust-parity",
+  "last_completed": null,
+  "next_action": "Create the first task branch from the expedition base branch.",
+  "next_task_number": 1,
+  "preserved_experiments": [],
+  "primary_branch": "main",
+  "schema_version": 1,
+  "status": "ready_for_task",
+  "updated_at": "2026-04-23T17:21:21Z"
+}
