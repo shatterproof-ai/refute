@@ -106,7 +106,7 @@ func runRename(kind symbol.SymbolKind) error {
 
 	// Detect language and create adapter.
 	serverKey := detectServerKey(loc.File)
-	serverCfg := cfg.Server(serverKey)
+	serverCfg := cfg.ResolvedServer(serverKey, workspaceRoot)
 	if serverCfg.Command == "" {
 		return fmt.Errorf("no server configured for language %q", serverKey)
 	}
@@ -194,8 +194,10 @@ func detectServerKey(filePath string) string {
 	switch filepath.Ext(filePath) {
 	case ".go":
 		return "go"
-	case ".ts", ".tsx", ".js", ".jsx":
+	case ".ts", ".tsx":
 		return "typescript"
+	case ".js", ".jsx":
+		return "javascript"
 	case ".py":
 		return "python"
 	case ".java":
