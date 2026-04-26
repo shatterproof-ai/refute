@@ -51,8 +51,8 @@ func (a *Adapter) Initialize(workspaceRoot string) error {
 
 	a.client = client
 
-	if isTSFamily(a.languageID) {
-		_ = PrimeTSWorkspace(a.client, absRoot)
+	if shouldPrimeWorkspace(a.languageID) {
+		_ = PrimeWorkspace(a.client, absRoot, a.languageID)
 	}
 
 	// Wait for the server to finish its initial indexing pass. LSP servers like
@@ -232,9 +232,15 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 		var err error
 		fileEdits, err = a.client.Rename(loc.File, lspLine, lspCharacter, newName)
 		if err == nil {
-			break
+			if len(fileEdits) > 0 {
+				break
+			}
+			if attempt == renameMaxRetries-1 {
+				break
+			}
+			continue
 		}
-		if !errors.Is(err, ErrContentModified) {
+		if !errors.Is(err, ErrContentModified) && !errors.Is(err, ErrRenamePositionUnavailable) {
 			return nil, fmt.Errorf("rename: %w", err)
 		}
 		if attempt == renameMaxRetries-1 {

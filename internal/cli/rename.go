@@ -8,7 +8,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/shatterproof-ai/refute/internal/backend/lsp"
+	"github.com/shatterproof-ai/refute/internal/backend/selector"
 	"github.com/shatterproof-ai/refute/internal/config"
 	"github.com/shatterproof-ai/refute/internal/edit"
 	"github.com/shatterproof-ai/refute/internal/symbol"
@@ -104,22 +104,18 @@ func runRename(kind symbol.SymbolKind) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Detect language and create adapter.
-	serverKey := DetectServerKey(loc.File)
-	serverCfg := cfg.Server(serverKey)
-	if serverCfg.Command == "" {
-		return fmt.Errorf("no server configured for language %q", serverKey)
+	sel, err := selector.ForFile(cfg, workspaceRoot, loc.File)
+	if err != nil {
+		return err
 	}
 
-	languageID := DetectLanguageID(loc.File)
-	adapter := lsp.NewAdapter(serverCfg, languageID, nil)
-	if err := adapter.Initialize(workspaceRoot); err != nil {
+	if err := sel.Backend.Initialize(workspaceRoot); err != nil {
 		return fmt.Errorf("initializing backend: %w", err)
 	}
-	defer adapter.Shutdown()
+	defer sel.Backend.Shutdown()
 
 	// Perform the rename.
-	we, err := adapter.Rename(loc, flagNewName)
+	we, err := sel.Backend.Rename(loc, flagNewName)
 	if err != nil {
 		return fmt.Errorf("rename failed: %w", err)
 	}

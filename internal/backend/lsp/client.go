@@ -49,13 +49,23 @@ func (e *jsonrpcError) Error() string {
 // ErrContentModified is returned when the server cancels a request because its
 // internal state changed (LSP error code -32801). Callers should retry.
 var ErrContentModified = fmt.Errorf("content modified")
+var ErrRenamePositionUnavailable = fmt.Errorf("rename target not ready")
 
 const lspContentModified = -32801
+const lspInvalidParams = -32602
 
 // isLSPError reports whether err contains a jsonrpcError with the given code.
 func isLSPError(err error, code int) bool {
 	var jrpcErr *jsonrpcError
 	return errors.As(err, &jrpcErr) && jrpcErr.Code == code
+}
+
+func isRetryableRenameError(err error) bool {
+	var jrpcErr *jsonrpcError
+	if !errors.As(err, &jrpcErr) {
+		return false
+	}
+	return jrpcErr.Code == lspInvalidParams && strings.Contains(jrpcErr.Message, "No references found at position")
 }
 
 // progressTracker tracks $/progress begin/end events so callers can wait for
@@ -509,6 +519,9 @@ func (c *Client) Rename(filePath string, line, character int, newName string) ([
 		if isLSPError(err, lspContentModified) {
 			return nil, fmt.Errorf("rename request: %w", ErrContentModified)
 		}
+		if isRetryableRenameError(err) {
+			return nil, fmt.Errorf("rename request: %w", ErrRenamePositionUnavailable)
+		}
 		return nil, fmt.Errorf("rename request: %w", err)
 	}
 
@@ -662,8 +675,8 @@ func parseWorkspaceEdit(raw json.RawMessage) ([]edit.FileEdit, error) {
 		Edits []lspTextEdit `json:"edits"`
 	}
 	type lspWorkspaceEdit struct {
-		Changes         map[string][]lspTextEdit  `json:"changes"`
-		DocumentChanges []lspTextDocumentEdit     `json:"documentChanges"`
+		Changes         map[string][]lspTextEdit `json:"changes"`
+		DocumentChanges []lspTextDocumentEdit    `json:"documentChanges"`
 	}
 
 	var we lspWorkspaceEdit

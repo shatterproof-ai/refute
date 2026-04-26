@@ -1,0 +1,9 @@
+{
+  "name": "refute-tsmorph-adapter",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "ts-morph": "^26.0.0",
+    "typescript": "^5.9.3"
+  }
+}

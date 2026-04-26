@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 const (
-	defaultTimeout          = 30000
+	defaultTimeout           = 30000
 	defaultDaemonIdleTimeout = 600000
-	projectConfigFilename   = "refute.config.json"
-	userConfigRelPath       = ".config/refute/config.json"
+	projectConfigFilename    = "refute.config.json"
+	userConfigRelPath        = ".config/refute/config.json"
 )
 
 // ServerConfig holds the command and arguments for a language server.
@@ -54,16 +55,20 @@ var builtinServers = map[string]ServerConfig{
 		Command: "pyright-langserver",
 		Args:    []string{"--stdio"},
 	},
+	"java": {
+		Command: "jdtls",
+		Args:    []string{},
+	},
+	"kotlin": {
+		Command: "kotlin-language-server",
+		Args:    []string{},
+	},
 }
 
 // defaults returns a Config populated entirely with built-in defaults.
 func defaults() *Config {
-	servers := make(map[string]ServerConfig, len(builtinServers))
-	for k, v := range builtinServers {
-		servers[k] = v
-	}
 	return &Config{
-		Servers: servers,
+		Servers: make(map[string]ServerConfig),
 		Timeout: defaultTimeout,
 		Daemon: DaemonConfig{
 			AutoStart:   false,
@@ -130,6 +135,43 @@ func (c *Config) Server(language string) ServerConfig {
 		return srv
 	}
 	return ServerConfig{}
+}
+
+// ResolvedServer returns the effective ServerConfig for a language in a
+// workspace. Explicit config wins. For TypeScript/JavaScript, a local
+// node_modules/.bin/typescript-language-server takes precedence over the
+// built-in default when no explicit config is set.
+func (c *Config) ResolvedServer(language string, workspaceRoot string) ServerConfig {
+	if srv, ok := c.Servers[language]; ok {
+		return srv
+	}
+	if local, ok := localTypeScriptServer(language, workspaceRoot); ok {
+		return local
+	}
+	return c.Server(language)
+}
+
+func localTypeScriptServer(language string, workspaceRoot string) (ServerConfig, bool) {
+	if workspaceRoot == "" {
+		return ServerConfig{}, false
+	}
+	switch language {
+	case "typescript", "javascript":
+	default:
+		return ServerConfig{}, false
+	}
+	name := "typescript-language-server"
+	if runtime.GOOS == "windows" {
+		name += ".cmd"
+	}
+	path := filepath.Join(workspaceRoot, "node_modules", ".bin", name)
+	if _, err := os.Stat(path); err != nil {
+		return ServerConfig{}, false
+	}
+	return ServerConfig{
+		Command: path,
+		Args:    []string{"--stdio"},
+	}, true
 }
 
 // Load builds a Config by applying layers in ascending priority:
