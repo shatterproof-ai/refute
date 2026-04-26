@@ -8,7 +8,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/shatterproof-ai/refute/internal/backend/lsp"
+	"github.com/shatterproof-ai/refute/internal/backend/selector"
 	"github.com/shatterproof-ai/refute/internal/config"
 	"github.com/shatterproof-ai/refute/internal/edit"
 	"github.com/shatterproof-ai/refute/internal/symbol"
@@ -104,22 +104,18 @@ func runRename(kind symbol.SymbolKind) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Detect language and create adapter.
-	serverKey := detectServerKey(loc.File)
-	serverCfg := cfg.ResolvedServer(serverKey, workspaceRoot)
-	if serverCfg.Command == "" {
-		return fmt.Errorf("no server configured for language %q", serverKey)
+	sel, err := selector.ForFile(cfg, workspaceRoot, loc.File)
+	if err != nil {
+		return err
 	}
 
-	languageID := detectLanguageID(loc.File)
-	adapter := lsp.NewAdapter(serverCfg, languageID, nil)
-	if err := adapter.Initialize(workspaceRoot); err != nil {
+	if err := sel.Backend.Initialize(workspaceRoot); err != nil {
 		return fmt.Errorf("initializing backend: %w", err)
 	}
-	defer adapter.Shutdown()
+	defer sel.Backend.Shutdown()
 
 	// Perform the rename.
-	we, err := adapter.Rename(loc, flagNewName)
+	we, err := sel.Backend.Rename(loc, flagNewName)
 	if err != nil {
 		return fmt.Errorf("rename failed: %w", err)
 	}
@@ -185,59 +181,5 @@ func findWorkspaceRoot(filePath string) (string, error) {
 			return filepath.Dir(filePath), nil
 		}
 		dir = parent
-	}
-}
-
-// detectServerKey returns the server config key for a file based on its extension.
-// This is used to look up the language server in the config.
-func detectServerKey(filePath string) string {
-	switch filepath.Ext(filePath) {
-	case ".go":
-		return "go"
-	case ".ts", ".tsx":
-		return "typescript"
-	case ".js", ".jsx":
-		return "javascript"
-	case ".py":
-		return "python"
-	case ".java":
-		return "java"
-	case ".kt":
-		return "kotlin"
-	case ".rs":
-		return "rust"
-	case ".cs":
-		return "csharp"
-	default:
-		return ""
-	}
-}
-
-// detectLanguageID returns the LSP language ID for a file based on its extension.
-// This is passed to the LSP server's textDocument/didOpen notification.
-func detectLanguageID(filePath string) string {
-	switch filepath.Ext(filePath) {
-	case ".ts":
-		return "typescript"
-	case ".tsx":
-		return "typescriptreact"
-	case ".js":
-		return "javascript"
-	case ".jsx":
-		return "javascriptreact"
-	case ".go":
-		return "go"
-	case ".py":
-		return "python"
-	case ".java":
-		return "java"
-	case ".kt":
-		return "kotlin"
-	case ".rs":
-		return "rust"
-	case ".cs":
-		return "csharp"
-	default:
-		return ""
 	}
 }
