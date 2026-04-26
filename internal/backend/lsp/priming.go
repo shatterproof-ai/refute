@@ -8,20 +8,20 @@ import (
 
 const maxPrimedFiles = 10
 
-// isTSFamily reports whether the given LSP language ID belongs to the
-// TypeScript/JavaScript family served by typescript-language-server.
-func isTSFamily(languageID string) bool {
+func shouldPrimeWorkspace(languageID string) bool {
 	switch languageID {
 	case "typescript", "typescriptreact", "javascript", "javascriptreact":
+		return true
+	case "rust":
 		return true
 	}
 	return false
 }
 
-// PrimeTSWorkspace opens up to maxPrimedFiles TypeScript source files in the
-// workspace so typescript-language-server initialises its project graph before
-// the first rename request arrives. Failures are non-fatal.
-func PrimeTSWorkspace(client *Client, root string) error {
+// PrimeWorkspace opens up to maxPrimedFiles source files for languages that
+// benefit from a warmer project graph before the first rename request arrives.
+// Failures are non-fatal.
+func PrimeWorkspace(client *Client, root string, languageID string) error {
 	var opened int
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -43,8 +43,14 @@ func PrimeTSWorkspace(client *Client, root string) error {
 			langID = "typescript"
 		case ".tsx":
 			langID = "typescriptreact"
+		case ".js":
+			langID = "javascript"
+		case ".jsx":
+			langID = "javascriptreact"
+		case ".rs":
+			langID = "rust"
 		}
-		if langID != "" {
+		if langID == languageID {
 			if openErr := client.DidOpen(path, langID); openErr == nil {
 				opened++
 			}

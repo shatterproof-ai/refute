@@ -8,9 +8,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/shatterproof-ai/refute/internal/backend"
-	"github.com/shatterproof-ai/refute/internal/backend/lsp"
-	"github.com/shatterproof-ai/refute/internal/backend/openrewrite"
+	"github.com/shatterproof-ai/refute/internal/backend/selector"
 	"github.com/shatterproof-ai/refute/internal/config"
 	"github.com/shatterproof-ai/refute/internal/edit"
 	"github.com/shatterproof-ai/refute/internal/symbol"
@@ -106,15 +104,18 @@ func runRename(kind symbol.SymbolKind) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Select and initialize the best available backend for the target language.
-	adapter, err := selectBackend(loc.File, workspaceRoot, cfg)
+	sel, err := selector.ForFile(cfg, workspaceRoot, loc.File)
 	if err != nil {
 		return err
 	}
-	defer adapter.Shutdown()
+
+	if err := sel.Backend.Initialize(workspaceRoot); err != nil {
+		return fmt.Errorf("initializing backend: %w", err)
+	}
+	defer sel.Backend.Shutdown()
 
 	// Perform the rename.
-	we, err := adapter.Rename(loc, flagNewName)
+	we, err := sel.Backend.Rename(loc, flagNewName)
 	if err != nil {
 		return fmt.Errorf("rename failed: %w", err)
 	}
@@ -180,101 +181,5 @@ func findWorkspaceRoot(filePath string) (string, error) {
 			return filepath.Dir(filePath), nil
 		}
 		dir = parent
-	}
-}
-
-// detectServerKey returns the server config key for a file based on its extension.
-// This is used to look up the language server in the config.
-func detectServerKey(filePath string) string {
-	switch filepath.Ext(filePath) {
-	case ".go":
-		return "go"
-	case ".ts", ".tsx", ".js", ".jsx":
-		return "typescript"
-	case ".py":
-		return "python"
-	case ".java":
-		return "java"
-	case ".kt":
-		return "kotlin"
-	case ".rs":
-		return "rust"
-	case ".cs":
-		return "csharp"
-	default:
-		return ""
-	}
-}
-
-// detectLanguageID returns the LSP language ID for a file based on its extension.
-// This is passed to the LSP server's textDocument/didOpen notification.
-func detectLanguageID(filePath string) string {
-	switch filepath.Ext(filePath) {
-	case ".ts":
-		return "typescript"
-	case ".tsx":
-		return "typescriptreact"
-	case ".js":
-		return "javascript"
-	case ".jsx":
-		return "javascriptreact"
-	case ".go":
-		return "go"
-	case ".py":
-		return "python"
-	case ".java":
-		return "java"
-	case ".kt":
-		return "kotlin"
-	case ".rs":
-		return "rust"
-	case ".cs":
-		return "csharp"
-	default:
-		return ""
-	}
-}
-
-// selectBackend picks the best available backend for the file's language,
-// initializes it, and returns it ready to use.
-//
-// For Java and Kotlin:
-//  1. Try OpenRewrite (requires the fat JAR built from adapters/openrewrite/).
-//  2. Fall back to the jdtls / kotlin-language-server LSP adapter.
-//
-// For all other languages the generic LSP adapter is used directly.
-func selectBackend(filePath, workspaceRoot string, cfg *config.Config) (backend.RefactoringBackend, error) {
-	ext := filepath.Ext(filePath)
-	switch ext {
-	case ".java", ".kt":
-		or := openrewrite.NewAdapter("")
-		if err := or.Initialize(workspaceRoot); err == nil {
-			return or, nil
-		}
-		// OpenRewrite unavailable — fall through to LSP.
-		serverKey := detectServerKey(filePath)
-		serverCfg := cfg.Server(serverKey)
-		if serverCfg.Command == "" {
-			return nil, fmt.Errorf("no server configured for language %q and OpenRewrite JAR not found", serverKey)
-		}
-		languageID := detectLanguageID(filePath)
-		a := lsp.NewAdapter(serverCfg, languageID, nil)
-		if err := a.Initialize(workspaceRoot); err != nil {
-			return nil, fmt.Errorf("initializing LSP fallback for %s: %w", serverKey, err)
-		}
-		return a, nil
-
-	default:
-		serverKey := detectServerKey(filePath)
-		serverCfg := cfg.Server(serverKey)
-		if serverCfg.Command == "" {
-			return nil, fmt.Errorf("no server configured for language %q", serverKey)
-		}
-		languageID := detectLanguageID(filePath)
-		a := lsp.NewAdapter(serverCfg, languageID, nil)
-		if err := a.Initialize(workspaceRoot); err != nil {
-			return nil, fmt.Errorf("initializing backend: %w", err)
-		}
-		return a, nil
 	}
 }

@@ -129,3 +129,68 @@ func TestLoad_ExplicitPath(t *testing.T) {
 		t.Errorf("go server command: got %q, want %q", goServer.Command, "explicit-gopls")
 	}
 }
+
+func TestResolvedServer_PrefersLocalTypeScriptLanguageServer(t *testing.T) {
+	dir := t.TempDir()
+	binDir := filepath.Join(dir, "node_modules", ".bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir node_modules bin: %v", err)
+	}
+	serverName := "typescript-language-server"
+	if err := os.WriteFile(filepath.Join(binDir, serverName), []byte(""), 0o755); err != nil {
+		t.Fatalf("write local typescript-language-server: %v", err)
+	}
+
+	cfg, err := config.Load("", dir)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	tsServer := cfg.ResolvedServer("typescript", dir)
+	want := filepath.Join(dir, "node_modules", ".bin", serverName)
+	if tsServer.Command != want {
+		t.Fatalf("ResolvedServer(typescript): got %q, want %q", tsServer.Command, want)
+	}
+
+	jsServer := cfg.ResolvedServer("javascript", dir)
+	if jsServer.Command != want {
+		t.Fatalf("ResolvedServer(javascript): got %q, want %q", jsServer.Command, want)
+	}
+}
+
+func TestResolvedServer_PrefersExplicitConfigOverLocalTypeScriptLanguageServer(t *testing.T) {
+	dir := t.TempDir()
+	binDir := filepath.Join(dir, "node_modules", ".bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir node_modules bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "typescript-language-server"), []byte(""), 0o755); err != nil {
+		t.Fatalf("write local typescript-language-server: %v", err)
+	}
+
+	projectCfg := map[string]any{
+		"servers": map[string]any{
+			"typescript": map[string]any{
+				"command": "custom-tsls",
+				"args":    []string{"--custom"},
+			},
+		},
+	}
+	data, err := json.Marshal(projectCfg)
+	if err != nil {
+		t.Fatalf("marshal project config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "refute.config.json"), data, 0o644); err != nil {
+		t.Fatalf("write project config: %v", err)
+	}
+
+	cfg, err := config.Load("", dir)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	tsServer := cfg.ResolvedServer("typescript", dir)
+	if tsServer.Command != "custom-tsls" {
+		t.Fatalf("ResolvedServer(typescript): got %q, want %q", tsServer.Command, "custom-tsls")
+	}
+}
