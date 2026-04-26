@@ -111,14 +111,21 @@
 - Base head at branch creation: `3f605a20b30cf75b8976a8ba5c4d48fc9c5e3e49`.
 
 
+### 2026-04-26T22:00:00Z — Closed task
+- Branch: `go-code-actions-08-json-output`.
+- Outcome: `kept`.
+- Summary: Task 8: Add RenderJSON/Marshal for WorkspaceEdit → JSONResult with 0→1 index conversion; 2 new edit tests pass.
+- Merged main into base branch (resolved backend selector conflict in rename.go; findWorkspaceRoot removed since workspace.go exports FindWorkspaceRootFromFile).
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `go-code-actions`
-- Status: `task_in_progress`
+- Status: `ready_for_task`
 - Base branch: `go-code-actions`
 - Base worktree: `/home/ketan/project/refute-go-code-actions`
-- Active task branch: `go-code-actions-08-json-output`
-- Active task worktree: `/home/ketan/project/go-code-actions-08-json-output`
-- Last completed: `go-code-actions-07-inline (kept)`
-- Next action: Complete work on `go-code-actions-08-json-output` in `/home/ketan/project/go-code-actions-08-json-output`.
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `go-code-actions-08-json-output (kept)`
+- Next action: Create the next task branch from the expedition base branch.
 <!-- expedition-resume:end -->

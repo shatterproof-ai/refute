@@ -3,9 +3,9 @@
 - Expedition: `go-code-actions`
 - Base branch: `go-code-actions`
 - Base worktree: `/home/ketan/project/refute-go-code-actions`
-- Status: `task_in_progress`
-- Active task branch: `go-code-actions-08-json-output`
-- Active task worktree: `/home/ketan/project/go-code-actions-08-json-output`
-- Last completed: `go-code-actions-07-inline (kept)`
-- Next action: Complete work on `go-code-actions-08-json-output` in `/home/ketan/project/go-code-actions-08-json-output`.
+- Status: `ready_for_task`
+- Active task branch: `none`
+- Active task worktree: `none`
+- Last completed: `go-code-actions-08-json-output (kept)`
+- Next action: Create the next task branch from the expedition base branch.
 - Primary branch: `main`
