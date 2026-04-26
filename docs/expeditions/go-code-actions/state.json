@@ -1,9 +1,20 @@
 {
-  "active_task": null,
+  "active_branches": [
+    {
+      "base_head": "3f605a20b30cf75b8976a8ba5c4d48fc9c5e3e49",
+      "branch": "go-code-actions-08-json-output",
+      "kind": "task",
+      "number": 8,
+      "slug": "json-output",
+      "started_at": "2026-04-26T21:18:38Z",
+      "worktree": "/home/ketan/project/go-code-actions-08-json-output"
+    }
+  ],
   "base_branch": "go-code-actions",
   "base_worktree": "/home/ketan/project/refute-go-code-actions",
   "created_at": "2026-04-21T00:18:24Z",
   "expedition": "go-code-actions",
+  "landing_lease": null,
   "last_completed": {
     "branch": "go-code-actions-07-inline",
     "completed_at": "2026-04-22T03:17:56Z",
@@ -14,11 +25,11 @@
     "summary": "Task 7: InlineSymbol via refactor.inline code actions with identifier-width range; 1 new adapter test passes.",
     "worktree": "/home/ketan/project/go-code-actions-07-inline"
   },
-  "next_action": "Create the next task branch from the rebased expedition base branch.",
-  "next_task_number": 8,
+  "next_action": "Complete work on `go-code-actions-08-json-output` in `/home/ketan/project/go-code-actions-08-json-output`.",
+  "next_task_number": 9,
   "preserved_experiments": [],
   "primary_branch": "main",
-  "schema_version": 1,
-  "status": "ready_for_task",
-  "updated_at": "2026-04-22T03:17:56Z"
+  "schema_version": 2,
+  "status": "task_in_progress",
+  "updated_at": "2026-04-26T21:18:38Z"
 }
