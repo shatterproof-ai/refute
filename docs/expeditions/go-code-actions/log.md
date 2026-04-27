@@ -148,3 +148,9 @@
 - Outcome: `kept`.
 - Summary: Task 9: Extract buildBackend/finishRename/applyOrPreview/emitJSON helpers; add --json flag; Tier 1 stub. Adapted plan's buildAdapter (lsp.NewAdapter) to buildBackend (selector.ForFile) to preserve backend selector support.
 - Merged directly into base without primary rebase (base already current from task 8 merge-of-main).
+
+
+### 2026-04-26T23:00:00Z — Closed task
+- Branch: `go-code-actions-10-tier1-rename`.
+- Outcome: `kept`.
+- Summary: Task 10: Wire Tier 1 rename with workspace priming and ambiguity handling; smoke test confirmed FormatGreeting→BuildGreeting across two files.
