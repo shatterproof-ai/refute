@@ -160,3 +160,9 @@
 - Branch: `go-code-actions-10-tier1-rename`.
 - Outcome: `kept`.
 - Summary: Task 10: Wire Tier 1 rename with workspace priming and ambiguity handling; smoke test confirmed FormatGreeting→BuildGreeting across two files.
+
+
+### 2026-04-26T23:30:00Z — Closed task
+- Branch: `go-code-actions-11-extract-cli`.
+- Outcome: `kept`.
+- Summary: Task 11: Add extract-function and extract-variable CLI commands; both appear in --help; 51 tests pass.

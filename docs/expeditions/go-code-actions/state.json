@@ -1,35 +1,25 @@
 {
-  "active_branches": [
-    {
-      "base_head": "b67defdccec92734d83d65858b52541cbddd5924",
-      "branch": "go-code-actions-11-extract-cli",
-      "kind": "task",
-      "number": 11,
-      "slug": "extract-cli",
-      "started_at": "2026-04-27T02:19:56Z",
-      "worktree": "/home/ketan/project/go-code-actions-11-extract-cli"
-    }
-  ],
+  "active_branches": [],
   "base_branch": "go-code-actions",
   "base_worktree": "/home/ketan/project/refute-go-code-actions",
   "created_at": "2026-04-21T00:18:24Z",
   "expedition": "go-code-actions",
   "landing_lease": null,
   "last_completed": {
-    "branch": "go-code-actions-10-tier1-rename",
-    "completed_at": "2026-04-26T23:00:00Z",
+    "branch": "go-code-actions-11-extract-cli",
+    "completed_at": "2026-04-26T23:30:00Z",
     "kind": "task",
-    "number": 10,
+    "number": 11,
     "outcome": "kept",
-    "slug": "tier1-rename",
-    "summary": "Task 10: Wire Tier 1 rename with PrimeWorkspace + ambiguity handling; smoke test confirmed.",
-    "worktree": "/home/ketan/project/go-code-actions-10-tier1-rename"
+    "slug": "extract-cli",
+    "summary": "Task 11: Add extract-function and extract-variable CLI commands via buildBackend.",
+    "worktree": "/home/ketan/project/go-code-actions-11-extract-cli"
   },
-  "next_action": "Complete work on `go-code-actions-11-extract-cli` in `/home/ketan/project/go-code-actions-11-extract-cli`.",
+  "next_action": "Create the next task branch from the expedition base branch.",
   "next_task_number": 12,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 2,
-  "status": "task_in_progress",
-  "updated_at": "2026-04-27T02:19:56Z"
+  "status": "ready_for_task",
+  "updated_at": "2026-04-26T23:30:00Z"
 }
