@@ -172,3 +172,9 @@
 - Branch: `go-code-actions-11-extract-cli`.
 - Outcome: `kept`.
 - Summary: Task 11: Add extract-function and extract-variable CLI commands; both appear in --help; 51 tests pass.
+
+
+### 2026-04-27T00:00:00Z — Closed task
+- Branch: `go-code-actions-12-inline-cli`.
+- Outcome: `kept`.
+- Summary: Task 12: Add inline CLI command; appears in --help; 51 tests pass.
