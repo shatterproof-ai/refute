@@ -384,6 +384,46 @@ func TestEndToEnd_RenameTypeScriptTSXComponent(t *testing.T) {
 	}
 }
 
+func TestEndToEnd_RenameTypeScriptMethodBySymbol(t *testing.T) {
+	srcDir := filepath.Join("../testdata/fixtures/typescript/rename")
+	requireFixtureTypeScriptLanguageServer(t, srcDir)
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+	linkFixtureNodeModules(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	personFile := filepath.Join(dir, "src", "person.ts")
+	cmd := exec.Command(refuteBin,
+		"rename-method",
+		"--file", personFile,
+		"--symbol", "Person.greet",
+		"--new-name", "salute",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+
+	personContent, _ := os.ReadFile(personFile)
+	if strings.Contains(string(personContent), "greet(): string") {
+		t.Error("person.ts still contains method name 'greet'")
+	}
+	if !strings.Contains(string(personContent), "salute(): string") {
+		t.Error("person.ts missing method name 'salute'")
+	}
+
+	mainFile := filepath.Join(dir, "src", "main.ts")
+	mainContent, _ := os.ReadFile(mainFile)
+	if strings.Contains(string(mainContent), ".greet()") {
+		t.Error("main.ts still contains '.greet()' after Tier 1 rename")
+	}
+	if !strings.Contains(string(mainContent), ".salute()") {
+		t.Error("main.ts missing '.salute()' after Tier 1 rename")
+	}
+}
+
 func TestEndToEnd_RenameJavaScriptFunction(t *testing.T) {
 	srcDir := filepath.Join("../testdata/fixtures/javascript/rename")
 	requireFixtureTypeScriptLanguageServer(t, srcDir)
@@ -422,6 +462,46 @@ func TestEndToEnd_RenameJavaScriptFunction(t *testing.T) {
 	}
 	if !strings.Contains(string(mainContent), "add") {
 		t.Error("main.js missing 'add' after cross-file rename")
+	}
+}
+
+func TestEndToEnd_RenameJavaScriptFunctionBySymbol(t *testing.T) {
+	srcDir := filepath.Join("../testdata/fixtures/javascript/rename")
+	requireFixtureTypeScriptLanguageServer(t, srcDir)
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+	linkFixtureNodeModules(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	mathFile := filepath.Join(dir, "src", "math.js")
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", mathFile,
+		"--symbol", "sum",
+		"--new-name", "add",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+
+	mathContent, _ := os.ReadFile(mathFile)
+	if strings.Contains(string(mathContent), "sum") {
+		t.Error("math.js still contains 'sum'")
+	}
+	if !strings.Contains(string(mathContent), "add") {
+		t.Error("math.js missing 'add'")
+	}
+
+	mainFile := filepath.Join(dir, "src", "main.js")
+	mainContent, _ := os.ReadFile(mainFile)
+	if strings.Contains(string(mainContent), "sum") {
+		t.Error("main.js still contains 'sum' after Tier 1 rename")
+	}
+	if !strings.Contains(string(mainContent), "add") {
+		t.Error("main.js missing 'add' after Tier 1 rename")
 	}
 }
 
@@ -828,7 +908,7 @@ func copyDir(t *testing.T, src, dst string) {
 		t.Fatalf("reading %s: %v", src, err)
 	}
 	for _, e := range entries {
-		if e.IsDir() && e.Name() == "node_modules" {
+		if e.Name() == "node_modules" {
 			continue
 		}
 		srcPath := filepath.Join(src, e.Name())

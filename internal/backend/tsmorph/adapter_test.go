@@ -43,6 +43,68 @@ func TestAdapterRename(t *testing.T) {
 	}
 }
 
+func TestAdapterFindSymbolTypeScriptMethod(t *testing.T) {
+	if !tsmorph.Available() {
+		t.Skip("ts-morph backend not installed")
+	}
+
+	srcDir := filepath.Join("..", "..", "..", "testdata", "fixtures", "typescript", "rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+	linkNodeModules(t, srcDir, dir)
+
+	adapter := tsmorph.NewAdapter()
+	if err := adapter.Initialize(dir); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+
+	locs, err := adapter.FindSymbol(symbol.Query{
+		QualifiedName: "Person.greet",
+		File:          filepath.Join(dir, "src", "person.ts"),
+		Kind:          symbol.KindMethod,
+	})
+	if err != nil {
+		t.Fatalf("FindSymbol: %v", err)
+	}
+	if len(locs) != 1 {
+		t.Fatalf("expected 1 location, got %d", len(locs))
+	}
+	if got := locs[0]; got.Name != "greet" || got.Line != 4 {
+		t.Fatalf("unexpected location: %+v", got)
+	}
+}
+
+func TestAdapterFindSymbolJavaScriptFunction(t *testing.T) {
+	if !tsmorph.Available() {
+		t.Skip("ts-morph backend not installed")
+	}
+
+	srcDir := filepath.Join("..", "..", "..", "testdata", "fixtures", "javascript", "rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+	linkNodeModules(t, srcDir, dir)
+
+	adapter := tsmorph.NewAdapter()
+	if err := adapter.Initialize(dir); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+
+	locs, err := adapter.FindSymbol(symbol.Query{
+		QualifiedName: "sum",
+		File:          filepath.Join(dir, "src", "math.js"),
+		Kind:          symbol.KindFunction,
+	})
+	if err != nil {
+		t.Fatalf("FindSymbol: %v", err)
+	}
+	if len(locs) != 1 {
+		t.Fatalf("expected 1 location, got %d", len(locs))
+	}
+	if got := locs[0]; got.Name != "sum" || got.Line != 1 {
+		t.Fatalf("unexpected location: %+v", got)
+	}
+}
+
 func copyDir(t *testing.T, src, dst string) {
 	t.Helper()
 	entries, err := os.ReadDir(src)
@@ -50,7 +112,7 @@ func copyDir(t *testing.T, src, dst string) {
 		t.Fatalf("reading %s: %v", src, err)
 	}
 	for _, e := range entries {
-		if e.IsDir() && e.Name() == "node_modules" {
+		if e.Name() == "node_modules" {
 			continue
 		}
 		srcPath := filepath.Join(src, e.Name())
