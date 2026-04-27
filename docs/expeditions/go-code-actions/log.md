@@ -130,16 +130,22 @@
 - Base head at branch creation: `3715350018e3868cce9b2c7cb4c9b0062397ac4d`.
 
 
+### 2026-04-27T02:19:56Z — Started task
+- Branch: `go-code-actions-11-extract-cli`.
+- Worktree: `/home/ketan/project/go-code-actions-11-extract-cli`.
+- Base head at branch creation: `b67defdccec92734d83d65858b52541cbddd5924`.
+
+
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `go-code-actions`
 - Status: `task_in_progress`
 - Base branch: `go-code-actions`
 - Base worktree: `/home/ketan/project/refute-go-code-actions`
-- Active task branch: `go-code-actions-10-tier1-rename`
-- Active task worktree: `/home/ketan/project/go-code-actions-10-tier1-rename`
-- Last completed: `go-code-actions-09-rename-refactor (kept)`
-- Next action: Complete work on `go-code-actions-10-tier1-rename` in `/home/ketan/project/go-code-actions-10-tier1-rename`.
+- Active task branch: `go-code-actions-11-extract-cli`
+- Active task worktree: `/home/ketan/project/go-code-actions-11-extract-cli`
+- Last completed: `go-code-actions-10-tier1-rename (kept)`
+- Next action: Complete work on `go-code-actions-11-extract-cli` in `/home/ketan/project/go-code-actions-11-extract-cli`.
 <!-- expedition-resume:end -->
 
 
