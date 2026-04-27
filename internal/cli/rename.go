@@ -8,6 +8,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
+	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/backend/selector"
 	"github.com/shatterproof-ai/refute/internal/config"
 	"github.com/shatterproof-ai/refute/internal/edit"
@@ -21,6 +22,7 @@ var (
 	flagName    string
 	flagNewName string
 	flagSymbol  string
+	flagJSON    bool
 )
 
 func addRenameFlags(cmd *cobra.Command) {
@@ -29,8 +31,9 @@ func addRenameFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&flagCol, "col", 0, "column number (1-indexed, optional)")
 	cmd.Flags().StringVar(&flagName, "name", "", "symbol name to find on the line")
 	cmd.Flags().StringVar(&flagNewName, "new-name", "", "new name for the symbol")
-	cmd.Flags().StringVar(&flagSymbol, "symbol", "", "qualified symbol name (e.g., ClassName.method)")
-	cmd.MarkFlagRequired("new-name")
+	cmd.Flags().StringVar(&flagSymbol, "symbol", "", "qualified symbol name (e.g., pkg.Func or Type.Method)")
+	cmd.Flags().BoolVar(&flagJSON, "json", false, "emit structured JSON instead of human-readable output")
+	_ = cmd.MarkFlagRequired("new-name")
 }
 
 func makeRenameCmd(use string, kind symbol.SymbolKind) *cobra.Command {
@@ -46,10 +49,9 @@ func makeRenameCmd(use string, kind symbol.SymbolKind) *cobra.Command {
 }
 
 func init() {
-	// Generic rename (requires exact position).
 	renameCmd := &cobra.Command{
 		Use:   "rename",
-		Short: "Rename a symbol (kind-agnostic, requires --file --line --col)",
+		Short: "Rename a symbol (kind-agnostic)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRename(symbol.KindUnknown)
 		},
@@ -67,7 +69,6 @@ func init() {
 }
 
 func runRename(kind symbol.SymbolKind) error {
-	// Build the symbol query from flags.
 	query := symbol.Query{
 		QualifiedName: flagSymbol,
 		File:          flagFile,
@@ -77,7 +78,6 @@ func runRename(kind symbol.SymbolKind) error {
 		Kind:          kind,
 	}
 
-	// Resolve file path to absolute.
 	if query.File != "" {
 		abs, err := filepath.Abs(query.File)
 		if err != nil {
@@ -86,45 +86,62 @@ func runRename(kind symbol.SymbolKind) error {
 		query.File = abs
 	}
 
-	// Resolve the symbol to a concrete location.
+	// Tier 1 handled separately (Task 10) — stub here until then.
+	if query.Tier() == 1 {
+		return fmt.Errorf("tier 1 rename not yet wired in; this task is pure refactor")
+	}
+
 	loc, err := symbol.Resolve(query)
 	if err != nil {
 		return fmt.Errorf("symbol resolution: %w", err)
 	}
 
-	// Determine workspace root (walk up to find go.mod or similar).
-	workspaceRoot, err := FindWorkspaceRootFromFile(loc.File)
+	b, workspaceRoot, err := buildBackend(loc.File)
 	if err != nil {
 		return err
 	}
+	defer b.Shutdown()
 
-	// Load config.
+	return finishRename(b, workspaceRoot, loc, flagNewName)
+}
+
+// buildBackend selects and initializes a refactoring backend for the given file.
+func buildBackend(filePath string) (backend.RefactoringBackend, string, error) {
+	workspaceRoot, err := FindWorkspaceRootFromFile(filePath)
+	if err != nil {
+		return nil, "", err
+	}
 	cfg, err := config.Load(flagConfig, workspaceRoot)
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return nil, "", fmt.Errorf("loading config: %w", err)
 	}
-
-	sel, err := selector.ForFile(cfg, workspaceRoot, loc.File)
+	sel, err := selector.ForFile(cfg, workspaceRoot, filePath)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
-
 	if err := sel.Backend.Initialize(workspaceRoot); err != nil {
-		return fmt.Errorf("initializing backend: %w", err)
+		return nil, "", fmt.Errorf("initializing backend: %w", err)
 	}
-	defer sel.Backend.Shutdown()
+	return sel.Backend, workspaceRoot, nil
+}
 
-	// Perform the rename.
-	we, err := sel.Backend.Rename(loc, flagNewName)
+// finishRename requests the rename edit and routes it through the output pipeline.
+func finishRename(b backend.RefactoringBackend, workspaceRoot string, loc symbol.Location, newName string) error {
+	we, err := b.Rename(loc, newName)
 	if err != nil {
 		return fmt.Errorf("rename failed: %w", err)
 	}
-
 	if len(we.FileEdits) == 0 {
 		return NoEditsError()
 	}
+	return applyOrPreview(we, workspaceRoot)
+}
 
-	// Dry-run: show diff and exit.
+// applyOrPreview emits the result per --dry-run/--json/default flags.
+func applyOrPreview(we *edit.WorkspaceEdit, workspaceRoot string) error {
+	if flagJSON {
+		return emitJSON(we, statusForFlags())
+	}
 	if flagDryRun {
 		diff, err := edit.RenderDiff(we)
 		if err != nil {
@@ -133,14 +150,10 @@ func runRename(kind symbol.SymbolKind) error {
 		fmt.Print(diff)
 		return nil
 	}
-
-	// Apply edits.
 	result, err := edit.Apply(we)
 	if err != nil {
 		return fmt.Errorf("applying edits: %w", err)
 	}
-
-	// Print summary.
 	green := color.New(color.FgGreen).SprintFunc()
 	fmt.Fprintf(os.Stderr, "%s Modified %d file(s):", green("ok"), result.FilesModified)
 	for _, fe := range we.FileEdits {
@@ -151,14 +164,32 @@ func runRename(kind symbol.SymbolKind) error {
 		fmt.Fprintf(os.Stderr, " %s", rel)
 	}
 	fmt.Fprintln(os.Stderr)
-
 	if flagVerbose {
-		diff, err := edit.RenderDiff(we)
-		if err == nil && diff != "" {
+		if diff, err := edit.RenderDiff(we); err == nil && diff != "" {
 			fmt.Print(diff)
 		}
 	}
-
 	return nil
 }
 
+func statusForFlags() string {
+	if flagDryRun {
+		return "dry-run"
+	}
+	return "applied"
+}
+
+func emitJSON(we *edit.WorkspaceEdit, status string) error {
+	res := edit.RenderJSON(we, status)
+	if !flagDryRun {
+		if _, err := edit.Apply(we); err != nil {
+			return fmt.Errorf("applying edits: %w", err)
+		}
+	}
+	data, err := res.Marshal()
+	if err != nil {
+		return fmt.Errorf("marshalling JSON: %w", err)
+	}
+	fmt.Println(string(data))
+	return nil
+}
