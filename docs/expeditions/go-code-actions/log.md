@@ -135,3 +135,10 @@
 - Last completed: `go-code-actions-08-json-output (kept)`
 - Next action: Complete work on `go-code-actions-09-rename-refactor` in `/home/ketan/project/go-code-actions-09-rename-refactor`.
 <!-- expedition-resume:end -->
+
+
+### 2026-04-26T22:30:00Z — Closed task
+- Branch: `go-code-actions-09-rename-refactor`.
+- Outcome: `kept`.
+- Summary: Task 9: Extract buildBackend/finishRename/applyOrPreview/emitJSON helpers; add --json flag; Tier 1 stub. Adapted plan's buildAdapter (lsp.NewAdapter) to buildBackend (selector.ForFile) to preserve backend selector support.
+- Merged directly into base without primary rebase (base already current from task 8 merge-of-main).
