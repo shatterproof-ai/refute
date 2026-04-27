@@ -1,5 +1,15 @@
 {
-  "active_branches": [],
+  "active_branches": [
+    {
+      "base_head": "06420019168e815649a5df4658c7fbbb1d30495d",
+      "branch": "go-code-actions-12-inline-cli",
+      "kind": "task",
+      "number": 12,
+      "slug": "inline-cli",
+      "started_at": "2026-04-27T02:31:26Z",
+      "worktree": "/home/ketan/project/go-code-actions-12-inline-cli"
+    }
+  ],
   "base_branch": "go-code-actions",
   "base_worktree": "/home/ketan/project/refute-go-code-actions",
   "created_at": "2026-04-21T00:18:24Z",
@@ -15,11 +25,11 @@
     "summary": "Task 11: Add extract-function and extract-variable CLI commands via buildBackend.",
     "worktree": "/home/ketan/project/go-code-actions-11-extract-cli"
   },
-  "next_action": "Create the next task branch from the expedition base branch.",
-  "next_task_number": 12,
+  "next_action": "Complete work on `go-code-actions-12-inline-cli` in `/home/ketan/project/go-code-actions-12-inline-cli`.",
+  "next_task_number": 13,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 2,
-  "status": "ready_for_task",
-  "updated_at": "2026-04-26T23:30:00Z"
+  "status": "task_in_progress",
+  "updated_at": "2026-04-27T02:31:26Z"
 }
