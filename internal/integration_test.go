@@ -3,6 +3,7 @@
 package internal_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -799,5 +800,143 @@ func copyDir(t *testing.T, src, dst string) {
 			}
 			os.WriteFile(dstPath, data, 0644)
 		}
+	}
+}
+
+func TestEndToEnd_ExtractFunction(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+	srcDir := "../testdata/fixtures/go/rename"
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	mainFile := filepath.Join(dir, "main.go")
+
+	// Line 7: "\tresult := 6*7 + 1"
+	// gopls only offers refactor.extract.function on a full statement,
+	// so the range covers "result := 6*7 + 1" (col 2 after the tab through col 19).
+	cmd := exec.Command(refuteBin,
+		"extract-function",
+		"--file", mainFile,
+		"--start-line", "7",
+		"--start-col", "2",
+		"--end-line", "7",
+		"--end-col", "19",
+		"--name", "computeResult",
+	)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("extract-function: %s\n%s", err, out)
+	}
+
+	goCheck := exec.Command("go", "build", "./...")
+	goCheck.Dir = dir
+	if out, err := goCheck.CombinedOutput(); err != nil {
+		t.Fatalf("project does not compile after extract:\n%s", out)
+	}
+
+	mainContent, _ := os.ReadFile(mainFile)
+	if !strings.Contains(string(mainContent), "computeResult") {
+		t.Errorf("expected 'computeResult' in main.go after extract, got:\n%s", mainContent)
+	}
+}
+
+func TestEndToEnd_Tier1Rename(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+	srcDir := "../testdata/fixtures/go/rename"
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--symbol", "FormatGreeting",
+		"--new-name", "BuildGreeting",
+	)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("tier 1 rename: %s\n%s", err, out)
+	}
+
+	helperContent, _ := os.ReadFile(filepath.Join(dir, "util", "helper.go"))
+	if strings.Contains(string(helperContent), "FormatGreeting") {
+		t.Error("helper.go still contains FormatGreeting")
+	}
+	mainContent, _ := os.ReadFile(filepath.Join(dir, "main.go"))
+	if strings.Contains(string(mainContent), "FormatGreeting") {
+		t.Error("main.go still contains FormatGreeting")
+	}
+
+	goCheck := exec.Command("go", "build", "./...")
+	goCheck.Dir = dir
+	if out, err := goCheck.CombinedOutput(); err != nil {
+		t.Fatalf("project does not compile after rename:\n%s", out)
+	}
+}
+
+func TestEndToEnd_Tier1NotFound(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+	srcDir := "../testdata/fixtures/go/rename"
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--symbol", "DoesNotExistAnywhere",
+		"--new-name", "StillDoesNotExist",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected error for nonexistent symbol, got success:\n%s", out)
+	}
+	if !strings.Contains(string(out), "symbol not found") {
+		t.Errorf("expected 'symbol not found' in output, got:\n%s", out)
+	}
+}
+
+func TestEndToEnd_JSONOutput(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+	srcDir := "../testdata/fixtures/go/rename"
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	helperFile := filepath.Join(dir, "util", "helper.go")
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", helperFile,
+		"--line", "4",
+		"--name", "FormatGreeting",
+		"--new-name", "BuildGreeting",
+		"--json",
+		"--dry-run",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("rename --json --dry-run: %s\n%s", err, out)
+	}
+	var parsed struct {
+		Status        string `json:"status"`
+		FilesModified int    `json:"filesModified"`
+	}
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("parsing JSON: %v\nraw:\n%s", err, out)
+	}
+	if parsed.Status != "dry-run" {
+		t.Errorf("status = %q, want dry-run", parsed.Status)
+	}
+	if parsed.FilesModified < 2 {
+		t.Errorf("filesModified = %d, want >= 2 (helper.go + main.go)", parsed.FilesModified)
 	}
 }

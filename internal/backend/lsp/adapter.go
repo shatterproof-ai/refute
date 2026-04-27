@@ -329,6 +329,7 @@ func (a *Adapter) resolveAction(action CodeAction) (*edit.WorkspaceEdit, error) 
 }
 
 func findExtractPlaceholder(we *edit.WorkspaceEdit, kind string) string {
+	var last string
 	for _, fe := range we.FileEdits {
 		for _, te := range fe.Edits {
 			if te.NewText == "" {
@@ -337,7 +338,11 @@ func findExtractPlaceholder(we *edit.WorkspaceEdit, kind string) string {
 			var id string
 			switch kind {
 			case "function":
-				id = matchIdentAfter(te.NewText, "func ")
+				// gopls appends the extracted helper after existing code, so
+				// take the last `func <ident>` across all edits to avoid
+				// matching a pre-existing function (e.g. `main`) that happens
+				// to fall inside a wider replacement range.
+				id = matchLastIdentAfter(te.NewText, "func ")
 			case "variable":
 				id = matchIdentBefore(te.NewText, " :=")
 				if id == "" {
@@ -345,11 +350,11 @@ func findExtractPlaceholder(we *edit.WorkspaceEdit, kind string) string {
 				}
 			}
 			if id != "" {
-				return id
+				last = id
 			}
 		}
 	}
-	return ""
+	return last
 }
 
 func matchIdentAfter(s, needle string) string {
@@ -366,6 +371,25 @@ func matchIdentAfter(s, needle string) string {
 		return ""
 	}
 	return rest[:end]
+}
+
+func matchLastIdentAfter(s, needle string) string {
+	var last string
+	for i := 0; ; {
+		j := strings.Index(s[i:], needle)
+		if j < 0 {
+			return last
+		}
+		rest := s[i+j+len(needle):]
+		end := 0
+		for end < len(rest) && isIdentByte(rest[end]) {
+			end++
+		}
+		if end > 0 {
+			last = rest[:end]
+		}
+		i = i + j + len(needle)
+	}
 }
 
 func matchIdentBefore(s, needle string) string {
