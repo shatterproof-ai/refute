@@ -184,3 +184,9 @@
 - Branch: `go-code-actions-12-inline-cli`.
 - Outcome: `kept`.
 - Summary: Task 12: Add inline CLI command; appears in --help; 51 tests pass.
+
+
+### 2026-04-27T15:00:00Z — Closed task
+- Branch: `go-code-actions-13-e2e-tests`.
+- Outcome: `kept`.
+- Summary: Task 13: Add 4 E2E tests (ExtractFunction, Tier1Rename, Tier1NotFound, JSONOutput). Found and fixed latent placeholder-rename bug in lsp.findExtractPlaceholder where the first `func <ident>` match could be a pre-existing function (e.g. main); now picks the last match (gopls's appended helper). Adjusted plan-suggested column range from 12-19 (expression-only, gopls offers only refactor.extract.constant) to 2-19 (full statement, gopls offers refactor.extract.function). Restored util.User/NewUser usages in fixture main.go to keep RenameGoType test green. 64 tests pass with -tags integration.
