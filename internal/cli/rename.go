@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
+	"github.com/shatterproof-ai/refute/internal/backend/lsp"
 	"github.com/shatterproof-ai/refute/internal/backend/selector"
 	"github.com/shatterproof-ai/refute/internal/config"
 	"github.com/shatterproof-ai/refute/internal/edit"
@@ -86,9 +87,8 @@ func runRename(kind symbol.SymbolKind) error {
 		query.File = abs
 	}
 
-	// Tier 1 handled separately (Task 10) — stub here until then.
 	if query.Tier() == 1 {
-		return fmt.Errorf("tier 1 rename not yet wired in; this task is pure refactor")
+		return runRenameTier1(query)
 	}
 
 	loc, err := symbol.Resolve(query)
@@ -192,4 +192,90 @@ func emitJSON(we *edit.WorkspaceEdit, status string) error {
 	}
 	fmt.Println(string(data))
 	return nil
+}
+
+func runRenameTier1(query symbol.Query) error {
+	workspaceRoot, err := tier1WorkspaceRoot()
+	if err != nil {
+		return err
+	}
+
+	language := "go"
+	if query.File != "" {
+		language = DetectServerKey(query.File)
+	}
+	if language == "" {
+		language = "go" // fallback for naked --symbol without --file
+	}
+
+	cfg, err := config.Load(flagConfig, workspaceRoot)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	serverCfg := cfg.Server(language)
+	if serverCfg.Command == "" {
+		return fmt.Errorf("no server configured for language %q", language)
+	}
+
+	adapter := lsp.NewAdapter(serverCfg, language, nil)
+	if err := adapter.Initialize(workspaceRoot); err != nil {
+		return fmt.Errorf("initializing backend: %w", err)
+	}
+	defer adapter.Shutdown()
+
+	// Prime so workspace/symbol sees the whole module.
+	if _, err := adapter.PrimeWorkspace(workspaceRoot); err != nil {
+		return fmt.Errorf("priming workspace: %w", err)
+	}
+
+	locs, err := adapter.FindSymbol(query)
+	if err != nil {
+		return fmt.Errorf("symbol resolution: %w", err)
+	}
+	if len(locs) > 1 {
+		return ambiguousError(locs)
+	}
+	return finishRename(adapter, workspaceRoot, locs[0], flagNewName)
+}
+
+// tier1WorkspaceRoot resolves the workspace root for a Tier 1 query.
+// If --file is provided, walk up from it; otherwise walk up from cwd.
+func tier1WorkspaceRoot() (string, error) {
+	if flagFile != "" {
+		abs, err := filepath.Abs(flagFile)
+		if err != nil {
+			return "", err
+		}
+		return FindWorkspaceRootFromDir(filepath.Dir(abs))
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("getting working directory: %w", err)
+	}
+	return FindWorkspaceRootFromDir(cwd)
+}
+
+// ambiguousError formats a Tier 1 ambiguity result. In JSON mode, emit a
+// structured candidates list; otherwise print a human-readable message.
+func ambiguousError(locs []symbol.Location) error {
+	if flagJSON {
+		res := &edit.JSONResult{Status: "ambiguous"}
+		for _, l := range locs {
+			res.Candidates = append(res.Candidates, edit.JSONSymbolLoc{
+				File:   l.File,
+				Line:   l.Line,
+				Column: l.Column,
+				Name:   l.Name,
+			})
+		}
+		data, _ := res.Marshal()
+		fmt.Println(string(data))
+		return &ExitCodeError{Code: 1}
+	}
+	msg := "Ambiguous — multiple candidates:\n"
+	for _, l := range locs {
+		msg += fmt.Sprintf("  %s:%d:%d  %s\n", l.File, l.Line, l.Column, l.Name)
+	}
+	msg += "Use --file and --line to narrow the selection."
+	return &ExitCodeError{Code: 1, Message: msg}
 }

@@ -480,3 +480,16 @@ func (a *Adapter) Capabilities() []backend.Capability {
 		{Operation: "rename"},
 	}
 }
+
+// PrimeWorkspace explicitly primes the workspace for Tier 1 queries.
+// For Go, this calls PrimeGoWorkspace to open all packages via workspace/symbol.
+// For other languages, priming happens during Initialize.
+func (a *Adapter) PrimeWorkspace(workspaceRoot string) (int, error) {
+	if a.client == nil {
+		return 0, fmt.Errorf("adapter not initialized")
+	}
+	if a.languageID == "go" {
+		return a.client.PrimeGoWorkspace(workspaceRoot)
+	}
+	return 0, nil
+}
