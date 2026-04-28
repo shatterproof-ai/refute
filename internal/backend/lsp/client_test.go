@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shatterproof-ai/refute/internal/backend/lsp"
@@ -61,6 +62,87 @@ func TestClient_Initialize(t *testing.T) {
 
 	if !client.RenameProvider() {
 		t.Error("expected RenameProvider capability to be true from gopls")
+	}
+}
+
+func TestClient_CodeActions(t *testing.T) {
+	requireGopls(t)
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"),
+		[]byte("module example.com/test\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	mainSrc := `package main
+
+func main() {
+	x := 1 + 2
+	println(x)
+}
+`
+	mainFile := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(mainFile, []byte(mainSrc), 0o644); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+
+	client, err := lsp.StartClient("gopls", []string{"serve"}, dir)
+	if err != nil {
+		t.Fatalf("StartClient: %v", err)
+	}
+	defer client.Shutdown()
+
+	if err := client.DidOpen(mainFile, "go"); err != nil {
+		t.Fatalf("DidOpen: %v", err)
+	}
+
+	// "1 + 2" is on 0-indexed line 3, columns 6-11 (after "\tx := ").
+	actions, err := client.CodeActions(mainFile, 3, 6, 3, 11, []string{"refactor.extract"})
+	if err != nil {
+		t.Fatalf("CodeActions: %v", err)
+	}
+	if len(actions) == 0 {
+		t.Fatal("expected at least one extract action")
+	}
+	found := false
+	for _, a := range actions {
+		if strings.Contains(strings.ToLower(a.Title), "extract") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("no extract action in results: %v", actions)
+	}
+}
+
+func TestClient_WorkspaceSymbol(t *testing.T) {
+	requireGopls(t)
+	dir := setupGoProject(t)
+
+	client, err := lsp.StartClient("gopls", []string{"serve"}, dir)
+	if err != nil {
+		t.Fatalf("StartClient: %v", err)
+	}
+	defer client.Shutdown()
+
+	// Prime gopls: workspace/symbol only searches loaded packages.
+	if err := client.DidOpen(filepath.Join(dir, "main.go"), "go"); err != nil {
+		t.Fatalf("DidOpen: %v", err)
+	}
+
+	syms, err := client.WorkspaceSymbol("oldName")
+	if err != nil {
+		t.Fatalf("WorkspaceSymbol: %v", err)
+	}
+	found := false
+	for _, s := range syms {
+		if s.Name == "oldName" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("oldName not in results: %v", syms)
 	}
 }
 

@@ -392,17 +392,40 @@ func (c *Client) initialize(workspaceRoot string) error {
 	}
 	rootURI := fileToURI(absRoot)
 
-	type clientCapabilities struct{}
+	// Advertise code action resolve support so servers like gopls return
+	// refactor.extract actions with resolvable Data (and compute the edit on
+	// codeAction/resolve) instead of command-based actions that require
+	// workspace/executeCommand + server-initiated workspace/applyEdit.
+	capabilities := map[string]any{
+		"textDocument": map[string]any{
+			"codeAction": map[string]any{
+				"dataSupport":    true,
+				"resolveSupport": map[string]any{"properties": []string{"edit"}},
+				"codeActionLiteralSupport": map[string]any{
+					"codeActionKind": map[string]any{
+						"valueSet": []string{
+							"quickfix",
+							"refactor",
+							"refactor.extract",
+							"refactor.inline",
+							"refactor.rewrite",
+							"source",
+						},
+					},
+				},
+			},
+		},
+	}
 	type initParams struct {
-		ProcessID    int                `json:"processId"`
-		RootURI      string             `json:"rootUri"`
-		Capabilities clientCapabilities `json:"capabilities"`
+		ProcessID    int            `json:"processId"`
+		RootURI      string         `json:"rootUri"`
+		Capabilities map[string]any `json:"capabilities"`
 	}
 
 	result, err := c.request("initialize", initParams{
 		ProcessID:    os.Getpid(),
 		RootURI:      rootURI,
-		Capabilities: clientCapabilities{},
+		Capabilities: capabilities,
 	})
 	if err != nil {
 		return fmt.Errorf("initialize request: %w", err)
@@ -530,6 +553,100 @@ func (c *Client) Shutdown() error {
 // RenameProvider returns true if the server advertised rename support.
 func (c *Client) RenameProvider() bool {
 	return c.serverCaps.RenameProvider
+}
+
+// CodeAction is an LSP code action (refactoring, quick fix, etc.).
+type CodeAction struct {
+	Title   string           `json:"title"`
+	Kind    string           `json:"kind,omitempty"`
+	Edit    *json.RawMessage `json:"edit,omitempty"`
+	Data    *json.RawMessage `json:"data,omitempty"`
+	Command *json.RawMessage `json:"command,omitempty"`
+}
+
+// WorkspaceSymbolInfo is a single result from workspace/symbol.
+type WorkspaceSymbolInfo struct {
+	Name          string `json:"name"`
+	Kind          int    `json:"kind"`
+	ContainerName string `json:"containerName"`
+	Location      struct {
+		URI   string `json:"uri"`
+		Range struct {
+			Start struct {
+				Line      int `json:"line"`
+				Character int `json:"character"`
+			} `json:"start"`
+		} `json:"range"`
+	} `json:"location"`
+}
+
+// CodeActions requests code actions for a range. kinds filters by action kind
+// prefix (e.g., []string{"refactor.extract"} returns only extract actions).
+// All positions are 0-indexed (LSP convention).
+func (c *Client) CodeActions(filePath string, startLine, startChar, endLine, endChar int, kinds []string) ([]CodeAction, error) {
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("abs path: %w", err)
+	}
+
+	params := map[string]any{
+		"textDocument": map[string]any{"uri": fileToURI(absPath)},
+		"range": map[string]any{
+			"start": map[string]any{"line": startLine, "character": startChar},
+			"end":   map[string]any{"line": endLine, "character": endChar},
+		},
+		"context": map[string]any{
+			"diagnostics": []any{},
+			"only":        kinds,
+		},
+	}
+	result, err := c.request("textDocument/codeAction", params)
+	if err != nil {
+		return nil, err
+	}
+	if len(result) == 0 || string(result) == "null" {
+		return nil, nil
+	}
+	var actions []CodeAction
+	if err := json.Unmarshal(result, &actions); err != nil {
+		return nil, fmt.Errorf("parsing code actions: %w", err)
+	}
+	return actions, nil
+}
+
+// ResolveCodeActionEdit resolves a code action to its file edits. Use when the
+// action returned by CodeActions has no Edit field attached.
+func (c *Client) ResolveCodeActionEdit(action CodeAction) ([]edit.FileEdit, error) {
+	result, err := c.request("codeAction/resolve", action)
+	if err != nil {
+		return nil, err
+	}
+	var resolved CodeAction
+	if err := json.Unmarshal(result, &resolved); err != nil {
+		return nil, fmt.Errorf("parsing resolved code action: %w", err)
+	}
+	if resolved.Edit == nil {
+		return nil, fmt.Errorf("resolved code action %q has no edit", resolved.Title)
+	}
+	return parseWorkspaceEdit(*resolved.Edit)
+}
+
+// WorkspaceSymbol queries the server for symbols matching query. Results are
+// limited to packages the server has already loaded — callers that need broad
+// coverage should prime the workspace first.
+func (c *Client) WorkspaceSymbol(query string) ([]WorkspaceSymbolInfo, error) {
+	result, err := c.request("workspace/symbol", map[string]any{"query": query})
+	if err != nil {
+		return nil, err
+	}
+	if len(result) == 0 || string(result) == "null" {
+		return nil, nil
+	}
+	var syms []WorkspaceSymbolInfo
+	if err := json.Unmarshal(result, &syms); err != nil {
+		return nil, fmt.Errorf("parsing workspace symbols: %w", err)
+	}
+	return syms, nil
 }
 
 // parseWorkspaceEdit converts an LSP WorkspaceEdit JSON result into []edit.FileEdit.

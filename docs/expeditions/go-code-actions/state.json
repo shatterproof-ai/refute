@@ -1,0 +1,25 @@
+{
+  "active_branches": [],
+  "base_branch": "go-code-actions",
+  "base_worktree": "/home/ketan/project/refute-go-code-actions",
+  "created_at": "2026-04-21T00:18:24Z",
+  "expedition": "go-code-actions",
+  "landing_lease": null,
+  "last_completed": {
+    "branch": "go-code-actions-14-position-encoding",
+    "completed_at": "2026-04-27T16:20:00Z",
+    "kind": "task",
+    "number": 14,
+    "outcome": "kept",
+    "slug": "position-encoding",
+    "summary": "Task 14: Add docs/position-encoding.md documenting the current byte-column vs UTF-16 mismatch and deferred Unicode-safe conversion.",
+    "worktree": "/home/ketan/.local/share/worktrees/refute/go-code-actions-14-position-encoding"
+  },
+  "next_action": "Run final verification on go-code-actions, then land the expedition to main.",
+  "next_task_number": null,
+  "preserved_experiments": [],
+  "primary_branch": "main",
+  "schema_version": 2,
+  "status": "ready_to_land",
+  "updated_at": "2026-04-27T16:20:00Z"
+}
