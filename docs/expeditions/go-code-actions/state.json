@@ -6,20 +6,20 @@
   "expedition": "go-code-actions",
   "landing_lease": null,
   "last_completed": {
-    "branch": "go-code-actions-13-e2e-tests",
-    "completed_at": "2026-04-27T15:00:00Z",
+    "branch": "go-code-actions-14-position-encoding",
+    "completed_at": "2026-04-27T16:20:00Z",
     "kind": "task",
-    "number": 13,
+    "number": 14,
     "outcome": "kept",
-    "slug": "e2e-tests",
-    "summary": "Task 13: Add E2E tests for extract, Tier 1 rename, not-found, JSON output; fix latent findExtractPlaceholder bug.",
-    "worktree": "/home/ketan/project/go-code-actions-13-e2e-tests"
+    "slug": "position-encoding",
+    "summary": "Task 14: Add docs/position-encoding.md documenting the current byte-column vs UTF-16 mismatch and deferred Unicode-safe conversion.",
+    "worktree": "/home/ketan/.local/share/worktrees/refute/go-code-actions-14-position-encoding"
   },
-  "next_action": "Start Task 14: create docs/position-encoding.md (plan line 2406).",
-  "next_task_number": 14,
+  "next_action": "Run final verification on go-code-actions, then land the expedition to main.",
+  "next_task_number": null,
   "preserved_experiments": [],
   "primary_branch": "main",
   "schema_version": 2,
-  "status": "idle",
-  "updated_at": "2026-04-27T15:00:00Z"
+  "status": "ready_to_land",
+  "updated_at": "2026-04-27T16:20:00Z"
 }

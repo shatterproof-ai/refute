@@ -151,13 +151,13 @@
 ## RESUME HERE
 <!-- expedition-resume:start -->
 - Expedition: `go-code-actions`
-- Status: `task_in_progress`
+- Status: `ready_to_land`
 - Base branch: `go-code-actions`
 - Base worktree: `/home/ketan/project/refute-go-code-actions`
-- Active task branch: `go-code-actions-13-e2e-tests`
-- Active task worktree: `/home/ketan/project/go-code-actions-13-e2e-tests`
-- Last completed: `go-code-actions-12-inline-cli (kept)`
-- Next action: Complete work on `go-code-actions-13-e2e-tests` in `/home/ketan/project/go-code-actions-13-e2e-tests`.
+- Active task branch: none
+- Active task worktree: none
+- Last completed: `go-code-actions-14-position-encoding (kept)`
+- Next action: Run final verification on `go-code-actions`, then land the expedition to `main`.
 <!-- expedition-resume:end -->
 
 
@@ -190,3 +190,14 @@
 - Branch: `go-code-actions-13-e2e-tests`.
 - Outcome: `kept`.
 - Summary: Task 13: Add 4 E2E tests (ExtractFunction, Tier1Rename, Tier1NotFound, JSONOutput). Found and fixed latent placeholder-rename bug in lsp.findExtractPlaceholder where the first `func <ident>` match could be a pre-existing function (e.g. main); now picks the last match (gopls's appended helper). Adjusted plan-suggested column range from 12-19 (expression-only, gopls offers only refactor.extract.constant) to 2-19 (full statement, gopls offers refactor.extract.function). Restored util.User/NewUser usages in fixture main.go to keep RenameGoType test green. 64 tests pass with -tags integration.
+
+### 2026-04-27T16:10:00Z — Started task
+- Branch: `go-code-actions-14-position-encoding`.
+- Worktree: `/home/ketan/.local/share/worktrees/refute/go-code-actions-14-position-encoding`.
+- Base head at branch creation: `29f1a9c14e38a747ece3f59026ed99b24be8f0dc`.
+
+### 2026-04-27T16:20:00Z — Closed task
+- Branch: `go-code-actions-14-position-encoding`.
+- Outcome: `kept`.
+- Summary: Task 14: Add docs/position-encoding.md describing the current ASCII-only byte-column to UTF-16 mismatch and the deferred Unicode-safe conversion approach.
+- Next action: Run final verification on `go-code-actions`, then land the expedition to `main`.
