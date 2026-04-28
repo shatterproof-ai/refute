@@ -201,3 +201,11 @@
 - Outcome: `kept`.
 - Summary: Task 14: Add docs/position-encoding.md describing the current ASCII-only byte-column to UTF-16 mismatch and the deferred Unicode-safe conversion approach.
 - Next action: Run final verification on `go-code-actions`, then land the expedition to `main`.
+
+
+### 2026-04-28T18:10:07Z — Landed expedition
+- Merge commit: `78c5970` on `main`. Parents: `5ace1f6` (prior main), `509a1ac` (go-code-actions tip).
+- 21 files changed, 2048 insertions(+), 73 deletions(-).
+- Verification: `go test ./...` 52 passed. `go test -tags integration ./...` shows 3 pre-existing Rust failures (`TestEndToEnd_RenameRustFunction`, `TestEndToEnd_RustDryRun`, `TestEndToEnd_RenameRustStruct`) — rust-analyzer settle errors, present on 5ace1f6 prior to merge, unrelated to expedition.
+- Push pending: origin unreachable at landing time.
+- Pre-merge stash on primary checkout: `stash@{0}` "preland: cli local edits superseded by go-code-actions" (overlapping local edits to internal/cli/rename.go and untracked internal/cli/workspace.go).
