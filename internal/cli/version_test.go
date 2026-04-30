@@ -17,11 +17,11 @@ func TestVersionCommand_PrintsAllFields(t *testing.T) {
 	BuildDate = "2026-04-30T00:00:00Z"
 
 	var buf bytes.Buffer
-	versionCmd.SetOut(&buf)
-	versionCmd.SetErr(&buf)
-	versionCmd.SetArgs(nil)
-	if err := versionCmd.Execute(); err != nil {
-		t.Fatalf("versionCmd.Execute: %v", err)
+	RootCmd.SetOut(&buf)
+	RootCmd.SetErr(&buf)
+	RootCmd.SetArgs([]string{"version"})
+	if err := RootCmd.Execute(); err != nil {
+		t.Fatalf("RootCmd.Execute version: %v", err)
 	}
 
 	out := buf.String()
