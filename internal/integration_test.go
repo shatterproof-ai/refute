@@ -927,14 +927,34 @@ func TestEndToEnd_JSONOutput(t *testing.T) {
 		t.Fatalf("rename --json --dry-run: %s\n%s", err, out)
 	}
 	var parsed struct {
+		SchemaVersion string `json:"schemaVersion"`
 		Status        string `json:"status"`
+		Operation     string `json:"operation"`
+		Language      string `json:"language"`
+		Backend       string `json:"backend"`
+		WorkspaceRoot string `json:"workspaceRoot"`
 		FilesModified int    `json:"filesModified"`
 	}
 	if err := json.Unmarshal(out, &parsed); err != nil {
 		t.Fatalf("parsing JSON: %v\nraw:\n%s", err, out)
 	}
+	if parsed.SchemaVersion != "1" {
+		t.Errorf("schemaVersion = %q, want \"1\"", parsed.SchemaVersion)
+	}
 	if parsed.Status != "dry-run" {
 		t.Errorf("status = %q, want dry-run", parsed.Status)
+	}
+	if parsed.Operation != "rename" {
+		t.Errorf("operation = %q, want rename", parsed.Operation)
+	}
+	if parsed.Language != "go" {
+		t.Errorf("language = %q, want go", parsed.Language)
+	}
+	if parsed.Backend != "lsp" {
+		t.Errorf("backend = %q, want lsp", parsed.Backend)
+	}
+	if parsed.WorkspaceRoot == "" {
+		t.Error("workspaceRoot must not be empty")
 	}
 	if parsed.FilesModified < 2 {
 		t.Errorf("filesModified = %d, want >= 2 (helper.go + main.go)", parsed.FilesModified)

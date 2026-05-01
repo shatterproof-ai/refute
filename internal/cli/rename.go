@@ -96,17 +96,18 @@ func runRename(kind symbol.SymbolKind) error {
 		return fmt.Errorf("symbol resolution: %w", err)
 	}
 
-	b, workspaceRoot, err := buildBackend(loc.File)
+	sel, workspaceRoot, err := buildBackend(loc.File)
 	if err != nil {
 		return err
 	}
-	defer b.Shutdown()
+	defer sel.Backend.Shutdown()
 
-	return finishRename(b, workspaceRoot, loc, flagNewName)
+	ctx := contextFromSelection("rename", sel, workspaceRoot)
+	return finishRename(sel.Backend, ctx, loc, flagNewName)
 }
 
 // buildBackend selects and initializes a refactoring backend for the given file.
-func buildBackend(filePath string) (backend.RefactoringBackend, string, error) {
+func buildBackend(filePath string) (*selector.Selection, string, error) {
 	workspaceRoot, err := FindWorkspaceRootFromFile(filePath)
 	if err != nil {
 		return nil, "", err
@@ -122,11 +123,11 @@ func buildBackend(filePath string) (backend.RefactoringBackend, string, error) {
 	if err := sel.Backend.Initialize(workspaceRoot); err != nil {
 		return nil, "", fmt.Errorf("initializing backend: %w", err)
 	}
-	return sel.Backend, workspaceRoot, nil
+	return sel, workspaceRoot, nil
 }
 
 // finishRename requests the rename edit and routes it through the output pipeline.
-func finishRename(b backend.RefactoringBackend, workspaceRoot string, loc symbol.Location, newName string) error {
+func finishRename(b backend.RefactoringBackend, ctx jsonContext, loc symbol.Location, newName string) error {
 	we, err := b.Rename(loc, newName)
 	if err != nil {
 		return fmt.Errorf("rename failed: %w", err)
@@ -134,13 +135,13 @@ func finishRename(b backend.RefactoringBackend, workspaceRoot string, loc symbol
 	if len(we.FileEdits) == 0 {
 		return NoEditsError()
 	}
-	return applyOrPreview(we, workspaceRoot)
+	return applyOrPreview(we, ctx)
 }
 
 // applyOrPreview emits the result per --dry-run/--json/default flags.
-func applyOrPreview(we *edit.WorkspaceEdit, workspaceRoot string) error {
+func applyOrPreview(we *edit.WorkspaceEdit, ctx jsonContext) error {
 	if flagJSON {
-		return emitJSON(we, statusForFlags())
+		return emitJSON(we, ctx, statusForFlags())
 	}
 	if flagDryRun {
 		diff, err := edit.RenderDiff(we)
@@ -157,7 +158,7 @@ func applyOrPreview(we *edit.WorkspaceEdit, workspaceRoot string) error {
 	green := color.New(color.FgGreen).SprintFunc()
 	fmt.Fprintf(os.Stderr, "%s Modified %d file(s):", green("ok"), result.FilesModified)
 	for _, fe := range we.FileEdits {
-		rel, _ := filepath.Rel(workspaceRoot, fe.Path)
+		rel, _ := filepath.Rel(ctx.WorkspaceRoot, fe.Path)
 		if rel == "" {
 			rel = fe.Path
 		}
@@ -172,15 +173,12 @@ func applyOrPreview(we *edit.WorkspaceEdit, workspaceRoot string) error {
 	return nil
 }
 
-func statusForFlags() string {
-	if flagDryRun {
-		return "dry-run"
-	}
-	return "applied"
-}
-
-func emitJSON(we *edit.WorkspaceEdit, status string) error {
+func emitJSON(we *edit.WorkspaceEdit, ctx jsonContext, status string) error {
 	res := edit.RenderJSON(we, status)
+	res.Operation = ctx.Operation
+	res.Language = ctx.Language
+	res.Backend = ctx.Backend
+	res.WorkspaceRoot = ctx.WorkspaceRoot
 	if !flagDryRun {
 		if _, err := edit.Apply(we); err != nil {
 			return fmt.Errorf("applying edits: %w", err)
@@ -232,10 +230,16 @@ func runRenameTier1(query symbol.Query) error {
 	if err != nil {
 		return fmt.Errorf("symbol resolution: %w", err)
 	}
-	if len(locs) > 1 {
-		return ambiguousError(locs)
+	ctx := jsonContext{
+		Operation:     "rename",
+		Language:      language,
+		Backend:       "lsp",
+		WorkspaceRoot: workspaceRoot,
 	}
-	return finishRename(adapter, workspaceRoot, locs[0], flagNewName)
+	if len(locs) > 1 {
+		return ambiguousError(ctx, locs)
+	}
+	return finishRename(adapter, ctx, locs[0], flagNewName)
 }
 
 // tier1WorkspaceRoot resolves the workspace root for a Tier 1 query.
@@ -257,9 +261,16 @@ func tier1WorkspaceRoot() (string, error) {
 
 // ambiguousError formats a Tier 1 ambiguity result. In JSON mode, emit a
 // structured candidates list; otherwise print a human-readable message.
-func ambiguousError(locs []symbol.Location) error {
+func ambiguousError(ctx jsonContext, locs []symbol.Location) error {
 	if flagJSON {
-		res := &edit.JSONResult{Status: "ambiguous"}
+		res := &edit.JSONResult{
+			SchemaVersion: edit.SchemaVersion,
+			Status:        edit.StatusAmbiguous,
+			Operation:     ctx.Operation,
+			Language:      ctx.Language,
+			Backend:       ctx.Backend,
+			WorkspaceRoot: ctx.WorkspaceRoot,
+		}
 		for _, l := range locs {
 			res.Candidates = append(res.Candidates, edit.JSONSymbolLoc{
 				File:   l.File,
