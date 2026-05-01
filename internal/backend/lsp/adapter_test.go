@@ -134,6 +134,19 @@ func TestAdapter_Capabilities(t *testing.T) {
 	}
 }
 
+func TestByteColumnToUTF16Character(t *testing.T) {
+	line := `const label = "é𝄞"; target := 1`
+	byteColumn := strings.Index(line, "target") + 1
+	got, err := lsp.ByteColumnToUTF16CharacterForTest(line, byteColumn)
+	if err != nil {
+		t.Fatalf("ByteColumnToUTF16CharacterForTest: %v", err)
+	}
+	want := 23
+	if got != want {
+		t.Fatalf("expected UTF-16 character %d, got %d", want, got)
+	}
+}
+
 func TestAdapter_ExtractFunction_honorsName(t *testing.T) {
 	requireGopls(t)
 	dir := t.TempDir()
