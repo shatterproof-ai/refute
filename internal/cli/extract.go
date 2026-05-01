@@ -58,11 +58,11 @@ func runExtract(kind string) error {
 	if err != nil {
 		return fmt.Errorf("resolving file path: %w", err)
 	}
-	b, workspaceRoot, err := buildBackend(absFile)
+	sel, workspaceRoot, err := buildBackend(absFile)
 	if err != nil {
 		return err
 	}
-	defer b.Shutdown()
+	defer sel.Backend.Shutdown()
 
 	r := symbol.SourceRange{
 		File:      absFile,
@@ -74,23 +74,25 @@ func runExtract(kind string) error {
 
 	switch kind {
 	case "function":
-		result, err := b.ExtractFunction(r, flagExtName)
+		ctx := contextFromSelection("extract-function", sel, workspaceRoot)
+		result, err := sel.Backend.ExtractFunction(r, flagExtName)
 		if err != nil {
 			return fmt.Errorf("extract-function failed: %w", err)
 		}
 		if len(result.FileEdits) == 0 {
 			return NoEditsError()
 		}
-		return applyOrPreview(result, workspaceRoot)
+		return applyOrPreview(result, ctx)
 	case "variable":
-		result, err := b.ExtractVariable(r, flagExtName)
+		ctx := contextFromSelection("extract-variable", sel, workspaceRoot)
+		result, err := sel.Backend.ExtractVariable(r, flagExtName)
 		if err != nil {
 			return fmt.Errorf("extract-variable failed: %w", err)
 		}
 		if len(result.FileEdits) == 0 {
 			return NoEditsError()
 		}
-		return applyOrPreview(result, workspaceRoot)
+		return applyOrPreview(result, ctx)
 	default:
 		return fmt.Errorf("unknown extract kind %q", kind)
 	}

@@ -47,18 +47,19 @@ func runInline() error {
 		return fmt.Errorf("symbol resolution: %w", err)
 	}
 
-	b, workspaceRoot, err := buildBackend(loc.File)
+	sel, workspaceRoot, err := buildBackend(loc.File)
 	if err != nil {
 		return err
 	}
-	defer b.Shutdown()
+	defer sel.Backend.Shutdown()
 
-	we, err := b.InlineSymbol(loc)
+	we, err := sel.Backend.InlineSymbol(loc)
 	if err != nil {
 		return fmt.Errorf("inline failed: %w", err)
 	}
 	if len(we.FileEdits) == 0 {
 		return NoEditsError()
 	}
-	return applyOrPreview(we, workspaceRoot)
+	ctx := contextFromSelection("inline", sel, workspaceRoot)
+	return applyOrPreview(we, ctx)
 }
