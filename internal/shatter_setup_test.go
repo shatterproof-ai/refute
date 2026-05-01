@@ -41,9 +41,6 @@ func TestShatterProjectConfigCoversRefuteSources(t *testing.T) {
 		"cmd/**/*.go",
 		"internal/**/*.go",
 		"testdata/fixtures/go/**/*.go",
-		"testdata/fixtures/rust/**/*.rs",
-		"testdata/fixtures/typescript/**/*.ts",
-		"testdata/fixtures/typescript/**/*.tsx",
 	}
 	for _, pattern := range expectedIncludes {
 		if !slices.Contains(cfg.Include, pattern) {
@@ -62,6 +59,9 @@ func TestShatterProjectConfigCoversRefuteSources(t *testing.T) {
 		"**/shatter-report/**",
 		"adapters/openrewrite/**",
 		"testdata/fixtures/java/**",
+		"testdata/fixtures/javascript/**",
+		"testdata/fixtures/rust/**",
+		"testdata/fixtures/typescript/**",
 	}
 	for _, pattern := range expectedExcludes {
 		if !slices.Contains(cfg.Exclude, pattern) {

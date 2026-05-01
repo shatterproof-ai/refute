@@ -1,0 +1,38 @@
+{
+  "include": [
+    "cmd/**/*.go",
+    "internal/**/*.go",
+    "testdata/fixtures/go/**/*.go"
+  ],
+  "exclude": [
+    "**/.git/**",
+    "**/node_modules/**",
+    "**/vendor/**",
+    "**/target/**",
+    "**/dist/**",
+    "**/.shatter-cache/**",
+    "**/shatter-artifacts/**",
+    "**/shatter-report/**",
+    "adapters/openrewrite/**",
+    "testdata/fixtures/java/**",
+    "testdata/fixtures/javascript/**",
+    "testdata/fixtures/rust/**",
+    "testdata/fixtures/typescript/**"
+  ],
+  "timeout_total": 900,
+  "exec_timeout": 15,
+  "parallelism": 0,
+  "parallelism_min": 2,
+  "parallelism_max": 8,
+  "output": {
+    "format": "markdown",
+    "paths": [
+      "shatter-report/report.md",
+      "shatter-report/report.json"
+    ],
+    "stdout": true
+  },
+  "cache_dir": ".shatter-cache/behavior-maps",
+  "seeds_dir": ".shatter/seeds",
+  "capture_side_effects": true
+}
