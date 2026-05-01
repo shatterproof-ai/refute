@@ -14,14 +14,19 @@ explicitly out of scope for this release.
 | Language | Backend | Status |
 | --- | --- | --- |
 | Go | gopls (LSP) | Supported — the primary v0.1 target. |
-| Rust | rust-analyzer (LSP) | Conditional — only when local integration tests pass. |
-| TypeScript / JavaScript | ts-morph or LSP | Experimental — adapter packaging unresolved. |
+| Rust | rust-analyzer (LSP) | Experimental — promote when integration coverage lands in CI. |
+| TypeScript / JavaScript | typescript-language-server (LSP) | Experimental — ts-morph adapter not packaged. |
 | Java / Kotlin | OpenRewrite | Not claimed for v0.1. |
 | Python | pyright (LSP) | Planned. |
 
-A feature is "supported" only when it has documentation, integration coverage,
-and a known install path. Everything else is best-effort and may regress
-between releases.
+See [`docs/support-matrix.md`](docs/support-matrix.md) for the canonical
+matrix, including extensions, dependency install commands, operation
+coverage, test coverage, and the promotion process. Run `refute doctor`
+to see the same data evaluated against your local environment.
+
+A feature is "supported" only when it has documentation, integration
+coverage, and a known install path. Everything else is best-effort and may
+regress between releases.
 
 ## Install
 
@@ -93,6 +98,7 @@ refactoring before applying it.
 | `refute extract-function` | Extract a selection into a new function. |
 | `refute extract-variable` | Extract a selection into a new variable. |
 | `refute inline` | Inline a variable or function call at the given position. |
+| `refute doctor` | Report which language backends are installed and ready. Supports `--json`. |
 | `refute version` | Print version, commit, and build date. |
 
 Run `refute <command> --help` for full flag documentation.
