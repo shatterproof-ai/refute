@@ -1,0 +1,19 @@
+# Shatter project configuration for refute.
+defaults:
+  max_iterations: 250
+  timeout: 120
+  exploration:
+    adaptive: true
+    score_window: 100
+    cold_start: 20
+    strategy_floor: 0.02
+    strategy_weights:
+      boundary: 0.35
+      literals: 0.25
+      random: 0.25
+      mutation: 0.15
+  fuzz:
+    plateau_threshold: 50
+    max_executions: 1000
+    timeout_seconds: 30
+    max_attempts: 3

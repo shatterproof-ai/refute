@@ -1,4 +1,6 @@
-node_modules/
 .shatter-cache/
 shatter-artifacts/
 shatter-report/
+node_modules/
+target/
+dist/
