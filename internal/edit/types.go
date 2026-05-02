@@ -1,6 +1,8 @@
 package edit
 
-// Position in a text document. 0-indexed line and character, matching LSP convention.
+// Position in a text document. Line and Character are 0-indexed; Character is
+// a byte offset within the line. LSP adapters convert to/from UTF-16 at the
+// protocol boundary.
 type Position struct {
 	Line      int `json:"line"`
 	Character int `json:"character"`

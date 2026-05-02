@@ -53,6 +53,63 @@ func TestRenderJSON_convertsIndexing(t *testing.T) {
 	}
 }
 
+func TestRenderJSON_SuccessGolden(t *testing.T) {
+	we := &edit.WorkspaceEdit{
+		FileEdits: []edit.FileEdit{
+			{
+				Path: "/tmp/a.go",
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 2, Character: 4},
+							End:   edit.Position{Line: 2, Character: 11},
+						},
+						NewText: "newName",
+					},
+				},
+			},
+		},
+	}
+	res := edit.RenderJSON(we, edit.StatusDryRun)
+	res.Operation = "rename"
+	res.Language = "go"
+	res.Backend = "lsp"
+	res.WorkspaceRoot = "/workspace"
+
+	data, err := res.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	got := string(data) + "\n"
+	want := `{
+  "schemaVersion": "1",
+  "status": "dry-run",
+  "operation": "rename",
+  "language": "go",
+  "backend": "lsp",
+  "workspaceRoot": "/workspace",
+  "filesModified": 1,
+  "edits": [
+    {
+      "file": "/tmp/a.go",
+      "changes": [
+        {
+          "startLine": 3,
+          "startCol": 5,
+          "endLine": 3,
+          "endCol": 12,
+          "newText": "newName"
+        }
+      ]
+    }
+  ]
+}
+`
+	if got != want {
+		t.Fatalf("success JSON envelope mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestRenderJSON_nilAndEmpty(t *testing.T) {
 	if res := edit.RenderJSON(nil, "no-op"); res.FilesModified != 0 || len(res.Edits) != 0 {
 		t.Errorf("nil input should produce empty result, got %+v", res)

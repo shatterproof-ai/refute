@@ -684,18 +684,26 @@ func parseWorkspaceEdit(raw json.RawMessage) ([]edit.FileEdit, error) {
 		return nil, fmt.Errorf("parse workspace edit: %w", err)
 	}
 
-	convertEdits := func(lspEdits []lspTextEdit) []edit.TextEdit {
+	convertEdits := func(path string, lspEdits []lspTextEdit) ([]edit.TextEdit, error) {
 		out := make([]edit.TextEdit, 0, len(lspEdits))
 		for _, e := range lspEdits {
+			startCharacter, err := utf16CharacterToByteColumnInFile(path, e.Range.Start.Line, e.Range.Start.Character)
+			if err != nil {
+				return nil, err
+			}
+			endCharacter, err := utf16CharacterToByteColumnInFile(path, e.Range.End.Line, e.Range.End.Character)
+			if err != nil {
+				return nil, err
+			}
 			out = append(out, edit.TextEdit{
 				Range: edit.Range{
-					Start: edit.Position{Line: e.Range.Start.Line, Character: e.Range.Start.Character},
-					End:   edit.Position{Line: e.Range.End.Line, Character: e.Range.End.Character},
+					Start: edit.Position{Line: e.Range.Start.Line, Character: startCharacter - 1},
+					End:   edit.Position{Line: e.Range.End.Line, Character: endCharacter - 1},
 				},
 				NewText: e.NewText,
 			})
 		}
-		return out
+		return out, nil
 	}
 
 	// Prefer documentChanges when present.
@@ -703,9 +711,13 @@ func parseWorkspaceEdit(raw json.RawMessage) ([]edit.FileEdit, error) {
 		fileEdits := make([]edit.FileEdit, 0, len(we.DocumentChanges))
 		for _, dc := range we.DocumentChanges {
 			path := uriToFile(dc.TextDocument.URI)
+			edits, err := convertEdits(path, dc.Edits)
+			if err != nil {
+				return nil, err
+			}
 			fileEdits = append(fileEdits, edit.FileEdit{
 				Path:  path,
-				Edits: convertEdits(dc.Edits),
+				Edits: edits,
 			})
 		}
 		return fileEdits, nil
@@ -716,9 +728,13 @@ func parseWorkspaceEdit(raw json.RawMessage) ([]edit.FileEdit, error) {
 		fileEdits := make([]edit.FileEdit, 0, len(we.Changes))
 		for uri, lspEdits := range we.Changes {
 			path := uriToFile(uri)
+			edits, err := convertEdits(path, lspEdits)
+			if err != nil {
+				return nil, err
+			}
 			fileEdits = append(fileEdits, edit.FileEdit{
 				Path:  path,
-				Edits: convertEdits(lspEdits),
+				Edits: edits,
 			})
 		}
 		return fileEdits, nil

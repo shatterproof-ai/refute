@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/config"
@@ -119,10 +122,18 @@ func (a *Adapter) FindSymbol(query symbol.Query) ([]symbol.Location, error) {
 		if query.Kind != symbol.KindUnknown && lspKindToSymbolKind(s.Kind) != query.Kind {
 			continue
 		}
+		column, err := utf16CharacterToByteColumnInFile(
+			uriToFile(s.Location.URI),
+			s.Location.Range.Start.Line,
+			s.Location.Range.Start.Character,
+		)
+		if err != nil {
+			return nil, err
+		}
 		matches = append(matches, symbol.Location{
 			File:   uriToFile(s.Location.URI),
 			Line:   s.Location.Range.Start.Line + 1,
-			Column: s.Location.Range.Start.Character + 1,
+			Column: column,
 			Name:   s.Name,
 			Kind:   lspKindToSymbolKind(s.Kind),
 		})
@@ -202,9 +213,11 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 		return nil, fmt.Errorf("adapter not initialized")
 	}
 
-	// Convert 1-indexed to 0-indexed for LSP.
 	lspLine := loc.Line - 1
-	lspCharacter := loc.Column - 1
+	lspCharacter, err := byteColumnToUTF16CharacterInFile(loc.File, lspLine, loc.Column)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := a.client.DidOpen(loc.File, a.languageID); err != nil {
 		return nil, fmt.Errorf("DidOpen %s: %w", loc.File, err)
@@ -286,10 +299,14 @@ func (a *Adapter) extractImpl(r symbol.SourceRange, kind string) (*edit.Workspac
 	if err := a.client.WaitForIdle(waitCtx); err != nil {
 		return nil, "", fmt.Errorf("waiting for analysis: %w", err)
 	}
+	startLine, startChar, endLine, endChar, err := rangeToLSP(r)
+	if err != nil {
+		return nil, "", err
+	}
 	actions, err := a.client.CodeActions(
 		r.File,
-		r.StartLine-1, r.StartCol-1,
-		r.EndLine-1, r.EndCol-1,
+		startLine, startChar,
+		endLine, endChar,
 		[]string{"refactor.extract"},
 	)
 	if err != nil {
@@ -473,8 +490,15 @@ func (a *Adapter) InlineSymbol(loc symbol.Location) (*edit.WorkspaceEdit, error)
 	}
 
 	startLine := loc.Line - 1
-	startChar := loc.Column - 1
-	endChar := startChar + max(len(loc.Name), 1)
+	startChar, err := byteColumnToUTF16CharacterInFile(loc.File, startLine, loc.Column)
+	if err != nil {
+		return nil, err
+	}
+	endColumn := loc.Column + max(len(loc.Name), 1)
+	endChar, err := byteColumnToUTF16CharacterInFile(loc.File, startLine, endColumn)
+	if err != nil {
+		return nil, err
+	}
 
 	actions, err := a.client.CodeActions(
 		loc.File,
@@ -502,6 +526,9 @@ func (a *Adapter) MoveToFile(_ symbol.Location, _ string) (*edit.WorkspaceEdit, 
 func (a *Adapter) Capabilities() []backend.Capability {
 	return []backend.Capability{
 		{Operation: "rename"},
+		{Operation: "extract-function"},
+		{Operation: "extract-variable"},
+		{Operation: "inline"},
 	}
 }
 
@@ -516,4 +543,94 @@ func (a *Adapter) PrimeWorkspace(workspaceRoot string) (int, error) {
 		return a.client.PrimeGoWorkspace(workspaceRoot)
 	}
 	return 0, nil
+}
+
+func rangeToLSP(r symbol.SourceRange) (startLine, startChar, endLine, endChar int, err error) {
+	startLine = r.StartLine - 1
+	endLine = r.EndLine - 1
+	startChar, err = byteColumnToUTF16CharacterInFile(r.File, startLine, r.StartCol)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	endChar, err = byteColumnToUTF16CharacterInFile(r.File, endLine, r.EndCol)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	return startLine, startChar, endLine, endChar, nil
+}
+
+func byteColumnToUTF16CharacterInFile(filePath string, zeroLine, byteColumn int) (int, error) {
+	line, err := readSourceLine(filePath, zeroLine)
+	if err != nil {
+		return 0, err
+	}
+	return byteColumnToUTF16Character(line, byteColumn)
+}
+
+func utf16CharacterToByteColumnInFile(filePath string, zeroLine, character int) (int, error) {
+	line, err := readSourceLine(filePath, zeroLine)
+	if err != nil {
+		return 0, err
+	}
+	byteCharacter, err := utf16CharacterToByteCharacter(line, character)
+	if err != nil {
+		return 0, err
+	}
+	return byteCharacter + 1, nil
+}
+
+func readSourceLine(filePath string, zeroLine int) (string, error) {
+	if zeroLine < 0 {
+		return "", fmt.Errorf("line %d out of range", zeroLine+1)
+	}
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", filePath, err)
+	}
+	lines := strings.Split(string(content), "\n")
+	if zeroLine >= len(lines) {
+		return "", fmt.Errorf("line %d out of range (file has %d lines)", zeroLine+1, len(lines))
+	}
+	return strings.TrimSuffix(lines[zeroLine], "\r"), nil
+}
+
+func byteColumnToUTF16Character(line string, byteColumn int) (int, error) {
+	if byteColumn < 1 || byteColumn > len(line)+1 {
+		return 0, fmt.Errorf("column %d out of range", byteColumn)
+	}
+	byteOffset := byteColumn - 1
+	if !utf8.ValidString(line[:byteOffset]) {
+		return 0, fmt.Errorf("column %d splits a UTF-8 character", byteColumn)
+	}
+	character := 0
+	for _, r := range line[:byteOffset] {
+		character += utf16.RuneLen(r)
+	}
+	return character, nil
+}
+
+func utf16CharacterToByteCharacter(line string, character int) (int, error) {
+	if character < 0 {
+		return 0, fmt.Errorf("character %d out of range", character)
+	}
+	units := 0
+	for byteOffset, r := range line {
+		if units == character {
+			return byteOffset, nil
+		}
+		units += utf16.RuneLen(r)
+		if units > character {
+			return 0, fmt.Errorf("character %d splits a UTF-16 surrogate pair", character)
+		}
+	}
+	if units == character {
+		return len(line), nil
+	}
+	return 0, fmt.Errorf("character %d out of range", character)
+}
+
+// ByteColumnToUTF16CharacterForTest exposes byteColumnToUTF16Character to
+// black-box tests without exporting it as production API.
+func ByteColumnToUTF16CharacterForTest(line string, byteColumn int) (int, error) {
+	return byteColumnToUTF16Character(line, byteColumn)
 }

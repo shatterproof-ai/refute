@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 
+	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/backend/selector"
 	"github.com/shatterproof-ai/refute/internal/edit"
 )
@@ -22,6 +26,19 @@ func contextFromSelection(operation string, sel *selector.Selection, workspaceRo
 	if sel != nil {
 		ctx.Language = sel.Language
 		ctx.Backend = sel.BackendName
+	}
+	return ctx
+}
+
+func contextFromFile(operation, filePath string) jsonContext {
+	ctx := jsonContext{Operation: operation}
+	if filePath != "" {
+		if abs, err := filepath.Abs(filePath); err == nil {
+			if root, err := FindWorkspaceRootFromFile(abs); err == nil {
+				ctx.WorkspaceRoot = root
+			}
+			ctx.Language = DetectServerKey(abs)
+		}
 	}
 	return ctx
 }
@@ -56,4 +73,28 @@ func emitJSONError(ctx jsonContext, status, code, message, hint string) error {
 	}
 	fmt.Println(string(data))
 	return &ExitCodeError{Code: 1}
+}
+
+func backendErrorStatus(err error) string {
+	msg := err.Error()
+	if strings.Contains(msg, "executable file not found") ||
+		strings.Contains(msg, "no server configured") ||
+		strings.Contains(msg, "not found on PATH") {
+		return edit.StatusBackendMissing
+	}
+	return edit.StatusBackendFailed
+}
+
+func emitJSONOperationError(ctx jsonContext, err error) error {
+	var ec *ExitCodeError
+	switch {
+	case errors.Is(err, backend.ErrUnsupported):
+		return emitJSONError(ctx, edit.StatusUnsupported, "unsupported-operation", err.Error(), "")
+	case errors.Is(err, backend.ErrSymbolNotFound):
+		return emitJSONError(ctx, edit.StatusInvalidPosition, "symbol-not-found", err.Error(), "")
+	case errors.As(err, &ec) && ec.Code == 2:
+		return emitJSONError(ctx, edit.StatusNoOp, "no-op", err.Error(), "")
+	default:
+		return emitJSONError(ctx, edit.StatusBackendFailed, "operation-failed", err.Error(), "")
+	}
 }
