@@ -83,13 +83,43 @@ func TestResolve_Tier2_MultipleOccurrences(t *testing.T) {
 		Name: "x",
 	}
 
-	// Should return the first occurrence.
-	loc, err := symbol.Resolve(query)
-	if err != nil {
-		t.Fatalf("Resolve failed: %v", err)
+	_, err := symbol.Resolve(query)
+	if err == nil {
+		t.Fatal("expected error for multiple same-line occurrences")
 	}
-	if loc.Column != 8 { // "func f(" = 7 chars, "x" at col 8 (1-indexed)
-		t.Errorf("expected column 8 (first occurrence), got %d", loc.Column)
+}
+
+func TestResolve_Tier2_RejectsPartialIdentifier(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "main.go")
+	os.WriteFile(filePath, []byte("package main\n\nfunc oldNameExtra() {}\n"), 0644)
+
+	query := symbol.Query{
+		File: filePath,
+		Line: 3,
+		Name: "oldName",
+	}
+
+	_, err := symbol.Resolve(query)
+	if err == nil {
+		t.Fatal("expected error for partial identifier match")
+	}
+}
+
+func TestResolve_Tier2_IgnoresCommentsAndStrings(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "main.go")
+	os.WriteFile(filePath, []byte("package main\n\nfunc f() { println(\"target\") /* target */ }\n"), 0644)
+
+	query := symbol.Query{
+		File: filePath,
+		Line: 3,
+		Name: "target",
+	}
+
+	_, err := symbol.Resolve(query)
+	if err == nil {
+		t.Fatal("expected error when name appears only in comments and strings")
 	}
 }
 

@@ -10,15 +10,13 @@ emoji in string literals, etc.) the two encodings diverge, which means a
 
 ## Current behavior
 
-The conversion in `internal/backend/lsp/adapter.go` is a straight subtract-1.
-This is correct for ASCII only.
+The LSP adapter converts byte-offset columns to UTF-16 code-unit columns before
+sending requests to language servers. LSP result ranges are converted back to
+byte offsets before edits are applied or rendered as JSON.
 
-## If you need Unicode
+## Implementation note
 
 Convert at the LSP boundary. Read the source line as a string, slice to the
 1-indexed byte offset, count UTF-16 code units via `utf16.Encode` (or the
-smaller-memory `utf8.DecodeRuneInString` + UTF-16 counter). Send that count
-as the LSP character. Reverse on the way back.
-
-This is deferred to a follow-up. File an issue and reference this document
-if you hit a Unicode case.
+smaller-memory `utf8.DecodeRuneInString` + UTF-16 counter). Send that count as
+the LSP character. Reverse on the way back.

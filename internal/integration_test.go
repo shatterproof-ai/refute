@@ -57,10 +57,53 @@ func TestEndToEnd_RenameGoFunction(t *testing.T) {
 	}
 
 	// Verify: project still compiles.
-	goCheck := exec.Command("go", "build", "./...")
+	goCheck := exec.Command("go", "build", "-buildvcs=false", "./...")
 	goCheck.Dir = dir
 	if out, err := goCheck.CombinedOutput(); err != nil {
 		t.Fatalf("project no longer compiles after rename:\n%s", out)
+	}
+}
+
+func TestEndToEnd_RenameGoAfterNonASCIIText(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/unicode\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	mainFile := filepath.Join(dir, "main.go")
+	src := `package main
+
+func oldName() {}
+
+func main() { println("é𝄞"); oldName() }
+`
+	if err := os.WriteFile(mainFile, []byte(src), 0o644); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+
+	refuteBin := buildRefute(t)
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", mainFile,
+		"--line", "5",
+		"--name", "oldName",
+		"--new-name", "newName",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed after non-ASCII text: %s\n%s", err, out)
+	}
+
+	content, _ := os.ReadFile(mainFile)
+	if strings.Contains(string(content), "oldName") {
+		t.Error("main.go still contains oldName")
+	}
+	if !strings.Contains(string(content), "newName") {
+		t.Error("main.go missing newName")
 	}
 }
 
@@ -656,7 +699,7 @@ func TestEndToEnd_RenameGoType(t *testing.T) {
 	}
 
 	// Project still compiles.
-	goCheck := exec.Command("go", "build", "./...")
+	goCheck := exec.Command("go", "build", "-buildvcs=false", "./...")
 	goCheck.Dir = dir
 	if out, err := goCheck.CombinedOutput(); err != nil {
 		t.Fatalf("project no longer compiles after rename:\n%s", out)
@@ -831,7 +874,7 @@ func TestEndToEnd_ExtractFunction(t *testing.T) {
 		t.Fatalf("extract-function: %s\n%s", err, out)
 	}
 
-	goCheck := exec.Command("go", "build", "./...")
+	goCheck := exec.Command("go", "build", "-buildvcs=false", "./...")
 	goCheck.Dir = dir
 	if out, err := goCheck.CombinedOutput(); err != nil {
 		t.Fatalf("project does not compile after extract:\n%s", out)
@@ -871,7 +914,7 @@ func TestEndToEnd_Tier1Rename(t *testing.T) {
 		t.Error("main.go still contains FormatGreeting")
 	}
 
-	goCheck := exec.Command("go", "build", "./...")
+	goCheck := exec.Command("go", "build", "-buildvcs=false", "./...")
 	goCheck.Dir = dir
 	if out, err := goCheck.CombinedOutput(); err != nil {
 		t.Fatalf("project does not compile after rename:\n%s", out)

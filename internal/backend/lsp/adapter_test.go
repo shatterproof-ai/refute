@@ -122,15 +122,27 @@ func TestAdapter_Capabilities(t *testing.T) {
 	adapter := lsp.NewAdapter(cfg, "go", []string{"**/*.go"})
 	caps := adapter.Capabilities()
 
-	found := false
+	found := map[string]bool{}
 	for _, cap := range caps {
-		if cap.Operation == "rename" {
-			found = true
-			break
+		found[cap.Operation] = true
+	}
+	for _, op := range []string{"rename", "extract-function", "extract-variable", "inline"} {
+		if !found[op] {
+			t.Errorf("expected %q in capabilities, got %v", op, caps)
 		}
 	}
-	if !found {
-		t.Errorf("expected 'rename' in capabilities, got %v", caps)
+}
+
+func TestByteColumnToUTF16Character(t *testing.T) {
+	line := `const label = "é𝄞"; target := 1`
+	byteColumn := strings.Index(line, "target") + 1
+	got, err := lsp.ByteColumnToUTF16CharacterForTest(line, byteColumn)
+	if err != nil {
+		t.Fatalf("ByteColumnToUTF16CharacterForTest: %v", err)
+	}
+	want := 21
+	if got != want {
+		t.Fatalf("expected UTF-16 character %d, got %d", want, got)
 	}
 }
 
@@ -264,8 +276,8 @@ func main() {
 
 	// main.go line 6 col 10 (1-indexed) points at 'add' inside println(add(1, 2)).
 	loc := symbol.Location{
-		File:   filepath.Join(dir, "main.go"),
-		Line:   6, Column: 10,
+		File: filepath.Join(dir, "main.go"),
+		Line: 6, Column: 10,
 		Name: "add",
 		Kind: symbol.KindFunction,
 	}

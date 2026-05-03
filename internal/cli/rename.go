@@ -93,17 +93,36 @@ func runRename(kind symbol.SymbolKind) error {
 
 	loc, err := symbol.Resolve(query)
 	if err != nil {
+		if flagJSON {
+			return emitJSONError(
+				contextFromFile("rename", query.File),
+				edit.StatusInvalidPosition,
+				"invalid-position",
+				err.Error(),
+				"Check --file, --line, --col, and --name.",
+			)
+		}
 		return fmt.Errorf("symbol resolution: %w", err)
 	}
 
 	sel, workspaceRoot, err := buildBackend(loc.File)
 	if err != nil {
+		if flagJSON {
+			ctx := contextFromFile("rename", loc.File)
+			return emitJSONError(ctx, backendErrorStatus(err), "backend-unavailable", err.Error(), "Run `refute doctor` for backend setup details.")
+		}
 		return err
 	}
 	defer sel.Backend.Shutdown()
 
 	ctx := contextFromSelection("rename", sel, workspaceRoot)
-	return finishRename(sel.Backend, ctx, loc, flagNewName)
+	if err := finishRename(sel.Backend, ctx, loc, flagNewName); err != nil {
+		if flagJSON {
+			return emitJSONOperationError(ctx, err)
+		}
+		return err
+	}
+	return nil
 }
 
 // buildBackend selects and initializes a refactoring backend for the given file.
@@ -217,17 +236,44 @@ func runRenameTier1(query symbol.Query) error {
 
 	adapter := lsp.NewAdapter(serverCfg, language, nil)
 	if err := adapter.Initialize(workspaceRoot); err != nil {
+		if flagJSON {
+			ctx := jsonContext{
+				Operation:     "rename",
+				Language:      language,
+				Backend:       "lsp",
+				WorkspaceRoot: workspaceRoot,
+			}
+			return emitJSONError(ctx, backendErrorStatus(err), "backend-unavailable", err.Error(), "Run `refute doctor` for backend setup details.")
+		}
 		return fmt.Errorf("initializing backend: %w", err)
 	}
 	defer adapter.Shutdown()
 
 	// Prime so workspace/symbol sees the whole module.
 	if _, err := adapter.PrimeWorkspace(workspaceRoot); err != nil {
+		if flagJSON {
+			ctx := jsonContext{
+				Operation:     "rename",
+				Language:      language,
+				Backend:       "lsp",
+				WorkspaceRoot: workspaceRoot,
+			}
+			return emitJSONError(ctx, edit.StatusBackendFailed, "backend-failed", err.Error(), "")
+		}
 		return fmt.Errorf("priming workspace: %w", err)
 	}
 
 	locs, err := adapter.FindSymbol(query)
 	if err != nil {
+		if flagJSON {
+			ctx := jsonContext{
+				Operation:     "rename",
+				Language:      language,
+				Backend:       "lsp",
+				WorkspaceRoot: workspaceRoot,
+			}
+			return emitJSONOperationError(ctx, err)
+		}
 		return fmt.Errorf("symbol resolution: %w", err)
 	}
 	ctx := jsonContext{
@@ -239,7 +285,13 @@ func runRenameTier1(query symbol.Query) error {
 	if len(locs) > 1 {
 		return ambiguousError(ctx, locs)
 	}
-	return finishRename(adapter, ctx, locs[0], flagNewName)
+	if err := finishRename(adapter, ctx, locs[0], flagNewName); err != nil {
+		if flagJSON {
+			return emitJSONOperationError(ctx, err)
+		}
+		return err
+	}
+	return nil
 }
 
 // tier1WorkspaceRoot resolves the workspace root for a Tier 1 query.
