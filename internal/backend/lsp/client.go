@@ -50,9 +50,11 @@ func (e *jsonrpcError) Error() string {
 // internal state changed (LSP error code -32801). Callers should retry.
 var ErrContentModified = fmt.Errorf("content modified")
 var ErrRenamePositionUnavailable = fmt.Errorf("rename target not ready")
+var ErrRequestTimeout = fmt.Errorf("lsp request timed out")
 
 const lspContentModified = -32801
 const lspInvalidParams = -32602
+const defaultRequestTimeout = 30 * time.Second
 
 // isLSPError reports whether err contains a jsonrpcError with the given code.
 func isLSPError(err error, code int) bool {
@@ -186,15 +188,16 @@ func (p *progressTracker) waitIdle(ctx context.Context) error {
 
 // Client manages an LSP server subprocess and provides typed protocol methods.
 type Client struct {
-	transport    *Transport
-	process      *exec.Cmd
-	nextID       atomic.Int64
-	mu           sync.Mutex
-	pending      map[int]chan jsonrpcResponse
-	serverCaps   serverCapabilities
-	shutdownOnce sync.Once
-	done         chan struct{}
-	progress     *progressTracker
+	transport      *Transport
+	process        *exec.Cmd
+	nextID         atomic.Int64
+	mu             sync.Mutex
+	pending        map[int]chan jsonrpcResponse
+	serverCaps     serverCapabilities
+	shutdownOnce   sync.Once
+	done           chan struct{}
+	progress       *progressTracker
+	requestTimeout time.Duration
 }
 
 // serverCapabilities holds the subset of LSP server capabilities we care about.
@@ -223,11 +226,12 @@ func StartClient(command string, args []string, workspaceRoot string) (*Client, 
 	}
 
 	c := &Client{
-		transport: NewTransport(stdout, stdin),
-		process:   cmd,
-		pending:   make(map[int]chan jsonrpcResponse),
-		done:      make(chan struct{}),
-		progress:  newProgressTracker(),
+		transport:      NewTransport(stdout, stdin),
+		process:        cmd,
+		pending:        make(map[int]chan jsonrpcResponse),
+		done:           make(chan struct{}),
+		progress:       newProgressTracker(),
+		requestTimeout: defaultRequestTimeout,
 	}
 
 	go c.readLoop()
@@ -322,7 +326,7 @@ func (c *Client) WaitForIdle(ctx context.Context) error {
 }
 
 // request sends a JSON-RPC request with an auto-incremented ID and blocks until
-// the response arrives.
+// the response arrives or the request timeout elapses.
 func (c *Client) request(method string, params interface{}) (json.RawMessage, error) {
 	id := int(c.nextID.Add(1))
 
@@ -356,7 +360,27 @@ func (c *Client) request(method string, params interface{}) (json.RawMessage, er
 		return nil, fmt.Errorf("write request: %w", err)
 	}
 
-	resp := <-ch
+	timeout := c.requestTimeout
+	if timeout <= 0 {
+		timeout = defaultRequestTimeout
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	var resp jsonrpcResponse
+	select {
+	case resp = <-ch:
+	case <-timer.C:
+		c.mu.Lock()
+		delete(c.pending, id)
+		c.mu.Unlock()
+		return nil, fmt.Errorf("%s request: %w after %s", method, ErrRequestTimeout, timeout)
+	case <-c.done:
+		c.mu.Lock()
+		delete(c.pending, id)
+		c.mu.Unlock()
+		return nil, fmt.Errorf("%s request: server exited before response", method)
+	}
 	if resp.Error != nil {
 		return nil, resp.Error
 	}
