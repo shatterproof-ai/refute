@@ -787,7 +787,7 @@ func TestEndToEnd_FileNotFound(t *testing.T) {
 func buildRefute(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "refute")
-	cmd := exec.Command("go", "build", "-o", bin, "./cmd/refute")
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", bin, "./cmd/refute")
 	cmd.Dir = ".."
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build refute: %v\n%s", err, out)
