@@ -3,6 +3,7 @@ package edit
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 )
 
@@ -11,65 +12,162 @@ type ApplyResult struct {
 	FilesModified int
 }
 
+type pendingFile struct {
+	origPath   string
+	tmpPath    string
+	backupPath string
+	newContent []byte
+	mode       os.FileMode
+}
+
 // Apply applies the WorkspaceEdit atomically across all files.
 // Phase 1: read all files and compute new contents in memory.
-// Phase 2: write new contents to .refute.tmp sidecar files.
-// Phase 3: rename each sidecar into place.
-// On any failure the temp files are removed and the originals are left untouched.
+// Phase 2: write new contents to same-directory temp files.
+// Phase 3: move each original to a backup, then rename each temp into place.
+// On any failure, temp files are removed and committed files are restored from
+// their backups.
 func Apply(we *WorkspaceEdit) (*ApplyResult, error) {
 	// Phase 1: compute new contents for every file.
-	type pending struct {
-		origPath string
-		tmpPath  string
-		newContent []byte
-	}
-	pendingFiles := make([]pending, 0, len(we.FileEdits))
+	pendingFiles := make([]pendingFile, 0, len(we.FileEdits))
+	seen := make(map[string]struct{}, len(we.FileEdits))
 
 	for _, fe := range we.FileEdits {
+		if _, ok := seen[fe.Path]; ok {
+			return nil, fmt.Errorf("duplicate file edit for %s", fe.Path)
+		}
+		seen[fe.Path] = struct{}{}
+
 		content, err := os.ReadFile(fe.Path)
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", fe.Path, err)
+		}
+		info, err := os.Stat(fe.Path)
+		if err != nil {
+			return nil, fmt.Errorf("stat %s: %w", fe.Path, err)
 		}
 		newContent, err := applyEdits(content, fe.Edits)
 		if err != nil {
 			return nil, fmt.Errorf("apply edits to %s: %w", fe.Path, err)
 		}
-		tmpPath := fe.Path + ".refute.tmp"
-		pendingFiles = append(pendingFiles, pending{
+		pendingFiles = append(pendingFiles, pendingFile{
 			origPath:   fe.Path,
-			tmpPath:    tmpPath,
 			newContent: newContent,
+			mode:       info.Mode(),
 		})
 	}
 
-	// Phase 2: write to .refute.tmp sidecar files.
+	// Phase 2: write to unique same-directory temp files.
 	for i, p := range pendingFiles {
-		perm := os.FileMode(0o644)
-		if info, err := os.Stat(p.origPath); err == nil {
-			perm = info.Mode()
+		tmpPath, err := writeTempFile(p.origPath, p.newContent, p.mode)
+		if err != nil {
+			cleanupPending(pendingFiles[:i])
+			return nil, fmt.Errorf("write temp file for %s: %w", p.origPath, err)
 		}
-		if err := os.WriteFile(p.tmpPath, p.newContent, perm); err != nil {
-			// Clean up all temp files written so far.
-			for _, q := range pendingFiles[:i+1] {
-				os.Remove(q.tmpPath)
-			}
-			return nil, fmt.Errorf("write temp file %s: %w", p.tmpPath, err)
-		}
+		pendingFiles[i].tmpPath = tmpPath
 	}
 
-	// Phase 3: rename each temp file over the original (atomic per-file).
-	for i, p := range pendingFiles {
+	// Phase 3: swap each file through a backup so prior replacements can be
+	// restored if a later file fails.
+	committed := make([]pendingFile, 0, len(pendingFiles))
+	for i := range pendingFiles {
+		p := &pendingFiles[i]
+		backupPath, err := reserveBackupPath(p.origPath)
+		if err != nil {
+			rollback(committed)
+			cleanupPending(pendingFiles[i:])
+			return nil, fmt.Errorf("reserve backup for %s: %w", p.origPath, err)
+		}
+		p.backupPath = backupPath
+
+		if err := os.Rename(p.origPath, p.backupPath); err != nil {
+			rollback(committed)
+			cleanupPending(pendingFiles[i:])
+			return nil, fmt.Errorf("backup %s -> %s: %w", p.origPath, p.backupPath, err)
+		}
 		if err := os.Rename(p.tmpPath, p.origPath); err != nil {
-			// Clean up remaining temp files; already-renamed files have
-			// already replaced their originals — those are committed.
-			for _, q := range pendingFiles[i:] {
-				os.Remove(q.tmpPath)
+			if restoreErr := os.Rename(p.backupPath, p.origPath); restoreErr != nil {
+				err = fmt.Errorf("%w; restore %s -> %s: %v", err, p.backupPath, p.origPath, restoreErr)
 			}
+			rollback(committed)
+			cleanupPending(pendingFiles[i:])
 			return nil, fmt.Errorf("rename %s -> %s: %w", p.tmpPath, p.origPath, err)
 		}
+		p.tmpPath = ""
+		committed = append(committed, *p)
+	}
+
+	for _, p := range committed {
+		os.Remove(p.backupPath)
 	}
 
 	return &ApplyResult{FilesModified: len(pendingFiles)}, nil
+}
+
+func writeTempFile(origPath string, content []byte, mode os.FileMode) (string, error) {
+	dir := filepath.Dir(origPath)
+	base := filepath.Base(origPath)
+	f, err := os.CreateTemp(dir, "."+base+".*.refute.tmp")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := f.Name()
+	defer func() {
+		if err != nil {
+			os.Remove(tmpPath)
+		}
+	}()
+	if _, err = f.Write(content); err != nil {
+		f.Close()
+		return "", err
+	}
+	if err = f.Chmod(mode); err != nil {
+		f.Close()
+		return "", err
+	}
+	if err = f.Close(); err != nil {
+		return "", err
+	}
+	return tmpPath, nil
+}
+
+func reserveBackupPath(origPath string) (string, error) {
+	dir := filepath.Dir(origPath)
+	base := filepath.Base(origPath)
+	f, err := os.CreateTemp(dir, "."+base+".*.refute.bak")
+	if err != nil {
+		return "", err
+	}
+	backupPath := f.Name()
+	if err := f.Close(); err != nil {
+		os.Remove(backupPath)
+		return "", err
+	}
+	if err := os.Remove(backupPath); err != nil {
+		return "", err
+	}
+	return backupPath, nil
+}
+
+func cleanupPending(files []pendingFile) {
+	for _, p := range files {
+		if p.tmpPath != "" {
+			os.Remove(p.tmpPath)
+		}
+		if p.backupPath != "" {
+			os.Remove(p.backupPath)
+		}
+	}
+}
+
+func rollback(files []pendingFile) {
+	for i := len(files) - 1; i >= 0; i-- {
+		p := files[i]
+		if p.backupPath == "" {
+			continue
+		}
+		os.Remove(p.origPath)
+		os.Rename(p.backupPath, p.origPath)
+	}
 }
 
 // applyEdits applies a slice of TextEdits to content.

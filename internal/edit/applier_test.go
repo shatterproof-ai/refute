@@ -217,3 +217,54 @@ func TestApply_RollbackOnFailure(t *testing.T) {
 		t.Errorf("rollback failed: file was modified\ngot:  %q\nwant: %q", string(got), original)
 	}
 }
+
+func TestApply_DuplicateFileEditDoesNotPartiallyCommit(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dup.go")
+	original := "func oldName() {}\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	we := &edit.WorkspaceEdit{
+		FileEdits: []edit.FileEdit{
+			{
+				Path: path,
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 0, Character: 5},
+							End:   edit.Position{Line: 0, Character: 12},
+						},
+						NewText: "first",
+					},
+				},
+			},
+			{
+				Path: path,
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 0, Character: 5},
+							End:   edit.Position{Line: 0, Character: 12},
+						},
+						NewText: "second",
+					},
+				},
+			},
+		},
+	}
+
+	_, err := edit.Apply(we)
+	if err == nil {
+		t.Fatal("expected Apply to reject duplicate file edits, got nil")
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != original {
+		t.Errorf("duplicate file edit partially committed\ngot:  %q\nwant: %q", string(got), original)
+	}
+}
