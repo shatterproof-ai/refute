@@ -234,7 +234,7 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 	// Retry on ContentModified: servers like rust-analyzer cancel rename
 	// requests when background salsa invalidation races with the request.
 	const (
-		renameMaxRetries = 5
+		renameMaxRetries = 10
 		renameRetryDelay = 750 * time.Millisecond
 	)
 	var fileEdits []edit.FileEdit
