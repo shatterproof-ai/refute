@@ -65,7 +65,7 @@ func buildDoctorReport() DoctorReport {
 			"JavaScript support is experimental for v0.1."),
 		probeLSP("rust", "lsp/rust-analyzer", "rust-analyzer", DoctorStatusExperimental,
 			"rustup component add rust-analyzer", []string{"rename"},
-			"Rust support is conditional on local integration tests passing."),
+			"Rust support is experimental for v0.1; CI exercises rename coverage when rust-analyzer is installed."),
 		probeLSP("python", "lsp/pyright", "pyright-langserver", DoctorStatusPlanned,
 			"npm install -g pyright", []string{"rename"},
 			"Python support is planned, not yet covered by integration tests."),

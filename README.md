@@ -14,7 +14,7 @@ explicitly out of scope for this release.
 | Language | Backend | Status |
 | --- | --- | --- |
 | Go | gopls (LSP) | Supported — the primary v0.1 target. |
-| Rust | rust-analyzer (LSP) | Experimental — promote when integration coverage lands in CI. |
+| Rust | rust-analyzer (LSP) | Experimental — covered in CI, still conditional for dogfood confidence. |
 | TypeScript / JavaScript | typescript-language-server (LSP) | Experimental — ts-morph adapter not packaged. |
 | Java / Kotlin | OpenRewrite | Not claimed for v0.1. |
 | Python | pyright (LSP) | Planned. |
