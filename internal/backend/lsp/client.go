@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -55,6 +56,7 @@ var ErrRequestTimeout = fmt.Errorf("lsp request timed out")
 const lspContentModified = -32801
 const lspInvalidParams = -32602
 const defaultRequestTimeout = 30 * time.Second
+const maxServerStderrBytes = 64 * 1024
 
 // isLSPError reports whether err contains a jsonrpcError with the given code.
 func isLSPError(err error, code int) bool {
@@ -190,6 +192,8 @@ func (p *progressTracker) waitIdle(ctx context.Context) error {
 type Client struct {
 	transport      *Transport
 	process        *exec.Cmd
+	stderrFile     *os.File
+	stderrPath     string
 	nextID         atomic.Int64
 	mu             sync.Mutex
 	pending        map[int]chan jsonrpcResponse
@@ -209,25 +213,38 @@ type serverCapabilities struct {
 // and completes the initialize/initialized handshake.
 func StartClient(command string, args []string, workspaceRoot string) (*Client, error) {
 	cmd := exec.Command(command, args...)
+	stderrFile, err := os.CreateTemp("", "refute-lsp-stderr-*")
+	if err != nil {
+		return nil, fmt.Errorf("stderr temp file: %w", err)
+	}
+	stderrPath := stderrFile.Name()
+	cleanupStderr := func() {
+		stderrFile.Close()
+		os.Remove(stderrPath)
+	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		cleanupStderr()
 		return nil, fmt.Errorf("stdin pipe: %w", err)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		cleanupStderr()
 		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
-	// Discard stderr to avoid blocking.
-	cmd.Stderr = nil
+	cmd.Stderr = stderrFile
 
 	if err := cmd.Start(); err != nil {
+		cleanupStderr()
 		return nil, fmt.Errorf("start %s: %w", command, err)
 	}
 
 	c := &Client{
 		transport:      NewTransport(stdout, stdin),
 		process:        cmd,
+		stderrFile:     stderrFile,
+		stderrPath:     stderrPath,
 		pending:        make(map[int]chan jsonrpcResponse),
 		done:           make(chan struct{}),
 		progress:       newProgressTracker(),
@@ -237,8 +254,10 @@ func StartClient(command string, args []string, workspaceRoot string) (*Client, 
 	go c.readLoop()
 
 	if err := c.initialize(workspaceRoot); err != nil {
+		err = c.withServerStderr(fmt.Errorf("initialize: %w", err))
 		_ = c.Shutdown()
-		return nil, fmt.Errorf("initialize: %w", err)
+		c.cleanupStderr()
+		return nil, err
 	}
 
 	return c, nil
@@ -255,7 +274,7 @@ func (c *Client) readLoop() {
 			c.mu.Lock()
 			for id, ch := range c.pending {
 				ch <- jsonrpcResponse{
-					Error: &jsonrpcError{Code: -32000, Message: err.Error()},
+					Error: &jsonrpcError{Code: -32000, Message: c.errorWithServerStderr(err)},
 				}
 				delete(c.pending, id)
 			}
@@ -379,12 +398,77 @@ func (c *Client) request(method string, params interface{}) (json.RawMessage, er
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
-		return nil, fmt.Errorf("%s request: server exited before response", method)
+		return nil, c.withServerStderr(fmt.Errorf("%s request: server exited before response", method))
 	}
 	if resp.Error != nil {
 		return nil, resp.Error
 	}
 	return resp.Result, nil
+}
+
+func (c *Client) withServerStderr(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := c.serverStderr()
+	if msg == "" {
+		return err
+	}
+	return fmt.Errorf("%w; server stderr: %s", err, msg)
+}
+
+func (c *Client) errorWithServerStderr(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := c.serverStderr()
+	if msg == "" {
+		return err.Error()
+	}
+	return fmt.Sprintf("%s; server stderr: %s", err, msg)
+}
+
+func (c *Client) serverStderr() string {
+	if c == nil || c.stderrPath == "" {
+		return ""
+	}
+	if c.stderrFile != nil {
+		_ = c.stderrFile.Sync()
+	}
+	f, err := os.Open(c.stderrPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(io.LimitReader(f, maxServerStderrBytes+1))
+	if err != nil {
+		return ""
+	}
+	truncated := len(data) > maxServerStderrBytes
+	if truncated {
+		data = data[:maxServerStderrBytes]
+	}
+	msg := strings.TrimSpace(string(data))
+	if msg == "" {
+		return ""
+	}
+	if truncated {
+		msg += " ... [stderr truncated]"
+	}
+	return msg
+}
+
+func (c *Client) cleanupStderr() {
+	if c == nil || c.stderrPath == "" {
+		return
+	}
+	if c.stderrFile != nil {
+		c.stderrFile.Close()
+		c.stderrFile = nil
+	}
+	os.Remove(c.stderrPath)
+	c.stderrPath = ""
 }
 
 // notify sends a JSON-RPC notification (no ID, no response expected).
@@ -570,6 +654,7 @@ func (c *Client) Shutdown() error {
 		// Wait for readLoop to drain and process to exit.
 		<-c.done
 		shutdownErr = c.process.Wait()
+		c.cleanupStderr()
 	})
 	return shutdownErr
 }
