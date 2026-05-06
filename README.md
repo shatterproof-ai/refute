@@ -107,12 +107,10 @@ Run `refute <command> --help` for full flag documentation.
 
 ## Known limitations
 
-- Multi-file apply is staged per file. If a later file fails to write,
-  earlier files are not rolled back automatically.
-- CLI `--line`/`--col` positions are byte offsets. Files containing
-  non-ASCII characters can target the wrong column under language servers
-  that expect UTF-16 code units. A safety pass is scheduled for milestone 3
-  of the v0.1 release.
+- Rust, TypeScript, and JavaScript support is experimental and may regress
+  between releases.
+- Python support is planned but not release-supported in v0.1.
+- Java and Kotlin support through OpenRewrite is not claimed for v0.1.
 - Some backends (notably ts-morph and OpenRewrite) currently ship as
   repo-local adapter assets and will not work end-to-end from a bare
   `go install` build until adapter packaging is resolved.
