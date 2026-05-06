@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Go test gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install integration backends
+        run: |
+          go install golang.org/x/tools/gopls@latest
+          rustup component add rust-analyzer
+
+      - name: Run unit tests
+        run: go test ./...
+
+      - name: Run integration tests
+        run: go test -tags integration ./internal/

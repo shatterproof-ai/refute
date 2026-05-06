@@ -24,7 +24,7 @@ short of all three is at most **experimental**.
 | Language | Extensions | Backend | Dependency install | Operations | Test coverage | Status | Caveats |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Go | `.go` | `lsp/gopls` | `go install golang.org/x/tools/gopls@latest` | rename, extract-function, extract-variable, inline | unit + integration (`internal/integration_test.go`) | supported | Primary v0.1 dogfood target. |
-| Rust | `.rs` | `lsp/rust-analyzer` | `rustup component add rust-analyzer` | rename | unit; integration runs locally | experimental | Conditional — promote to supported once integration coverage is in CI. |
+| Rust | `.rs` | `lsp/rust-analyzer` | `rustup component add rust-analyzer` | rename | unit + integration (`internal/integration_test.go`; CI installs rust-analyzer) | experimental | Experimental while dogfood confidence is still building. |
 | TypeScript | `.ts`, `.tsx` | `lsp/typescript-language-server` | `npm install -g typescript-language-server typescript` | rename | unit | experimental | ts-morph adapter is **implemented but not packaged**; tracked in [issue #1](https://github.com/shatterproof-ai/refute/issues/1). |
 | JavaScript | `.js`, `.jsx` | `lsp/typescript-language-server` | `npm install -g typescript-language-server typescript` | rename | unit | experimental | Same packaging caveat as TypeScript. |
 | Python | `.py` | `lsp/pyright` | `npm install -g pyright` | rename | none | planned | Promote once fixture and integration coverage land. |
