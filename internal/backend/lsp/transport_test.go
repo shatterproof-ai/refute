@@ -3,6 +3,7 @@ package lsp_test
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/shatterproof-ai/refute/internal/backend/lsp"
@@ -55,5 +56,39 @@ func TestTransport_ReadMultipleMessages(t *testing.T) {
 	}
 	if !bytes.Equal(got2, msg2) {
 		t.Errorf("message 2 mismatch\ngot:  %s\nwant: %s", got2, msg2)
+	}
+}
+
+func TestTransport_ReadRejectsOversizedContentLength(t *testing.T) {
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "Content-Length: %d\r\n\r\n", 33*1024*1024)
+
+	transport := lsp.NewTransport(&buf, nil)
+	_, err := transport.Read()
+	if err == nil {
+		t.Fatal("Read succeeded for oversized Content-Length")
+	}
+	if !strings.Contains(err.Error(), "exceeds maximum LSP message size") {
+		t.Fatalf("Read error = %q, want maximum-size error", err)
+	}
+}
+
+func TestTransport_ReadRejectsNegativeContentLength(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteString("Content-Length: -1\r\n\r\n")
+
+	transport := lsp.NewTransport(&buf, nil)
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("Read panicked for negative Content-Length: %v", recovered)
+		}
+	}()
+
+	_, err := transport.Read()
+	if err == nil {
+		t.Fatal("Read succeeded for negative Content-Length")
+	}
+	if !strings.Contains(err.Error(), "invalid Content-Length") {
+		t.Fatalf("Read error = %q, want invalid Content-Length error", err)
 	}
 }

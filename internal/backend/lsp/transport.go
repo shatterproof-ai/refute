@@ -8,7 +8,10 @@ import (
 	"strings"
 )
 
-const contentLengthHeader = "Content-Length"
+const (
+	contentLengthHeader = "Content-Length"
+	maxMessageBytes     = 32 * 1024 * 1024
+)
 
 // Transport implements the LSP base protocol framing (Content-Length headers).
 type Transport struct {
@@ -38,7 +41,7 @@ func (t *Transport) Write(data []byte) error {
 
 // Read reads the next Content-Length-framed message.
 func (t *Transport) Read() ([]byte, error) {
-	var contentLength int
+	contentLength := -1
 
 	for {
 		line, err := t.reader.ReadString('\n')
@@ -61,13 +64,19 @@ func (t *Transport) Read() ([]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid Content-Length value %q: %w", parts[1], err)
 			}
+			if n <= 0 {
+				return nil, fmt.Errorf("invalid Content-Length value %d: must be positive", n)
+			}
+			if n > maxMessageBytes {
+				return nil, fmt.Errorf("Content-Length %d exceeds maximum LSP message size %d", n, maxMessageBytes)
+			}
 			contentLength = n
 		}
 		// Ignore Content-Type and other headers.
 	}
 
-	if contentLength == 0 {
-		return nil, fmt.Errorf("missing or zero Content-Length in LSP headers")
+	if contentLength < 0 {
+		return nil, fmt.Errorf("missing Content-Length in LSP headers")
 	}
 
 	body := make([]byte, contentLength)
