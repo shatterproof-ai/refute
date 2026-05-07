@@ -38,6 +38,8 @@ refute version
 ```
 
 `refute` builds with the toolchain pinned in `go.mod` (currently Go 1.26.1).
+See [`INSTALL.md`](INSTALL.md) for project-local nightly installs intended for
+agent-driven repositories.
 
 ## Backend prerequisites
 
