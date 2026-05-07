@@ -47,8 +47,8 @@ tag.
 
 ## Nightly Release
 
-The `Nightly Release` workflow builds an unofficial channel from `main` every
-day and on manual dispatch. It stamps binaries with:
+The `Nightly Release` workflow builds an unofficial channel from `main` on
+every push, every day, and on manual dispatch. It stamps binaries with:
 
 ```bash
 nightly-<UTC YYYYMMDD>-<short commit>
@@ -56,8 +56,10 @@ nightly-<UTC YYYYMMDD>-<short commit>
 
 The workflow force-moves the lightweight `nightly` tag to the current `main`
 commit, deletes any existing `nightly` GitHub release, and recreates it as a
-prerelease with fresh archives and checksums. Nightly builds are intentionally
-not semver releases.
+prerelease with fresh archives and checksums. Automatic push and schedule runs
+skip publication when the existing `nightly` release is less than five minutes
+old; manual runs bypass that cooldown. Nightly builds are intentionally not
+semver releases.
 
 Use this channel when another project needs the newest refute binary before a
 formal `vX.Y.Z` tag exists. Agents should verify the installed binary with:

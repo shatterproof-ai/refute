@@ -1,6 +1,9 @@
 name: Nightly Release
 
 on:
+  push:
+    branches:
+      - main
   schedule:
     - cron: "17 8 * * *"
   workflow_dispatch:
@@ -19,19 +22,56 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      - name: Check cooldown
+        id: cooldown
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "Manual run bypasses cooldown."
+            exit 0
+          fi
+
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/nightly" 2>/dev/null || true)"
+          published_at="$(jq -r '.published_at // empty' <<< "${release_json}")"
+
+          if [[ -z "${published_at}" ]]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "No existing nightly release; proceeding."
+            exit 0
+          fi
+
+          now_epoch="$(date -u +%s)"
+          published_epoch="$(date -u -d "${published_at}" +%s)"
+          age_seconds="$((now_epoch - published_epoch))"
+
+          if (( age_seconds < 300 )); then
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping nightly release; previous nightly was published ${age_seconds}s ago."
+            exit 0
+          fi
+
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+          echo "Previous nightly is ${age_seconds}s old; proceeding."
+
       - name: Check out main
+        if: steps.cooldown.outputs.proceed == 'true'
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
       - name: Set up Go
+        if: steps.cooldown.outputs.proceed == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Compute nightly metadata
+        if: steps.cooldown.outputs.proceed == 'true'
         id: meta
         run: |
           short_sha="$(git rev-parse --short=7 HEAD)"
@@ -41,15 +81,17 @@ jobs:
           {
             echo "short_sha=${short_sha}"
             echo "build_date=${build_date}"
-            echo "version=${version}"
-          } >> "$GITHUB_OUTPUT"
+              echo "version=${version}"
+            } >> "$GITHUB_OUTPUT"
 
       - name: Build archives
+        if: steps.cooldown.outputs.proceed == 'true'
         env:
           BUILD_DATE: ${{ steps.meta.outputs.build_date }}
         run: ./scripts/release.sh "${{ steps.meta.outputs.version }}"
 
       - name: Upload workflow artifacts
+        if: steps.cooldown.outputs.proceed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: refute-${{ steps.meta.outputs.version }}
@@ -59,11 +101,13 @@ jobs:
             dist/release-notes.md
 
       - name: Move nightly tag
+        if: steps.cooldown.outputs.proceed == 'true'
         run: |
           git tag -f nightly "$(git rev-parse HEAD)"
           git push origin refs/tags/nightly --force
 
       - name: Publish nightly prerelease
+        if: steps.cooldown.outputs.proceed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           NIGHTLY_VERSION: ${{ steps.meta.outputs.version }}
