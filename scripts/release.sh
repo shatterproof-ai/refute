@@ -4,6 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE' >&2
 usage: scripts/release.sh v0.1.0
+       scripts/release.sh nightly-20260507-abc1234
 
 Builds refute release archives for linux and macOS on amd64 and arm64.
 
@@ -19,8 +20,8 @@ if [[ -z "${version}" ]]; then
   exit 2
 fi
 
-if [[ ! "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
-  echo "release version must look like v0.1.0, got: ${version}" >&2
+if [[ ! "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ && ! "${version}" =~ ^nightly-[0-9]{8}-[0-9a-f]{7,40}$ ]]; then
+  echo "release version must look like v0.1.0 or nightly-20260507-abc1234, got: ${version}" >&2
   exit 2
 fi
 

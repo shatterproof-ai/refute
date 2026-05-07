@@ -45,6 +45,28 @@ uploads them as workflow artifacts, and publishes a GitHub release using the
 existing tag. The workflow can also be run manually with an existing `vX.Y.Z`
 tag.
 
+## Nightly Release
+
+The `Nightly Release` workflow builds an unofficial channel from `main` every
+day and on manual dispatch. It stamps binaries with:
+
+```bash
+nightly-<UTC YYYYMMDD>-<short commit>
+```
+
+The workflow force-moves the lightweight `nightly` tag to the current `main`
+commit, deletes any existing `nightly` GitHub release, and recreates it as a
+prerelease with fresh archives and checksums. Nightly builds are intentionally
+not semver releases.
+
+Use this channel when another project needs the newest refute binary before a
+formal `vX.Y.Z` tag exists. Agents should verify the installed binary with:
+
+```bash
+refute version
+refute doctor
+```
+
 ## Support Claims
 
 Release notes must not claim unsupported adapters. For v0.1:

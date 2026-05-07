@@ -1,0 +1,78 @@
+name: Nightly Release
+
+on:
+  schedule:
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly-release
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    name: Build unofficial nightly
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Compute nightly metadata
+        id: meta
+        run: |
+          short_sha="$(git rev-parse --short=7 HEAD)"
+          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          date_stamp="$(date -u +%Y%m%d)"
+          version="nightly-${date_stamp}-${short_sha}"
+          {
+            echo "short_sha=${short_sha}"
+            echo "build_date=${build_date}"
+            echo "version=${version}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build archives
+        env:
+          BUILD_DATE: ${{ steps.meta.outputs.build_date }}
+        run: ./scripts/release.sh "${{ steps.meta.outputs.version }}"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: refute-${{ steps.meta.outputs.version }}
+          path: |
+            dist/*.tar.gz
+            dist/checksums.txt
+            dist/release-notes.md
+
+      - name: Move nightly tag
+        run: |
+          git tag -f nightly "$(git rev-parse HEAD)"
+          git push origin refs/tags/nightly --force
+
+      - name: Publish nightly prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY_VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          gh release delete nightly --yes || true
+          gh release create nightly \
+            dist/*.tar.gz \
+            dist/checksums.txt \
+            --verify-tag \
+            --title "Nightly ${NIGHTLY_VERSION}" \
+            --notes-file dist/release-notes.md \
+            --prerelease
