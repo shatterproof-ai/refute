@@ -39,7 +39,7 @@ Add this to a consuming project's `AGENTS.md`:
 ````md
 ## Refute
 
-Use the project-local `refute` binary for symbol-aware Go refactors:
+Use the project-local `refute` binary for symbol-aware refactors:
 
 ```bash
 .agents/bin/refute
@@ -50,6 +50,27 @@ Install or update it with:
 ```bash
 bash ~/project/refute/scripts/install-nightly.sh --project .
 ```
+
+TRIGGER WHEN:
+
+- You are renaming a Go function, method, type, field, variable, or parameter.
+- The symbol appears in more than one file or package.
+- A textual search finds both real references and unrelated strings/comments.
+- You need a machine-readable preview before editing files.
+- The user asks for a rename, inline, extract-function, or extract-variable
+  refactor and the target language is supported by `refute doctor`.
+
+SKIP:
+
+- The edit is plain text, docs, comments, config, JSON, YAML, SQL, or generated
+  data.
+- The requested change intentionally renames only a string literal, CLI flag,
+  environment variable, database column, GraphQL field, or API route.
+- `refute doctor` reports the required backend as missing and installing it is
+  outside the task scope.
+- The refactor requires behavior not listed in `refute <command> --help`.
+- The working tree already contains unrelated user edits that the preview would
+  touch.
 
 Before refactoring:
 
@@ -69,6 +90,9 @@ Always preview first:
 
 If the preview is correct, apply with the same command without `--dry-run`,
 then run the project's required verification gate.
+
+If the preview is empty, touches unexpected files, or reports an error, stop
+and use normal code-editing workflow instead of forcing the refactor.
 ````
 
 ## Global install
