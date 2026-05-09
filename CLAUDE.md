@@ -1,6 +1,5 @@
 # refute — Agent Instructions
 
-## Landing Work
+Project documentation lives in AGENTS.md.
 
-Never use the pull request workflow. Always finish feature branches using the
-`bento:land-work` skill, which merges directly to main.
+@AGENTS.md

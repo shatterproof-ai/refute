@@ -40,3 +40,8 @@ rtk pip list            rtk pnpm install        rtk npm run <script>
 - For debugging, use raw command without rtk prefix
 - `rtk proxy <cmd>` runs command without filtering but tracks usage
 <!-- /headroom:rtk-instructions -->
+
+## Landing Work
+
+Never use the pull request workflow. Always finish feature branches using the
+`bento:land-work` skill, which merges directly to main.
