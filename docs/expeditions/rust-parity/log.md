@@ -13,8 +13,8 @@ This log is the single source of truth for "what has been done and what is next"
 
 | #  | Task                                                  | Status   | Session | Commit | Notes |
 |----|-------------------------------------------------------|----------|---------|--------|-------|
-| 0  | Empirical spike on rust-analyzer containerName        | in-progress | sonnet-1 |   |       |
-| 1  | Extend Rust fixture                                   | pending  |         |        |       |
+| 0  | Empirical spike on rust-analyzer containerName        | done        | sonnet-1 |   | expensive branch — containerName has no trait info |
+| 1  | Extend Rust fixture                                   | in-progress | sonnet-1 |      |       |
 | 2  | ErrLSPServerMissing with install hints (H3)           | pending  |         |        |       |
 | 3  | Snippet placeholder stripper (H4)                     | pending  |         |        |       |
 | 4  | PrimeRustWorkspace                                    | pending  |         |        |       |
@@ -37,9 +37,23 @@ This log is the single source of truth for "what has been done and what is next"
 
 ## Task 0 Findings
 
-(Populated by Task 0; the cheap-vs-expensive branch decision drives Task 6.)
+**rust-analyzer version:** rust-analyzer 1.93.1 (01f6ddf 2026-02-11)
 
-- _not yet recorded_
+**workspace/symbol `fmt` result containerName values:**
+- Entry 1 (Display::fmt): `containerName="Greeter"`, kind=12 (Function), lib.rs line 11
+- Entry 2 (Debug::fmt): `containerName="Greeter"`, kind=12 (Function), lib.rs line 17
+
+**workspace/symbol `format_greeting` result:**
+- containerName="" (empty — top-level function, no container)
+
+**workspace/symbol `Greeter` result:**
+- containerName="", kind=23 (Struct)
+
+**Branch selection:** expensive
+
+**Reasoning:** Both `impl fmt::Display for Greeter` and `impl fmt::Debug for Greeter` produce `containerName="Greeter"` with no trait information present. Substring-matching on containerName cannot distinguish them; Task 6 must implement the `textDocument/documentSymbol` walk to identify the enclosing `impl Trait for Type` block.
+
+**Note for Task 6:** The spike required `DidOpen` + a second `WaitForIdle` before workspace/symbol returned results. The `WaitForIdle` after `StartClient` alone is not sufficient — rust-analyzer returns idle before it indexes for workspace/symbol queries. Task 4's `PrimeRustWorkspace` (which opens files via DidOpen) is therefore load-bearing for Tier-1 symbol resolution, not just performance.
 
 ---
 
