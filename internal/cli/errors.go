@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/shatterproof-ai/refute/internal/telemetry"
 )
 
 // ExitCodeError carries a requested process exit code alongside an optional
@@ -30,6 +32,9 @@ func NoEditsError() error {
 //	*ExitCodeError → e.Code (message printed to stderr only if non-empty)
 //	anything else  → 1 (message printed to stderr)
 func Run(fn func() error) {
+	cwd, _ := os.Getwd()
+	telemetry.Append(telemetry.DefaultPath(), telemetry.Capture(os.Args[1:], cwd))
+
 	err := fn()
 	if err == nil {
 		os.Exit(0)
