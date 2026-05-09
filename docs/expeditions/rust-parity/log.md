@@ -90,7 +90,16 @@ This log is the single source of truth for "what has been done and what is next"
 **Notes:** what surprised you, anything worth warning the next agent about
 ```
 
-_No sessions yet._
+### 2026-05-09 — Tasks 0-3 (Agent sonnet-1)
+
+**Completed:** Tasks 0, 1, 2, 3 fully — all steps including commits
+**Commits:** 75f1e87 (Task 0) 32265d2 (Task 1) 873dc0a (Task 2) 8664647 (Task 3)
+**Test status:** `go test ./internal/... -timeout 90s` → 95 passed, 0 failed
+**Notes:**
+- The rust-parity branch was 50 commits behind main (all Go v2 work). Merged main before starting Task 0. Clean merge, no conflicts.
+- Task 0: WaitForIdle alone is not enough for workspace/symbol to return results. DidOpen + second WaitForIdle is required. **Expensive branch confirmed** — both Display::fmt and Debug::fmt return containerName="Greeter", no trait info present.
+- Task 1: Rewriting lib.rs moved format_greeting from line 1 → 5 and Greeter from line 5 → 14. Updated hardcoded --line args in the three existing Rust integration tests (not in original plan; deviation recorded in log).
+- Task 3 deviation: the plan's test case `"literal dollar-digit in string preserved"` is contradictory — the regex cannot distinguish `$5 bill` from a snippet tabstop. Dropped that test case with a comment explaining the limitation. HasSnippetPlaceholders correctly returns true for `$5 bill` per the plan's own correction note.
 
 ---
 
@@ -102,12 +111,19 @@ The agent that just finished a session writes the block below. The user copies i
 
 ### NEXT-SESSION PROMPT
 
-> Start work on the refute Rust parity plan.
+> Continue work on the refute Rust parity plan.
 >
 > 1. Read `docs/expeditions/rust-parity/handoff.md` in full.
-> 2. Read `docs/expeditions/rust-parity/log.md` to see what has been done.
-> 3. Read `docs/expeditions/rust-parity/plan.md` to see the plan.
-> 4. Verify Go tier-1 v2 prerequisites are met (the plan's preamble has the exact `grep` checks). If any check fails, stop and report — Go v2 has not landed yet.
-> 5. No tasks have been started. Begin with Task 0 (empirical spike).
+> 2. Read `docs/expeditions/rust-parity/log.md` — especially the Status Dashboard, Task 0 Findings, Deviations, and most recent Session Entry.
+> 3. Read `docs/expeditions/rust-parity/plan.md` for Task 4 onwards.
 >
-> When you finish the session (either a task is complete or you hit a stopping point), follow the handoff protocol — update the log, append a session entry, and replace the NEXT-SESSION PROMPT block at the bottom of the log with one that points the next agent at the right resume point.
+> Resume point: **Task 4** (PrimeRustWorkspace). Tasks 0–3 are done. Working tree is clean. Branch `rust-parity` is at 8664647.
+>
+> Before you start:
+> - Working tree is clean; `go build ./... && go test ./internal/... -timeout 90s` → 95 pass.
+> - Main has been merged into rust-parity (clean merge at b5a88ac). No further main merges needed unless you hit a conflict.
+> - Task 0 determined: **expensive branch** for Task 6 — both Display::fmt and Debug::fmt return containerName="Greeter". See Task 0 Findings in the log.
+> - Task 7 plan is already corrected (uses `shouldPrimeWorkspace` pattern, not `isTSFamily`). Task 12 is corrected (UPDATE not CREATE for support-matrix.md). No further plan corrections needed.
+> - Integration tests for Tasks 13-15 require rust-analyzer on PATH (present: rust-analyzer 1.93.1).
+>
+> When you finish, follow the end-of-session protocol in the handoff doc: update the Status Dashboard, append a Session Entry, write a fresh NEXT-SESSION PROMPT, and commit the log.
