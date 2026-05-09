@@ -55,8 +55,43 @@ func (a *Adapter) Shutdown() error {
 	return nil
 }
 
-func (a *Adapter) FindSymbol(_ symbol.Query) ([]symbol.Location, error) {
-	return nil, backend.ErrUnsupported
+func (a *Adapter) FindSymbol(query symbol.Query) ([]symbol.Location, error) {
+	if a.workspaceRoot == "" {
+		return nil, fmt.Errorf("adapter not initialized")
+	}
+
+	req := findSymbolRequest{
+		Operation:     "findSymbol",
+		WorkspaceRoot: a.workspaceRoot,
+		File:          query.File,
+		QualifiedName: query.QualifiedName,
+		Kind:          query.Kind.String(),
+	}
+
+	var resp findSymbolResponse
+	if err := a.run(req, &resp); err != nil {
+		return nil, err
+	}
+
+	locs := make([]symbol.Location, 0, len(resp.Candidates))
+	for _, candidate := range resp.Candidates {
+		locs = append(locs, symbol.Location{
+			File:   candidate.File,
+			Line:   candidate.Line,
+			Column: candidate.Column,
+			Name:   candidate.Name,
+			Kind:   parseKind(candidate.Kind),
+		})
+	}
+
+	switch len(locs) {
+	case 0:
+		return nil, backend.ErrSymbolNotFound
+	case 1:
+		return locs, nil
+	default:
+		return locs, &backend.ErrAmbiguous{Candidates: locs}
+	}
 }
 
 func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEdit, error) {
@@ -65,41 +100,17 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 	}
 
 	req := renameRequest{
+		Operation:     "rename",
 		WorkspaceRoot: a.workspaceRoot,
 		File:          loc.File,
 		Line:          loc.Line,
 		Column:        loc.Column,
 		NewName:       newName,
 	}
-	data, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-
-	paths := wrapperPaths()
-	cmd := exec.Command("node", paths.script)
-	cmd.Dir = a.workspaceRoot
-	cmd.Stdin = bytes.NewReader(data)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = strings.TrimSpace(stdout.String())
-		}
-		if msg == "" {
-			msg = err.Error()
-		}
-		return nil, fmt.Errorf("ts-morph rename: %s", msg)
-	}
 
 	var resp renameResponse
-	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
-		return nil, fmt.Errorf("parse ts-morph output: %w", err)
+	if err := a.run(req, &resp); err != nil {
+		return nil, err
 	}
 
 	fileEdits := make([]edit.FileEdit, 0, len(resp.FileEdits))
@@ -145,6 +156,7 @@ func (a *Adapter) Capabilities() []backend.Capability {
 }
 
 type renameRequest struct {
+	Operation     string `json:"operation"`
 	WorkspaceRoot string `json:"workspaceRoot"`
 	File          string `json:"file"`
 	Line          int    `json:"line"`
@@ -171,9 +183,81 @@ type renameResponse struct {
 	} `json:"fileEdits"`
 }
 
+type findSymbolRequest struct {
+	Operation     string `json:"operation"`
+	WorkspaceRoot string `json:"workspaceRoot"`
+	File          string `json:"file,omitempty"`
+	QualifiedName string `json:"qualifiedName"`
+	Kind          string `json:"kind,omitempty"`
+}
+
+type findSymbolResponse struct {
+	Candidates []struct {
+		File   string `json:"file"`
+		Line   int    `json:"line"`
+		Column int    `json:"column"`
+		Name   string `json:"name"`
+		Kind   string `json:"kind"`
+	} `json:"candidates"`
+}
+
 type paths struct {
 	script    string
 	moduleDir string
+}
+
+func (a *Adapter) run(req any, resp any) error {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+
+	paths := wrapperPaths()
+	cmd := exec.Command("node", paths.script)
+	cmd.Dir = a.workspaceRoot
+	cmd.Stdin = bytes.NewReader(data)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = strings.TrimSpace(stdout.String())
+		}
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("ts-morph operation failed: %s", msg)
+	}
+
+	if err := json.Unmarshal(stdout.Bytes(), resp); err != nil {
+		return fmt.Errorf("parse ts-morph output: %w", err)
+	}
+	return nil
+}
+
+func parseKind(name string) symbol.SymbolKind {
+	switch name {
+	case "function":
+		return symbol.KindFunction
+	case "class":
+		return symbol.KindClass
+	case "field":
+		return symbol.KindField
+	case "variable":
+		return symbol.KindVariable
+	case "parameter":
+		return symbol.KindParameter
+	case "type":
+		return symbol.KindType
+	case "method":
+		return symbol.KindMethod
+	default:
+		return symbol.KindUnknown
+	}
 }
 
 func wrapperPaths() paths {
