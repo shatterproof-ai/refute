@@ -563,7 +563,7 @@ func TestEndToEnd_RenameRustFunction(t *testing.T) {
 	cmd := exec.Command(refuteBin,
 		"rename-function",
 		"--file", libFile,
-		"--line", "1",
+		"--line", "5",
 		"--name", "format_greeting",
 		"--new-name", "build_greeting",
 	)
@@ -661,7 +661,7 @@ func TestEndToEnd_RustDryRun(t *testing.T) {
 	cmd := exec.Command(refuteBin,
 		"rename-function",
 		"--file", libFile,
-		"--line", "1",
+		"--line", "5",
 		"--name", "format_greeting",
 		"--new-name", "build_greeting",
 		"--dry-run",
@@ -697,7 +697,7 @@ func TestEndToEnd_RenameRustStruct(t *testing.T) {
 	cmd := exec.Command(refuteBin,
 		"rename-class",
 		"--file", libFile,
-		"--line", "5",
+		"--line", "14",
 		"--name", "Greeter",
 		"--new-name", "Welcomer",
 	)

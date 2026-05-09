@@ -14,7 +14,7 @@ This log is the single source of truth for "what has been done and what is next"
 | #  | Task                                                  | Status   | Session | Commit | Notes |
 |----|-------------------------------------------------------|----------|---------|--------|-------|
 | 0  | Empirical spike on rust-analyzer containerName        | done        | sonnet-1 |   | expensive branch — containerName has no trait info |
-| 1  | Extend Rust fixture                                   | in-progress | sonnet-1 |      |       |
+| 1  | Extend Rust fixture                                   | done        | sonnet-1 |      | line# update in existing tests — see Deviations |
 | 2  | ErrLSPServerMissing with install hints (H3)           | pending  |         |        |       |
 | 3  | Snippet placeholder stripper (H4)                     | pending  |         |        |       |
 | 4  | PrimeRustWorkspace                                    | pending  |         |        |       |
@@ -60,6 +60,8 @@ This log is the single source of truth for "what has been done and what is next"
 ## Deviations from the Plan
 
 (Record any step where you did something different from what the plan says, and why. If this section stays empty, that's the ideal outcome.)
+
+- **Task 1 (2026-05-09):** Rewriting `lib.rs` moved `format_greeting` from line 1 → line 5 and `Greeter` from line 5 → line 14. The existing tests `TestEndToEnd_RenameRustFunction`, `TestEndToEnd_RustDryRun`, and `TestEndToEnd_RenameRustStruct` had hardcoded `--line` flags that broke. Updated their `--line` arguments in `integration_test.go` as part of Task 1 commit. This was not in the plan but is the obvious fix.
 
 - **Pre-execution corrections (2026-05-09):** Plan was updated before Task 0 began to fix two incorrect assumptions:
   1. **Task 7**: `isTSFamily()` and `PrimeTSWorkspace()` were referenced but neither exists. Corrected dispatch uses `PrimeWorkspace(client, root, languageID)` for TS family and `PrimeRustWorkspace(client, root)` for Rust. Added Step 3 to remove the now-dead `shouldPrimeWorkspace()` from `priming.go`.
