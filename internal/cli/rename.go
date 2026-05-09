@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/fatih/color"
@@ -139,6 +140,15 @@ func buildBackend(filePath string) (*selector.Selection, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	if sel.BackendName == "lsp" && sel.Server.Command != "" {
+		if _, lookErr := exec.LookPath(sel.Server.Command); lookErr != nil {
+			return nil, "", &ErrLSPServerMissing{
+				Language:    sel.Language,
+				Command:     sel.Server.Command,
+				InstallHint: config.InstallHint(sel.Language),
+			}
+		}
+	}
 	if err := sel.Backend.Initialize(workspaceRoot); err != nil {
 		return nil, "", fmt.Errorf("initializing backend: %w", err)
 	}
@@ -232,6 +242,13 @@ func runRenameTier1(query symbol.Query) error {
 	serverCfg := cfg.Server(language)
 	if serverCfg.Command == "" {
 		return fmt.Errorf("no server configured for language %q", language)
+	}
+	if _, lookErr := exec.LookPath(serverCfg.Command); lookErr != nil {
+		return &ErrLSPServerMissing{
+			Language:    language,
+			Command:     serverCfg.Command,
+			InstallHint: config.InstallHint(language),
+		}
 	}
 
 	adapter := lsp.NewAdapter(serverCfg, language, nil)
