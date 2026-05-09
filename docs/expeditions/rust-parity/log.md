@@ -13,7 +13,7 @@ This log is the single source of truth for "what has been done and what is next"
 
 | #  | Task                                                  | Status   | Session | Commit | Notes |
 |----|-------------------------------------------------------|----------|---------|--------|-------|
-| 0  | Empirical spike on rust-analyzer containerName        | pending  |         |        |       |
+| 0  | Empirical spike on rust-analyzer containerName        | in-progress | sonnet-1 |   |       |
 | 1  | Extend Rust fixture                                   | pending  |         |        |       |
 | 2  | ErrLSPServerMissing with install hints (H3)           | pending  |         |        |       |
 | 3  | Snippet placeholder stripper (H4)                     | pending  |         |        |       |
@@ -47,7 +47,9 @@ This log is the single source of truth for "what has been done and what is next"
 
 (Record any step where you did something different from what the plan says, and why. If this section stays empty, that's the ideal outcome.)
 
-- _none yet_
+- **Pre-execution corrections (2026-05-09):** Plan was updated before Task 0 began to fix two incorrect assumptions:
+  1. **Task 7**: `isTSFamily()` and `PrimeTSWorkspace()` were referenced but neither exists. Corrected dispatch uses `PrimeWorkspace(client, root, languageID)` for TS family and `PrimeRustWorkspace(client, root)` for Rust. Added Step 3 to remove the now-dead `shouldPrimeWorkspace()` from `priming.go`.
+  2. **Task 12**: Plan said to CREATE `docs/support-matrix.md` but it already exists on `main`. Step 1 rewritten to UPDATE the Rust row and append new sections.
 
 ---
 

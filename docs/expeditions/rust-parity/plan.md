@@ -1303,10 +1303,10 @@ At the bottom of `internal/backend/lsp/adapter.go`, add:
 // are intentionally non-fatal — if priming partially fails the first request
 // will still trigger the rest of the index.
 func (a *Adapter) primeWorkspace(absRoot string) {
-	switch {
-	case isTSFamily(a.languageID):
-		_ = PrimeTSWorkspace(a.client, absRoot)
-	case a.languageID == "rust":
+	switch a.languageID {
+	case "typescript", "typescriptreact", "javascript", "javascriptreact":
+		_ = PrimeWorkspace(a.client, absRoot, a.languageID)
+	case "rust":
 		_ = PrimeRustWorkspace(a.client, absRoot)
 	}
 }
@@ -1321,13 +1321,15 @@ func (a *Adapter) matchAction(actions []CodeAction, op rustActionOp) (*CodeActio
 }
 ```
 
-- [ ] **Step 2: Replace the inline TS-priming call in `Initialize`**
+Note: `isTSFamily` and `PrimeTSWorkspace` do not exist in the codebase. TS priming uses the existing `PrimeWorkspace(client, root, languageID)` generic walker; Rust priming uses the new `PrimeRustWorkspace` from Task 4.
+
+- [ ] **Step 2: Replace the priming call in `Initialize`**
 
 Find this block in `adapter.go`:
 
 ```go
-if isTSFamily(a.languageID) {
-    _ = PrimeTSWorkspace(a.client, absRoot)
+if shouldPrimeWorkspace(a.languageID) {
+    _ = PrimeWorkspace(a.client, absRoot, a.languageID)
 }
 ```
 
@@ -1337,18 +1339,34 @@ Replace with:
 a.primeWorkspace(absRoot)
 ```
 
-- [ ] **Step 3: Run existing adapter tests**
+- [ ] **Step 3: Remove dead `shouldPrimeWorkspace` from `priming.go`**
+
+In `internal/backend/lsp/priming.go`, delete the `shouldPrimeWorkspace` function — it is no longer called after Step 2:
+
+```go
+func shouldPrimeWorkspace(languageID string) bool {
+	switch languageID {
+	case "typescript", "typescriptreact", "javascript", "javascriptreact":
+		return true
+	case "rust":
+		return true
+	}
+	return false
+}
+```
+
+- [ ] **Step 4: Run existing adapter tests**
 
 ```bash
 go test ./internal/backend/lsp/ -timeout 90s
 ```
 
-Expected: all pass — the only behavioral change is that `rust` now also primes.
+Expected: all pass — the only behavioral change is Rust now primes via `PrimeRustWorkspace`.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add internal/backend/lsp/adapter.go
+git add internal/backend/lsp/adapter.go internal/backend/lsp/priming.go
 git commit -m "refactor(lsp): language-dispatch primeWorkspace and matchAction"
 ```
 
@@ -2059,49 +2077,42 @@ git commit -m "feat(cli): inline --call-site flag; --symbol requires --call-site
 ## Task 12: Support-matrix doc + help-text updates (H5, H6)
 
 **Files:**
-- Create: `docs/support-matrix.md`
-- Modify: `README.md` (if exists; otherwise skip README change)
+- Modify: `docs/support-matrix.md` — file already exists; update Rust row and add sections
 - Modify: `docs/specs/2026-04-15-refute-design.md` — add a pointer
 - Modify: `internal/cli/rename.go`, `extract.go`, `inline.go` — help text
 
-- [ ] **Step 1: Write support matrix**
+- [ ] **Step 1: Update support matrix**
 
-Create `docs/support-matrix.md`:
+`docs/support-matrix.md` already exists on `main`. Do NOT recreate it. Instead:
+
+Find the existing Rust row in the language matrix table (currently has only `rename` in the Operations column). Update the row to read:
+
+- **Operations**: `rename, extract-function, extract-variable, inline (single call site)`
+- **Test coverage**: update to reference the 12 new integration tests from Tasks 13–15
+- **Caveats**: add `Tier-1 --symbol supports forms 1–7 (crate::module::Type::method, <Type as Trait>::method).`
+
+After the language matrix table, add two new sections if they are not already present:
 
 ```markdown
-# refute Support Matrix
-
-This table is the source of truth for which operations refute supports per language. Update it in the same commit as any feature that changes support.
-
-| Language   | LSP Server                       | Workspace Marker                | Rename | Extract Fn | Extract Var | Inline     |
-|------------|----------------------------------|---------------------------------|--------|------------|-------------|------------|
-| Go         | gopls                            | `go.mod`, `go.work`             | ✅     | ✅         | ✅          | ✅         |
-| Rust       | rust-analyzer                    | `Cargo.toml`                    | ✅     | ✅         | ✅          | ✅ (1)     |
-| TypeScript | typescript-language-server       | `package.json`, `tsconfig.json` | ✅     | ❌         | ❌          | ❌         |
-| JavaScript | typescript-language-server       | `package.json`                  | ✅     | ❌         | ❌          | ❌         |
-| Python     | pyright                          | `pyproject.toml`, `setup.py`    | ⚠️     | ❌         | ❌          | ❌         |
-
-**Legend:** ✅ supported · ⚠️ partial (LSP fallback, not tested end-to-end) · ❌ not supported.
-
-(1) Rust `inline` operates on a single call site. Definition-wide inline (inline into all callers) is a planned follow-up — see `docs/plans/`.
-
 ## Tier-1 Qualified-Name Resolution
 
-`--symbol` accepts qualified names that are resolved via `workspace/symbol`:
+`--symbol` accepts qualified names resolved via `workspace/symbol`:
 
-| Language   | Example                                      | Notes |
-|------------|----------------------------------------------|-------|
-| Go         | `pkg.FunctionName`, `Type.Method`            | See `2026-04-17-go-code-actions-tier1-v2.md` |
-| Rust       | `greet::format_greeting`, `<Greeter as Display>::fmt` | Forms 1–7 per `2026-04-22-rust-parity-design.md` |
+| Language | Example | Notes |
+|---|---|---|
+| Go | `pkg.FunctionName`, `Type.Method` | dot-separated |
+| Rust | `greet::format_greeting`, `<Greeter as Display>::fmt` | forms 1–7 per `docs/specs/2026-04-22-rust-parity-design.md` |
 
 ## Missing-Server Install Hints
 
-| Language   | Install                                                  |
-|------------|----------------------------------------------------------|
-| Go         | `go install golang.org/x/tools/gopls@latest`             |
-| Rust       | `rustup component add rust-analyzer`                     |
-| TypeScript | `npm install -g typescript-language-server typescript`   |
-| Python     | `pip install pyright`                                    |
+When `refute` cannot find a language server it prints an install hint. Sources:
+
+| Language | Install |
+|---|---|
+| Go | `go install golang.org/x/tools/gopls@latest` |
+| Rust | `rustup component add rust-analyzer` |
+| TypeScript | `npm install -g typescript-language-server typescript` |
+| Python | `pip install pyright` |
 ```
 
 - [ ] **Step 2: Reference matrix from existing design doc**
@@ -2142,8 +2153,8 @@ All four must print `OK`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/support-matrix.md docs/specs/2026-04-15-refute-design.md internal/cli/
-git commit -m "docs: support matrix + --language help text for Rust (H5, H6)"
+git add docs/support-matrix.md docs/specs/2026-04-15-refute-design.md internal/cli/rename.go internal/cli/extract.go internal/cli/inline.go
+git commit -m "docs: update support matrix + help text for Rust (H5, H6)"
 ```
 
 ---
