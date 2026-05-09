@@ -27,6 +27,16 @@ type pendingFile struct {
 // On any failure, temp files are removed and committed files are restored from
 // their backups.
 func Apply(we *WorkspaceEdit) (*ApplyResult, error) {
+	if we.FromCodeAction {
+		for i := range we.FileEdits {
+			for j := range we.FileEdits[i].Edits {
+				t := &we.FileEdits[i].Edits[j]
+				if HasSnippetPlaceholders(t.NewText) {
+					t.NewText = StripSnippetPlaceholders(t.NewText)
+				}
+			}
+		}
+	}
 	// Phase 1: compute new contents for every file.
 	pendingFiles := make([]pendingFile, 0, len(we.FileEdits))
 	seen := make(map[string]struct{}, len(we.FileEdits))

@@ -16,7 +16,7 @@ This log is the single source of truth for "what has been done and what is next"
 | 0  | Empirical spike on rust-analyzer containerName        | done        | sonnet-1 |   | expensive branch — containerName has no trait info |
 | 1  | Extend Rust fixture                                   | done        | sonnet-1 |      | line# update in existing tests — see Deviations |
 | 2  | ErrLSPServerMissing with install hints (H3)           | done        | sonnet-1 |      |       |
-| 3  | Snippet placeholder stripper (H4)                     | pending  |         |        |       |
+| 3  | Snippet placeholder stripper (H4)                     | done        | sonnet-1 |      |       |
 | 4  | PrimeRustWorkspace                                    | pending  |         |        |       |
 | 5  | Rust code-action pattern table                        | pending  |         |        |       |
 | 6  | Rust container parser (branch on Task 0)              | pending  |         |        |       |

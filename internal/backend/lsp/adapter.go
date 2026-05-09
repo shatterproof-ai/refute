@@ -269,6 +269,7 @@ func (a *Adapter) ExtractFunction(r symbol.SourceRange, name string) (*edit.Work
 	if err != nil {
 		return nil, err
 	}
+	we.FromCodeAction = true
 	if name != "" && placeholder != "" && placeholder != name {
 		rewritePlaceholder(we, placeholder, name)
 	}
@@ -280,6 +281,7 @@ func (a *Adapter) ExtractVariable(r symbol.SourceRange, name string) (*edit.Work
 	if err != nil {
 		return nil, err
 	}
+	we.FromCodeAction = true
 	if name != "" && placeholder != "" && placeholder != name {
 		rewritePlaceholder(we, placeholder, name)
 	}
@@ -511,7 +513,12 @@ func (a *Adapter) InlineSymbol(loc symbol.Location) (*edit.WorkspaceEdit, error)
 	for _, action := range actions {
 		if strings.HasPrefix(action.Kind, "refactor.inline") ||
 			strings.Contains(strings.ToLower(action.Title), "inline") {
-			return a.resolveAction(action)
+			we, err := a.resolveAction(action)
+			if err != nil {
+				return nil, err
+			}
+			we.FromCodeAction = true
+			return we, nil
 		}
 	}
 	return nil, backend.ErrUnsupported
