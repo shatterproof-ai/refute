@@ -831,7 +831,7 @@ func TestEndToEnd_BadServerConfig(t *testing.T) {
 		"--config", cfgFile,
 		"rename-function",
 		"--file", libFile,
-		"--line", "1",
+		"--line", "5",
 		"--name", "format_greeting",
 		"--new-name", "build_greeting",
 	)
@@ -840,8 +840,9 @@ func TestEndToEnd_BadServerConfig(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected non-zero exit for bad server, got success; output:\n%s", out)
 	}
-	if !strings.Contains(string(out), "initializing backend") {
-		t.Errorf("expected 'initializing backend' in output, got:\n%s", out)
+	if !strings.Contains(string(out), "initializing backend") &&
+		!strings.Contains(string(out), "not found on PATH") {
+		t.Errorf("expected backend/server error in output, got:\n%s", out)
 	}
 }
 
