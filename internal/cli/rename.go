@@ -41,7 +41,8 @@ func addRenameFlags(cmd *cobra.Command) {
 func makeRenameCmd(use string, kind symbol.SymbolKind) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   use,
-		Short: fmt.Sprintf("Rename a %s", kind),
+		Short: fmt.Sprintf("Rename a %s (Go, Rust, TypeScript)", kind),
+		Long: fmt.Sprintf("Rename a %s at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server). See docs/support-matrix.md.", kind),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRename(kind)
 		},
@@ -53,7 +54,8 @@ func makeRenameCmd(use string, kind symbol.SymbolKind) *cobra.Command {
 func init() {
 	renameCmd := &cobra.Command{
 		Use:   "rename",
-		Short: "Rename a symbol (kind-agnostic)",
+		Short: "Rename a symbol across the workspace (Go, Rust, TypeScript)",
+		Long:  "Rename a symbol at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server). See docs/support-matrix.md.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRename(symbol.KindUnknown)
 		},

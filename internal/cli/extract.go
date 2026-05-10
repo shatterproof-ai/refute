@@ -33,7 +33,8 @@ func addExtractFlags(cmd *cobra.Command) {
 func init() {
 	extractFuncCmd := &cobra.Command{
 		Use:   "extract-function",
-		Short: "Extract a selection into a new function",
+		Short: "Extract a selection into a new function (Go, Rust, TypeScript)",
+		Long:  "Extract the selected code range into a new named function. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server). See docs/support-matrix.md.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runExtract("function")
 		},
@@ -42,7 +43,8 @@ func init() {
 
 	extractVarCmd := &cobra.Command{
 		Use:   "extract-variable",
-		Short: "Extract a selection into a new variable",
+		Short: "Extract a selection into a new variable (Go, Rust, TypeScript)",
+		Long:  "Extract the selected code range into a new named variable. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server). See docs/support-matrix.md.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runExtract("variable")
 		},

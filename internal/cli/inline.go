@@ -16,10 +16,10 @@ var callSiteFlag string
 func init() {
 	inlineCmd := &cobra.Command{
 		Use:   "inline",
-		Short: "Inline the symbol at the given position",
-		Long: `Inline inlines a variable or function call at the specified file position.
+		Short: "Inline a symbol at the given position (Go, Rust, TypeScript)",
+		Long: `Inline a variable or function call at the specified file position. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server).
 Requires --file and either --line --col (exact position) or --line --name (scan line).
-For Rust: --symbol with --call-site <file>:<line>:<column>.`,
+For Rust: use --symbol with --call-site <file>:<line>:<column>. See docs/support-matrix.md.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInline()
 		},
