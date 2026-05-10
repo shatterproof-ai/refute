@@ -8,16 +8,6 @@ import (
 
 const maxPrimedFiles = 10
 
-func shouldPrimeWorkspace(languageID string) bool {
-	switch languageID {
-	case "typescript", "typescriptreact", "javascript", "javascriptreact":
-		return true
-	case "rust":
-		return true
-	}
-	return false
-}
-
 // PrimeWorkspace opens up to maxPrimedFiles source files for languages that
 // benefit from a warmer project graph before the first rename request arrives.
 // Failures are non-fatal.

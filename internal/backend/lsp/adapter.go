@@ -54,9 +54,7 @@ func (a *Adapter) Initialize(workspaceRoot string) error {
 
 	a.client = client
 
-	if shouldPrimeWorkspace(a.languageID) {
-		_ = PrimeWorkspace(a.client, absRoot, a.languageID)
-	}
+	a.primeWorkspace(absRoot)
 
 	// Wait for the server to finish its initial indexing pass. LSP servers like
 	// rust-analyzer emit $/progress notifications while indexing and cannot
@@ -640,4 +638,25 @@ func utf16CharacterToByteCharacter(line string, character int) (int, error) {
 // black-box tests without exporting it as production API.
 func ByteColumnToUTF16CharacterForTest(line string, byteColumn int) (int, error) {
 	return byteColumnToUTF16Character(line, byteColumn)
+}
+
+// primeWorkspace dispatches to the language-specific priming walker. Failures
+// are intentionally non-fatal — if priming partially fails the first request
+// will still trigger the rest of the index.
+func (a *Adapter) primeWorkspace(absRoot string) {
+	switch a.languageID {
+	case "typescript", "typescriptreact", "javascript", "javascriptreact":
+		_ = PrimeWorkspace(a.client, absRoot, a.languageID)
+	case "rust":
+		_ = PrimeRustWorkspace(a.client, absRoot)
+	}
+}
+
+// matchAction dispatches to the language-specific action-pattern matcher.
+// Returns ErrUnsupported if the language has no matcher registered.
+func (a *Adapter) matchAction(actions []CodeAction, op rustActionOp) (*CodeAction, error) {
+	if a.languageID == "rust" {
+		return matchRustAction(actions, op)
+	}
+	return nil, fmt.Errorf("no code-action matcher for language %q", a.languageID)
 }
