@@ -440,11 +440,19 @@ func moduleMatches(expected, actualMod []string, actualType string) bool {
 	if len(expected) == 0 {
 		return true
 	}
-	if len(full) < len(expected) {
-		return false
+	if len(full) == 0 {
+		// rust-analyzer omits containerName for some module-level functions;
+		// accept any name match when no container info is available.
+		return true
 	}
-	for i := range expected {
-		if full[len(full)-len(expected)+i] != expected[i] {
+	// Use the shorter length for suffix matching: rust-analyzer may return an
+	// abbreviated container (e.g., "util" instead of "greet::util").
+	n := len(full)
+	if len(expected) < n {
+		n = len(expected)
+	}
+	for i := 0; i < n; i++ {
+		if full[len(full)-n+i] != expected[len(expected)-n+i] {
 			return false
 		}
 	}

@@ -1340,3 +1340,175 @@ func TestEndToEnd_RustSnippetPlaceholderStripped(t *testing.T) {
 		}
 	}
 }
+
+func TestEndToEnd_Tier1RustRename(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	utilFile := filepath.Join(dir, "src", "util.rs")
+
+	// --file provides the language hint (rust-analyzer) for Tier-1 symbol rename.
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--symbol", "greet::util::sum",
+		"--file", utilFile,
+		"--new-name", "add",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+	content, _ := os.ReadFile(utilFile)
+	if strings.Contains(string(content), "pub fn sum") {
+		t.Error("util.rs still defines sum")
+	}
+	if !strings.Contains(string(content), "pub fn add") {
+		t.Error("util.rs missing pub fn add")
+	}
+	mainFile := filepath.Join(dir, "src", "main.rs")
+	main, _ := os.ReadFile(mainFile)
+	if !strings.Contains(string(main), "greet::util::add(1, 2)") {
+		t.Errorf("main.rs call site not updated: %s", main)
+	}
+}
+
+func TestEndToEnd_Tier1RustTraitQualified(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	libFile := filepath.Join(dir, "src", "lib.rs")
+
+	// Rename only the Display impl's fmt, not the Debug impl's fmt.
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--symbol", "<Greeter as Display>::fmt",
+		"--file", libFile,
+		"--new-name", "render",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// Some rust-analyzer versions refuse to rename trait-required methods.
+		if !strings.Contains(string(out), "cannot rename") &&
+			!strings.Contains(string(out), "trait") {
+			t.Fatalf("unexpected failure: %s\n%s", err, out)
+		}
+		t.Skipf("rust-analyzer refused trait-method rename: %s", out)
+	}
+	content, _ := os.ReadFile(libFile)
+	renderCount := strings.Count(string(content), "fn render")
+	fmtCount := strings.Count(string(content), "fn fmt")
+	if renderCount != 1 || fmtCount != 1 {
+		t.Errorf("expected 1 render and 1 fmt, got render=%d fmt=%d\n%s",
+			renderCount, fmtCount, content)
+	}
+}
+
+func TestEndToEnd_Tier1RustAmbiguous(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	libFile := filepath.Join(dir, "src", "lib.rs")
+
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--symbol", "fmt",
+		"--file", libFile,
+		"--new-name", "render",
+		"--json",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected non-zero exit for ambiguous symbol, got success")
+	}
+	if !strings.Contains(string(out), `"status": "ambiguous"`) &&
+		!strings.Contains(string(out), `"status":"ambiguous"`) {
+		t.Errorf("expected ambiguous status in JSON output, got:\n%s", out)
+	}
+	if !strings.Contains(string(out), `"candidates"`) {
+		t.Errorf("expected candidates array, got:\n%s", out)
+	}
+}
+
+func TestEndToEnd_Tier1RustNotFound(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	libFile := filepath.Join(dir, "src", "lib.rs")
+
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--symbol", "nonexistent_symbol_xyz",
+		"--file", libFile,
+		"--new-name", "whatever",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected non-zero exit for missing symbol")
+	}
+	if !strings.Contains(string(out), "no rust symbol matched") &&
+		!strings.Contains(string(out), "nonexistent_symbol_xyz") &&
+		!strings.Contains(string(out), "symbol not found") {
+		t.Errorf("error message should indicate symbol not found, got:\n%s", out)
+	}
+}
+
+func TestEndToEnd_RustAnalyzerMissing(t *testing.T) {
+	// Skip if rust-analyzer is in a bin dir we can't scrub.
+	if path, _ := exec.LookPath("rust-analyzer"); strings.HasPrefix(path, "/usr/bin") || strings.HasPrefix(path, "/bin") {
+		t.Skip("rust-analyzer installed in non-scrubbable location; install hint test cannot run")
+	}
+
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	libFile := filepath.Join(dir, "src", "lib.rs")
+
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", libFile,
+		"--line", "5",
+		"--col", "8",
+		"--name", "format_greeting",
+		"--new-name", "build_greeting",
+	)
+	cmd.Dir = dir
+	// Scrub PATH: keep only /usr/bin and /bin so rust-analyzer is unreachable.
+	cmd.Env = append(os.Environ(), "PATH=/usr/bin:/bin")
+
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected error when rust-analyzer is absent, got success: %s", out)
+	}
+	if !strings.Contains(string(out), "rust-analyzer") {
+		t.Errorf("error should mention rust-analyzer, got:\n%s", out)
+	}
+	if !strings.Contains(string(out), "rustup component add rust-analyzer") {
+		t.Errorf("error should include install hint, got:\n%s", out)
+	}
+}
