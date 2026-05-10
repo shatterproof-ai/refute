@@ -513,25 +513,32 @@ func (a *Adapter) runCodeAction(r symbol.SourceRange, name string, op rustAction
 		return nil, err
 	}
 	if name != "" {
-		rewritePlaceholderName(we, name)
+		if !rewritePlaceholderName(we, name) {
+			// No snippet placeholder: fall back to replacing rust-analyzer's
+			// literal default identifier (e.g., "fun_name" or "var_name").
+			if lit := rustActionPatterns[op].defaultLiteral; lit != "" {
+				rewritePlaceholder(we, lit, name)
+			}
+		}
 	}
 	we.FromCodeAction = true
 	return we, nil
 }
 
 // rewritePlaceholderName replaces the first $N or ${N:...} snippet token in
-// the edit with the user-provided name. Used for Rust code-action edits where
-// the server inserts a placeholder for the new identifier.
-func rewritePlaceholderName(w *edit.WorkspaceEdit, name string) {
+// the edit with the user-provided name. Returns true if a placeholder was
+// found and replaced; false otherwise (e.g., rust-analyzer uses literal names).
+func rewritePlaceholderName(w *edit.WorkspaceEdit, name string) bool {
 	for i := range w.FileEdits {
 		for j := range w.FileEdits[i].Edits {
 			t := &w.FileEdits[i].Edits[j]
 			if edit.HasSnippetPlaceholders(t.NewText) {
 				t.NewText = edit.ReplaceFirstPlaceholder(t.NewText, name)
-				return
+				return true
 			}
 		}
 	}
+	return false
 }
 
 // InlineSymbol requests a refactor.inline code action over the symbol's
@@ -539,12 +546,16 @@ func rewritePlaceholderName(w *edit.WorkspaceEdit, name string) {
 // the request covers the whole identifier (min 1 char).
 func (a *Adapter) InlineSymbol(loc symbol.Location) (*edit.WorkspaceEdit, error) {
 	if a.languageID == "rust" {
+		nameLen := len(loc.Name)
+		if nameLen < 1 {
+			nameLen = 1
+		}
 		r := symbol.SourceRange{
 			File:      loc.File,
 			StartLine: loc.Line,
 			StartCol:  loc.Column,
 			EndLine:   loc.Line,
-			EndCol:    loc.Column + len(loc.Name),
+			EndCol:    loc.Column + nameLen,
 		}
 		return a.runCodeAction(r, "", opInlineCallSite)
 	}

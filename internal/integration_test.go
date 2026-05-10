@@ -1170,3 +1170,173 @@ func TestEndToEnd_RenameRustParameter(t *testing.T) {
 		t.Fatalf("cargo build failed after parameter rename: %v", err)
 	}
 }
+
+func TestEndToEnd_ExtractRustFunction(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	libFile := filepath.Join(dir, "src", "lib.rs")
+
+	// compute() body `(x * 2) + (x * 2)` is on lib.rs line 11 (1-indexed).
+	// Start col 5 (`(`), end col 22 (one past closing `)`).
+	cmd := exec.Command(refuteBin,
+		"extract-function",
+		"--file", libFile,
+		"--start-line", "11",
+		"--start-col", "5",
+		"--end-line", "11",
+		"--end-col", "22",
+		"--name", "double_plus_double",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+	content, _ := os.ReadFile(libFile)
+	if !strings.Contains(string(content), "fn double_plus_double") {
+		t.Errorf("expected new fn double_plus_double, got:\n%s", content)
+	}
+	if err := runCargoBuild(t, dir); err != nil {
+		t.Fatalf("cargo build failed after extract-function: %v", err)
+	}
+}
+
+func TestEndToEnd_ExtractRustVariable(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	libFile := filepath.Join(dir, "src", "lib.rs")
+
+	// Extract `x * 2` (first occurrence) on line 11, cols 6-11.
+	cmd := exec.Command(refuteBin,
+		"extract-variable",
+		"--file", libFile,
+		"--start-line", "11",
+		"--start-col", "6",
+		"--end-line", "11",
+		"--end-col", "11",
+		"--name", "doubled",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+	content, _ := os.ReadFile(libFile)
+	if !strings.Contains(string(content), "let doubled") {
+		t.Errorf("expected `let doubled`, got:\n%s", content)
+	}
+	if err := runCargoBuild(t, dir); err != nil {
+		t.Fatalf("cargo build failed after extract-variable: %v", err)
+	}
+}
+
+func TestEndToEnd_InlineRustCallSite(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	mainFile := filepath.Join(dir, "src", "main.rs")
+
+	// Call site: main.rs line 5 `greet::util::sum(1, 2)`. Column 30 points at
+	// the 's' in `sum`.
+	cmd := exec.Command(refuteBin,
+		"inline",
+		"--file", mainFile,
+		"--line", "5",
+		"--col", "30",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+	content, _ := os.ReadFile(mainFile)
+	if strings.Contains(string(content), "sum(1, 2)") {
+		t.Error("main.rs still contains sum(1, 2) after inline")
+	}
+	if !strings.Contains(string(content), "1 + 2") {
+		t.Errorf("main.rs missing inlined body, got:\n%s", content)
+	}
+	// util.rs should still define sum; I2 does not delete the definition.
+	utilFile := filepath.Join(dir, "src", "util.rs")
+	util, _ := os.ReadFile(utilFile)
+	if !strings.Contains(string(util), "pub fn sum") {
+		t.Error("util.rs lost sum definition; I2 should preserve it")
+	}
+	if err := runCargoBuild(t, dir); err != nil {
+		t.Fatalf("cargo build failed after inline: %v", err)
+	}
+}
+
+func TestEndToEnd_InlineRustRequiresCallSite(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	cmd := exec.Command(refuteBin,
+		"inline",
+		"--symbol", "greet::util::sum",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected error, got success: %s", out)
+	}
+	if !strings.Contains(string(out), "--call-site") {
+		t.Errorf("error should mention --call-site, got:\n%s", out)
+	}
+}
+
+func TestEndToEnd_RustSnippetPlaceholderStripped(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	libFile := filepath.Join(dir, "src", "lib.rs")
+
+	cmd := exec.Command(refuteBin,
+		"extract-variable",
+		"--file", libFile,
+		"--start-line", "11",
+		"--start-col", "6",
+		"--end-line", "11",
+		"--end-col", "11",
+		"--name", "doubled",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+	content, _ := os.ReadFile(libFile)
+	for _, token := range []string{"$0", "${0", "${1", "$1"} {
+		if strings.Contains(string(content), token) {
+			t.Errorf("file contains snippet token %q after extract:\n%s", token, content)
+		}
+	}
+}

@@ -33,15 +33,17 @@ func (op rustActionOp) String() string {
 }
 
 type rustActionPattern struct {
-	kindPrefix  string
-	titleRegexp *regexp.Regexp
+	kindPrefix     string
+	titleRegexp    *regexp.Regexp
+	titleExcludes  *regexp.Regexp // if non-nil, actions whose titles match this are skipped
+	defaultLiteral string         // rust-analyzer's literal placeholder name, used when no snippet token is found
 }
 
 var rustActionPatterns = map[rustActionOp]rustActionPattern{
-	opExtractFunction:  {"refactor.extract", regexp.MustCompile(`(?i)extract .*function`)},
-	opExtractVariable:  {"refactor.extract", regexp.MustCompile(`(?i)extract .*variable`)},
-	opInlineCallSite:   {"refactor.inline", regexp.MustCompile(`(?i)^inline( call)?$`)},
-	opInlineAllCallers: {"refactor.inline", regexp.MustCompile(`(?i)inline .*all callers`)},
+	opExtractFunction:  {"refactor.extract", regexp.MustCompile(`(?i)extract .*function`), nil, "fun_name"},
+	opExtractVariable:  {"refactor.extract", regexp.MustCompile(`(?i)extract .*variable`), nil, "var_name"},
+	opInlineCallSite:   {"refactor.inline", regexp.MustCompile(`(?i)^inline\b`), regexp.MustCompile(`(?i)all callers`), ""},
+	opInlineAllCallers: {"refactor.inline", regexp.MustCompile(`(?i)inline.*all callers`), nil, ""},
 }
 
 // ErrActionNotOffered is returned when no code action matches the requested op.
@@ -56,7 +58,8 @@ func (e *ErrActionNotOffered) Error() string {
 }
 
 // matchRustAction finds the first action whose Kind starts with the expected
-// prefix and whose Title matches the expected regex.
+// prefix, whose Title matches the expected regex, and whose Title does NOT
+// match the optional exclusion regex.
 func matchRustAction(actions []CodeAction, op rustActionOp) (*CodeAction, error) {
 	pat, ok := rustActionPatterns[op]
 	if !ok {
@@ -68,9 +71,13 @@ func matchRustAction(actions []CodeAction, op rustActionOp) (*CodeAction, error)
 		if !strings.HasPrefix(actions[i].Kind, pat.kindPrefix) {
 			continue
 		}
-		if pat.titleRegexp.MatchString(actions[i].Title) {
-			return &actions[i], nil
+		if !pat.titleRegexp.MatchString(actions[i].Title) {
+			continue
 		}
+		if pat.titleExcludes != nil && pat.titleExcludes.MatchString(actions[i].Title) {
+			continue
+		}
+		return &actions[i], nil
 	}
 	return nil, &ErrActionNotOffered{Op: op, OfferedTitles: offered}
 }
