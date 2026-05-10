@@ -24,6 +24,19 @@ func HasSnippetPlaceholders(s string) bool {
 	return tabstopRe.MatchString(s) || placeholderRe.MatchString(s) || choiceRe.MatchString(s)
 }
 
+// ReplaceFirstPlaceholder substitutes the first $N or ${N:...} token with
+// name. Intended for code-action edits where a single variable/function name
+// placeholder represents the user-chosen identifier.
+func ReplaceFirstPlaceholder(s, name string) string {
+	if m := placeholderRe.FindStringIndex(s); m != nil {
+		return s[:m[0]] + name + s[m[1]:]
+	}
+	if m := tabstopRe.FindStringIndex(s); m != nil {
+		return s[:m[0]] + name + s[m[1]:]
+	}
+	return s
+}
+
 // StripSnippetPlaceholders removes LSP snippet tokens from s:
 //   - ${N:default}  → default
 //   - ${N|a,b,c|}   → a  (first choice)

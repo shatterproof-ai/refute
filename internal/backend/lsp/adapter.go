@@ -264,6 +264,9 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 }
 
 func (a *Adapter) ExtractFunction(r symbol.SourceRange, name string) (*edit.WorkspaceEdit, error) {
+	if a.languageID == "rust" {
+		return a.runCodeAction(r, name, opExtractFunction)
+	}
 	we, placeholder, err := a.extractImpl(r, "function")
 	if err != nil {
 		return nil, err
@@ -276,6 +279,9 @@ func (a *Adapter) ExtractFunction(r symbol.SourceRange, name string) (*edit.Work
 }
 
 func (a *Adapter) ExtractVariable(r symbol.SourceRange, name string) (*edit.WorkspaceEdit, error) {
+	if a.languageID == "rust" {
+		return a.runCodeAction(r, name, opExtractVariable)
+	}
 	we, placeholder, err := a.extractImpl(r, "variable")
 	if err != nil {
 		return nil, err
@@ -473,10 +479,75 @@ func ReplaceWholeIdentForTest(s, old, newID string) string {
 	return replaceWholeIdent(s, old, newID)
 }
 
+// runCodeAction requests code actions at the given range, selects one via the
+// language-specific matcher, resolves edits, and substitutes any snippet
+// placeholder with name when provided.
+func (a *Adapter) runCodeAction(r symbol.SourceRange, name string, op rustActionOp) (*edit.WorkspaceEdit, error) {
+	if a.client == nil {
+		return nil, fmt.Errorf("adapter not initialized")
+	}
+	if err := a.client.DidOpen(r.File, a.languageID); err != nil {
+		return nil, err
+	}
+	startLine, startChar, endLine, endChar, err := rangeToLSP(r)
+	if err != nil {
+		return nil, err
+	}
+	var kinds []string
+	switch op {
+	case opExtractFunction, opExtractVariable:
+		kinds = []string{"refactor.extract"}
+	case opInlineCallSite, opInlineAllCallers:
+		kinds = []string{"refactor.inline"}
+	}
+	actions, err := a.client.CodeActions(r.File, startLine, startChar, endLine, endChar, kinds)
+	if err != nil {
+		return nil, err
+	}
+	chosen, err := a.matchAction(actions, op)
+	if err != nil {
+		return nil, err
+	}
+	we, err := a.resolveAction(*chosen)
+	if err != nil {
+		return nil, err
+	}
+	if name != "" {
+		rewritePlaceholderName(we, name)
+	}
+	we.FromCodeAction = true
+	return we, nil
+}
+
+// rewritePlaceholderName replaces the first $N or ${N:...} snippet token in
+// the edit with the user-provided name. Used for Rust code-action edits where
+// the server inserts a placeholder for the new identifier.
+func rewritePlaceholderName(w *edit.WorkspaceEdit, name string) {
+	for i := range w.FileEdits {
+		for j := range w.FileEdits[i].Edits {
+			t := &w.FileEdits[i].Edits[j]
+			if edit.HasSnippetPlaceholders(t.NewText) {
+				t.NewText = edit.ReplaceFirstPlaceholder(t.NewText, name)
+				return
+			}
+		}
+	}
+}
+
 // InlineSymbol requests a refactor.inline code action over the symbol's
 // identifier-width range. Gopls returns no actions for a zero-width range, so
 // the request covers the whole identifier (min 1 char).
 func (a *Adapter) InlineSymbol(loc symbol.Location) (*edit.WorkspaceEdit, error) {
+	if a.languageID == "rust" {
+		r := symbol.SourceRange{
+			File:      loc.File,
+			StartLine: loc.Line,
+			StartCol:  loc.Column,
+			EndLine:   loc.Line,
+			EndCol:    loc.Column + len(loc.Name),
+		}
+		return a.runCodeAction(r, "", opInlineCallSite)
+	}
 	if a.client == nil {
 		return nil, fmt.Errorf("adapter not initialized")
 	}
