@@ -24,7 +24,7 @@ short of all three is at most **experimental**.
 | Language | Extensions | Backend | Dependency install | Operations | Test coverage | Status | Caveats |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Go | `.go` | `lsp/gopls` | `go install golang.org/x/tools/gopls@latest` | rename, extract-function, extract-variable, inline | unit + integration (`internal/integration_test.go`) | supported | Primary v0.1 dogfood target. |
-| Rust | `.rs` | `lsp/rust-analyzer` | `rustup component add rust-analyzer` | rename | unit + integration (`internal/integration_test.go`; CI installs rust-analyzer) | experimental | Experimental while dogfood confidence is still building. |
+| Rust | `.rs` | `lsp/rust-analyzer` | `rustup component add rust-analyzer` | rename, extract-function, extract-variable, inline (single call site) | unit + integration (`internal/integration_test.go`; CI installs rust-analyzer) | experimental | Tier-1 --symbol supports forms 1–7 (crate::module::Type::method, <Type as Trait>::method). Experimental while dogfood confidence is still building. |
 | TypeScript | `.ts`, `.tsx` | `lsp/typescript-language-server` | `npm install -g typescript-language-server typescript` | rename | unit | experimental | ts-morph adapter is **implemented but not packaged**; tracked in [issue #1](https://github.com/shatterproof-ai/refute/issues/1). |
 | JavaScript | `.js`, `.jsx` | `lsp/typescript-language-server` | `npm install -g typescript-language-server typescript` | rename | unit | experimental | Same packaging caveat as TypeScript. |
 | Python | `.py` | `lsp/pyright` | `npm install -g pyright` | rename | none | planned | Promote once fixture and integration coverage land. |
@@ -59,3 +59,23 @@ To move a language from **implemented but not packaged** to **experimental**:
 2. Update `refute doctor` so the install hint reflects the actual
    distribution path.
 3. Update this matrix.
+
+## Tier-1 Qualified-Name Resolution
+
+`--symbol` accepts qualified names resolved via `workspace/symbol`:
+
+| Language | Example | Notes |
+|---|---|---|
+| Go | `pkg.FunctionName`, `Type.Method` | dot-separated |
+| Rust | `greet::format_greeting`, `<Greeter as Display>::fmt` | forms 1–7 per `docs/specs/2026-04-22-rust-parity-design.md` |
+
+## Missing-Server Install Hints
+
+When `refute` cannot find a language server it prints an install hint. Sources:
+
+| Language | Install |
+|---|---|
+| Go | `go install golang.org/x/tools/gopls@latest` |
+| Rust | `rustup component add rust-analyzer` |
+| TypeScript | `npm install -g typescript-language-server typescript` |
+| Python | `pip install pyright` |

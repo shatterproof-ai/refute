@@ -174,6 +174,22 @@ func localTypeScriptServer(language string, workspaceRoot string) (ServerConfig,
 	}, true
 }
 
+// InstallHint returns a human-readable command the user can run to install the
+// given LSP server. Returns the empty string if no hint is registered.
+func InstallHint(language string) string {
+	switch language {
+	case "rust":
+		return "rustup component add rust-analyzer"
+	case "go":
+		return "go install golang.org/x/tools/gopls@latest"
+	case "typescript", "javascript":
+		return "npm install -g typescript-language-server typescript"
+	case "python":
+		return "pip install pyright"
+	}
+	return ""
+}
+
 // Load builds a Config by applying layers in ascending priority:
 //
 //  1. Built-in defaults

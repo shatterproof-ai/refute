@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/fatih/color"
@@ -40,7 +41,8 @@ func addRenameFlags(cmd *cobra.Command) {
 func makeRenameCmd(use string, kind symbol.SymbolKind) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   use,
-		Short: fmt.Sprintf("Rename a %s", kind),
+		Short: fmt.Sprintf("Rename a %s (Go, Rust, TypeScript)", kind),
+		Long: fmt.Sprintf("Rename a %s at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server). See docs/support-matrix.md.", kind),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRename(kind)
 		},
@@ -52,7 +54,8 @@ func makeRenameCmd(use string, kind symbol.SymbolKind) *cobra.Command {
 func init() {
 	renameCmd := &cobra.Command{
 		Use:   "rename",
-		Short: "Rename a symbol (kind-agnostic)",
+		Short: "Rename a symbol across the workspace (Go, Rust, TypeScript)",
+		Long:  "Rename a symbol at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server). See docs/support-matrix.md.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRename(symbol.KindUnknown)
 		},
@@ -138,6 +141,15 @@ func buildBackend(filePath string) (*selector.Selection, string, error) {
 	sel, err := selector.ForFile(cfg, workspaceRoot, filePath)
 	if err != nil {
 		return nil, "", err
+	}
+	if sel.BackendName == "lsp" && sel.Server.Command != "" {
+		if _, lookErr := exec.LookPath(sel.Server.Command); lookErr != nil {
+			return nil, "", &ErrLSPServerMissing{
+				Language:    sel.Language,
+				Command:     sel.Server.Command,
+				InstallHint: config.InstallHint(sel.Language),
+			}
+		}
 	}
 	if err := sel.Backend.Initialize(workspaceRoot); err != nil {
 		return nil, "", fmt.Errorf("initializing backend: %w", err)
@@ -233,6 +245,13 @@ func runRenameTier1(query symbol.Query) error {
 	if serverCfg.Command == "" {
 		return fmt.Errorf("no server configured for language %q", language)
 	}
+	if _, lookErr := exec.LookPath(serverCfg.Command); lookErr != nil {
+		return &ErrLSPServerMissing{
+			Language:    language,
+			Command:     serverCfg.Command,
+			InstallHint: config.InstallHint(language),
+		}
+	}
 
 	adapter := lsp.NewAdapter(serverCfg, language, nil)
 	if err := adapter.Initialize(workspaceRoot); err != nil {
@@ -263,24 +282,58 @@ func runRenameTier1(query symbol.Query) error {
 		return fmt.Errorf("priming workspace: %w", err)
 	}
 
-	locs, err := adapter.FindSymbol(query)
-	if err != nil {
-		if flagJSON {
-			ctx := jsonContext{
-				Operation:     "rename",
-				Language:      language,
-				Backend:       "lsp",
-				WorkspaceRoot: workspaceRoot,
-			}
-			return emitJSONOperationError(ctx, err)
-		}
-		return fmt.Errorf("symbol resolution: %w", err)
-	}
 	ctx := jsonContext{
 		Operation:     "rename",
 		Language:      language,
 		Backend:       "lsp",
 		WorkspaceRoot: workspaceRoot,
+	}
+
+	if language == "rust" {
+		modulePath, trait, name, err := ParseRustQualifiedName(query.QualifiedName)
+		if err != nil {
+			return fmt.Errorf("parse --symbol: %w", err)
+		}
+		infos, err := adapter.FindSymbol(symbol.Query{QualifiedName: name})
+		if err != nil {
+			if flagJSON {
+				return emitJSONOperationError(ctx, err)
+			}
+			return fmt.Errorf("symbol resolution: %w", err)
+		}
+		candidates := filterRustCandidates(infos, modulePath, trait, name, adapter)
+		switch len(candidates) {
+		case 0:
+			notFound := &ErrSymbolNotFound{
+				Language:   "rust",
+				Input:      query.QualifiedName,
+				ModulePath: modulePath,
+				Trait:      trait,
+				Name:       name,
+			}
+			if flagJSON {
+				return emitJSONOperationError(ctx, notFound)
+			}
+			return notFound
+		case 1:
+			if err := finishRename(adapter, ctx, candidates[0], flagNewName); err != nil {
+				if flagJSON {
+					return emitJSONOperationError(ctx, err)
+				}
+				return err
+			}
+			return nil
+		default:
+			return ambiguousError(ctx, candidates)
+		}
+	}
+
+	locs, err := adapter.FindSymbol(query)
+	if err != nil {
+		if flagJSON {
+			return emitJSONOperationError(ctx, err)
+		}
+		return fmt.Errorf("symbol resolution: %w", err)
 	}
 	if len(locs) > 1 {
 		return ambiguousError(ctx, locs)
@@ -341,4 +394,81 @@ func ambiguousError(ctx jsonContext, locs []symbol.Location) error {
 	}
 	msg += "Use --file and --line to narrow the selection."
 	return &ExitCodeError{Code: 1, Message: msg}
+}
+
+// filterRustCandidates narrows workspace/symbol results by module path and,
+// for trait-qualified queries, by enclosing trait. The cheap branch matches
+// the trait via parseRustContainer. The expensive branch falls back to
+// DocumentSymbol when the container parser cannot identify the trait.
+func filterRustCandidates(
+	infos []symbol.Location,
+	modulePath []string,
+	trait, name string,
+	adapter backend.RefactoringBackend,
+) []symbol.Location {
+	out := make([]symbol.Location, 0, len(infos))
+	for _, info := range infos {
+		if info.Name != name {
+			continue
+		}
+		infoMod, infoType, infoTrait := lsp.ParseRustContainer(info.Container)
+		if !moduleMatches(modulePath, infoMod, infoType) {
+			continue
+		}
+		if trait != "" {
+			resolved := infoTrait
+			if resolved == "" {
+				resolved = resolveTraitByDocumentSymbol(adapter, info)
+			}
+			if resolved != trait {
+				continue
+			}
+		}
+		out = append(out, info)
+	}
+	return out
+}
+
+// moduleMatches returns true when expected is a suffix of actual (actual may
+// have extra leading segments). An expected of ["Greeter"] matches any
+// container ending in Greeter; ["greet", "Greeter"] requires both.
+func moduleMatches(expected, actualMod []string, actualType string) bool {
+	full := append([]string{}, actualMod...)
+	if actualType != "" {
+		full = append(full, actualType)
+	}
+	if len(expected) == 0 {
+		return true
+	}
+	if len(full) == 0 {
+		// rust-analyzer omits containerName for some module-level functions;
+		// accept any name match when no container info is available.
+		return true
+	}
+	// Use the shorter length for suffix matching: rust-analyzer may return an
+	// abbreviated container (e.g., "util" instead of "greet::util").
+	n := len(full)
+	if len(expected) < n {
+		n = len(expected)
+	}
+	for i := 0; i < n; i++ {
+		if full[len(full)-n+i] != expected[len(expected)-n+i] {
+			return false
+		}
+	}
+	return true
+}
+
+// resolveTraitByDocumentSymbol is populated only on the expensive branch.
+// On the cheap branch it is a no-op that returns "". See Task 6.
+func resolveTraitByDocumentSymbol(adapter backend.RefactoringBackend, info symbol.Location) string {
+	a, ok := adapter.(*lsp.Adapter)
+	if !ok {
+		return ""
+	}
+	symbols, err := a.DocumentSymbols(info.File)
+	if err != nil {
+		return ""
+	}
+	return lsp.FindEnclosingImplTrait(symbols, info.Line-1) // info.Line is 1-indexed; DocSymbol is 0-indexed
 }

@@ -54,9 +54,7 @@ func (a *Adapter) Initialize(workspaceRoot string) error {
 
 	a.client = client
 
-	if shouldPrimeWorkspace(a.languageID) {
-		_ = PrimeWorkspace(a.client, absRoot, a.languageID)
-	}
+	a.primeWorkspace(absRoot)
 
 	// Wait for the server to finish its initial indexing pass. LSP servers like
 	// rust-analyzer emit $/progress notifications while indexing and cannot
@@ -131,11 +129,12 @@ func (a *Adapter) FindSymbol(query symbol.Query) ([]symbol.Location, error) {
 			return nil, err
 		}
 		matches = append(matches, symbol.Location{
-			File:   uriToFile(s.Location.URI),
-			Line:   s.Location.Range.Start.Line + 1,
-			Column: column,
-			Name:   s.Name,
-			Kind:   lspKindToSymbolKind(s.Kind),
+			File:      uriToFile(s.Location.URI),
+			Line:      s.Location.Range.Start.Line + 1,
+			Column:    column,
+			Name:      s.Name,
+			Kind:      lspKindToSymbolKind(s.Kind),
+			Container: s.ContainerName,
 		})
 	}
 
@@ -265,10 +264,14 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 }
 
 func (a *Adapter) ExtractFunction(r symbol.SourceRange, name string) (*edit.WorkspaceEdit, error) {
+	if a.languageID == "rust" {
+		return a.runCodeAction(r, name, opExtractFunction)
+	}
 	we, placeholder, err := a.extractImpl(r, "function")
 	if err != nil {
 		return nil, err
 	}
+	we.FromCodeAction = true
 	if name != "" && placeholder != "" && placeholder != name {
 		rewritePlaceholder(we, placeholder, name)
 	}
@@ -276,10 +279,14 @@ func (a *Adapter) ExtractFunction(r symbol.SourceRange, name string) (*edit.Work
 }
 
 func (a *Adapter) ExtractVariable(r symbol.SourceRange, name string) (*edit.WorkspaceEdit, error) {
+	if a.languageID == "rust" {
+		return a.runCodeAction(r, name, opExtractVariable)
+	}
 	we, placeholder, err := a.extractImpl(r, "variable")
 	if err != nil {
 		return nil, err
 	}
+	we.FromCodeAction = true
 	if name != "" && placeholder != "" && placeholder != name {
 		rewritePlaceholder(we, placeholder, name)
 	}
@@ -472,10 +479,86 @@ func ReplaceWholeIdentForTest(s, old, newID string) string {
 	return replaceWholeIdent(s, old, newID)
 }
 
+// runCodeAction requests code actions at the given range, selects one via the
+// language-specific matcher, resolves edits, and substitutes any snippet
+// placeholder with name when provided.
+func (a *Adapter) runCodeAction(r symbol.SourceRange, name string, op rustActionOp) (*edit.WorkspaceEdit, error) {
+	if a.client == nil {
+		return nil, fmt.Errorf("adapter not initialized")
+	}
+	if err := a.client.DidOpen(r.File, a.languageID); err != nil {
+		return nil, err
+	}
+	startLine, startChar, endLine, endChar, err := rangeToLSP(r)
+	if err != nil {
+		return nil, err
+	}
+	var kinds []string
+	switch op {
+	case opExtractFunction, opExtractVariable:
+		kinds = []string{"refactor.extract"}
+	case opInlineCallSite, opInlineAllCallers:
+		kinds = []string{"refactor.inline"}
+	}
+	actions, err := a.client.CodeActions(r.File, startLine, startChar, endLine, endChar, kinds)
+	if err != nil {
+		return nil, err
+	}
+	chosen, err := a.matchAction(actions, op)
+	if err != nil {
+		return nil, err
+	}
+	we, err := a.resolveAction(*chosen)
+	if err != nil {
+		return nil, err
+	}
+	if name != "" {
+		if !rewritePlaceholderName(we, name) {
+			// No snippet placeholder: fall back to replacing rust-analyzer's
+			// literal default identifier (e.g., "fun_name" or "var_name").
+			if lit := rustActionPatterns[op].defaultLiteral; lit != "" {
+				rewritePlaceholder(we, lit, name)
+			}
+		}
+	}
+	we.FromCodeAction = true
+	return we, nil
+}
+
+// rewritePlaceholderName replaces the first $N or ${N:...} snippet token in
+// the edit with the user-provided name. Returns true if a placeholder was
+// found and replaced; false otherwise (e.g., rust-analyzer uses literal names).
+func rewritePlaceholderName(w *edit.WorkspaceEdit, name string) bool {
+	for i := range w.FileEdits {
+		for j := range w.FileEdits[i].Edits {
+			t := &w.FileEdits[i].Edits[j]
+			if edit.HasSnippetPlaceholders(t.NewText) {
+				t.NewText = edit.ReplaceFirstPlaceholder(t.NewText, name)
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // InlineSymbol requests a refactor.inline code action over the symbol's
 // identifier-width range. Gopls returns no actions for a zero-width range, so
 // the request covers the whole identifier (min 1 char).
 func (a *Adapter) InlineSymbol(loc symbol.Location) (*edit.WorkspaceEdit, error) {
+	if a.languageID == "rust" {
+		nameLen := len(loc.Name)
+		if nameLen < 1 {
+			nameLen = 1
+		}
+		r := symbol.SourceRange{
+			File:      loc.File,
+			StartLine: loc.Line,
+			StartCol:  loc.Column,
+			EndLine:   loc.Line,
+			EndCol:    loc.Column + nameLen,
+		}
+		return a.runCodeAction(r, "", opInlineCallSite)
+	}
 	if a.client == nil {
 		return nil, fmt.Errorf("adapter not initialized")
 	}
@@ -511,7 +594,12 @@ func (a *Adapter) InlineSymbol(loc symbol.Location) (*edit.WorkspaceEdit, error)
 	for _, action := range actions {
 		if strings.HasPrefix(action.Kind, "refactor.inline") ||
 			strings.Contains(strings.ToLower(action.Title), "inline") {
-			return a.resolveAction(action)
+			we, err := a.resolveAction(action)
+			if err != nil {
+				return nil, err
+			}
+			we.FromCodeAction = true
+			return we, nil
 		}
 	}
 	return nil, backend.ErrUnsupported
@@ -633,4 +721,34 @@ func utf16CharacterToByteCharacter(line string, character int) (int, error) {
 // black-box tests without exporting it as production API.
 func ByteColumnToUTF16CharacterForTest(line string, byteColumn int) (int, error) {
 	return byteColumnToUTF16Character(line, byteColumn)
+}
+
+// DocumentSymbols returns hierarchical document symbols for a file, used by
+// the expensive Rust container disambiguation branch.
+func (a *Adapter) DocumentSymbols(path string) ([]DocumentSymbol, error) {
+	if a.client == nil {
+		return nil, fmt.Errorf("adapter not initialized")
+	}
+	return a.client.DocumentSymbol(path)
+}
+
+// primeWorkspace dispatches to the language-specific priming walker. Failures
+// are intentionally non-fatal — if priming partially fails the first request
+// will still trigger the rest of the index.
+func (a *Adapter) primeWorkspace(absRoot string) {
+	switch a.languageID {
+	case "typescript", "typescriptreact", "javascript", "javascriptreact":
+		_ = PrimeWorkspace(a.client, absRoot, a.languageID)
+	case "rust":
+		_ = PrimeRustWorkspace(a.client, absRoot)
+	}
+}
+
+// matchAction dispatches to the language-specific action-pattern matcher.
+// Returns ErrUnsupported if the language has no matcher registered.
+func (a *Adapter) matchAction(actions []CodeAction, op rustActionOp) (*CodeAction, error) {
+	if a.languageID == "rust" {
+		return matchRustAction(actions, op)
+	}
+	return nil, fmt.Errorf("no code-action matcher for language %q", a.languageID)
 }

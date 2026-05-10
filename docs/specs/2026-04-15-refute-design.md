@@ -41,6 +41,8 @@ Agents ──MCP────>   |     ──LSP──────> LSP servers (
 | Any other language | LSP generic (whatever server is available) | — |
 | Structural patterns | ast-grep (CLI subprocess) | — |
 
+Current support status is tracked in [`docs/support-matrix.md`](../support-matrix.md). That file is the source of truth; this design doc describes the target architecture.
+
 All non-Go backends run as subprocesses. The Go daemon manages their lifecycle via JSON-RPC (for rope, ts-morph, OpenRewrite) or LSP protocol (for language servers). Each backend has a thin wrapper script in the target language (Python, Node.js, JVM) that imports the underlying library and exposes it over JSON-RPC on stdin/stdout.
 
 ## Backend Interface

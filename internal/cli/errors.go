@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/shatterproof-ai/refute/internal/telemetry"
 )
@@ -26,11 +27,53 @@ func NoEditsError() error {
 	return &ExitCodeError{Code: 2, Message: "no changes produced"}
 }
 
+// ErrLSPServerMissing signals that the LSP server binary is not on PATH.
+// Exit code 3 distinguishes this from other errors (1 = general, 2 = no edits).
+type ErrLSPServerMissing struct {
+	Language    string
+	Command     string
+	InstallHint string
+}
+
+func (e *ErrLSPServerMissing) Error() string {
+	if e.InstallHint != "" {
+		return fmt.Sprintf("LSP server %q for %s not found on PATH. Install with: %s",
+			e.Command, e.Language, e.InstallHint)
+	}
+	return fmt.Sprintf("LSP server %q for %s not found on PATH", e.Command, e.Language)
+}
+
+// ErrSymbolNotFound is returned by the CLI Rust rename path when no symbol
+// matches the parsed --symbol query. Exit code 2 signals "no match found".
+type ErrSymbolNotFound struct {
+	Language   string
+	Input      string
+	ModulePath []string
+	Trait      string
+	Name       string
+}
+
+func (e *ErrSymbolNotFound) Error() string {
+	var parts []string
+	if len(e.ModulePath) > 0 {
+		parts = append(parts, "container="+strings.Join(e.ModulePath, "::"))
+	}
+	if e.Trait != "" {
+		parts = append(parts, "trait="+e.Trait)
+	}
+	parts = append(parts, "name="+e.Name)
+	return fmt.Sprintf("no %s symbol matched %s (input: %q)",
+		e.Language, strings.Join(parts, " "), e.Input)
+}
+
+func (e *ErrSymbolNotFound) ExitCode() int { return 2 }
+
 // Run executes fn and maps any returned error to an exit code:
 //
-//	nil            → 0
-//	*ExitCodeError → e.Code (message printed to stderr only if non-empty)
-//	anything else  → 1 (message printed to stderr)
+//	nil                  → 0
+//	*ExitCodeError       → e.Code (message printed to stderr only if non-empty)
+//	*ErrLSPServerMissing → 3 (message printed to stderr)
+//	anything else        → 1 (message printed to stderr)
 func Run(fn func() error) {
 	cwd, _ := os.Getwd()
 	telemetry.Append(telemetry.DefaultPath(), telemetry.Capture(os.Args[1:], cwd))
@@ -45,6 +88,11 @@ func Run(fn func() error) {
 			fmt.Fprintln(os.Stderr, ec.Message)
 		}
 		os.Exit(ec.Code)
+	}
+	var em *ErrLSPServerMissing
+	if errors.As(err, &em) {
+		fmt.Fprintln(os.Stderr, em.Error())
+		os.Exit(3)
 	}
 	fmt.Fprintln(os.Stderr, err)
 	os.Exit(1)
