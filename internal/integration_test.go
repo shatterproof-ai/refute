@@ -4,6 +4,7 @@ package internal_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1081,5 +1082,91 @@ func TestEndToEnd_JSONOutput(t *testing.T) {
 	}
 	if parsed.FilesModified < 2 {
 		t.Errorf("filesModified = %d, want >= 2 (helper.go + main.go)", parsed.FilesModified)
+	}
+}
+
+func TestEndToEnd_RenameRustLocalVariable(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+
+	// Local var `prefix` lives inside format_greeting() on lib.rs line 6
+	// (1-indexed). Its declaration column is 9 (after "    let ").
+	libFile := filepath.Join(dir, "src", "lib.rs")
+	cmd := exec.Command(refuteBin,
+		"rename-variable",
+		"--file", libFile,
+		"--line", "6",
+		"--col", "9",
+		"--name", "prefix",
+		"--new-name", "salutation",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+	content, _ := os.ReadFile(libFile)
+	if strings.Contains(string(content), "prefix") {
+		t.Error("lib.rs still contains 'prefix'")
+	}
+	if !strings.Contains(string(content), "salutation") {
+		t.Error("lib.rs missing 'salutation'")
+	}
+	if err := runCargoBuild(t, dir); err != nil {
+		t.Fatalf("cargo build failed after local rename: %v", err)
+	}
+}
+
+func runCargoBuild(t *testing.T, dir string) error {
+	t.Helper()
+	cmd := exec.Command("cargo", "build")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("%w: %s", err, out)
+	}
+	return nil
+}
+
+func TestEndToEnd_RenameRustParameter(t *testing.T) {
+	if _, err := exec.LookPath("rust-analyzer"); err != nil {
+		t.Skip("rust-analyzer not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	libFile := filepath.Join(dir, "src", "lib.rs")
+
+	// Parameter `name` is on lib.rs line 5, column 24 (inside the
+	// format_greeting signature).
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", libFile,
+		"--line", "5",
+		"--col", "24",
+		"--name", "name",
+		"--new-name", "greetee",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("refute failed: %s\n%s", err, out)
+	}
+	content, _ := os.ReadFile(libFile)
+	if strings.Contains(string(content), "name: &str") {
+		t.Error("lib.rs still has 'name' as parameter")
+	}
+	if !strings.Contains(string(content), "greetee: &str") {
+		t.Error("lib.rs missing 'greetee' as parameter")
+	}
+	if err := runCargoBuild(t, dir); err != nil {
+		t.Fatalf("cargo build failed after parameter rename: %v", err)
 	}
 }
