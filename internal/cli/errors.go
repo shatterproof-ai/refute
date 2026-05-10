@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/shatterproof-ai/refute/internal/telemetry"
 )
@@ -41,6 +42,31 @@ func (e *ErrLSPServerMissing) Error() string {
 	}
 	return fmt.Sprintf("LSP server %q for %s not found on PATH", e.Command, e.Language)
 }
+
+// ErrSymbolNotFound is returned by the CLI Rust rename path when no symbol
+// matches the parsed --symbol query. Exit code 2 signals "no match found".
+type ErrSymbolNotFound struct {
+	Language   string
+	Input      string
+	ModulePath []string
+	Trait      string
+	Name       string
+}
+
+func (e *ErrSymbolNotFound) Error() string {
+	var parts []string
+	if len(e.ModulePath) > 0 {
+		parts = append(parts, "container="+strings.Join(e.ModulePath, "::"))
+	}
+	if e.Trait != "" {
+		parts = append(parts, "trait="+e.Trait)
+	}
+	parts = append(parts, "name="+e.Name)
+	return fmt.Sprintf("no %s symbol matched %s (input: %q)",
+		e.Language, strings.Join(parts, " "), e.Input)
+}
+
+func (e *ErrSymbolNotFound) ExitCode() int { return 2 }
 
 // Run executes fn and maps any returned error to an exit code:
 //

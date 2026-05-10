@@ -27,11 +27,12 @@ func (k SymbolKind) String() string {
 
 // Location identifies a symbol in a source file. Line and Column are 1-indexed.
 type Location struct {
-	File   string
-	Line   int
-	Column int
-	Name   string
-	Kind   SymbolKind
+	File      string
+	Line      int
+	Column    int
+	Name      string
+	Kind      SymbolKind
+	Container string // workspace/symbol containerName; used by Rust disambiguation
 }
 
 // SourceRange identifies a range of source code. 1-indexed.

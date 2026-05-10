@@ -66,6 +66,10 @@ func trimTraitPath(s string) string {
 	return parts[len(parts)-1]
 }
 
+// ParseRustContainer is the exported wrapper around parseRustContainer for use
+// by packages outside the lsp package.
+func ParseRustContainer(s string) ([]string, string, string) { return parseRustContainer(s) }
+
 // FindEnclosingImplTrait walks a document-symbol tree to find the `impl ...`
 // ancestor whose range contains targetLine (0-indexed). Returns the parsed
 // trait name (last `::` segment) or "" if no such ancestor exists.

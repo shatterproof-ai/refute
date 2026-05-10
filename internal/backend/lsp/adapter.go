@@ -129,11 +129,12 @@ func (a *Adapter) FindSymbol(query symbol.Query) ([]symbol.Location, error) {
 			return nil, err
 		}
 		matches = append(matches, symbol.Location{
-			File:   uriToFile(s.Location.URI),
-			Line:   s.Location.Range.Start.Line + 1,
-			Column: column,
-			Name:   s.Name,
-			Kind:   lspKindToSymbolKind(s.Kind),
+			File:      uriToFile(s.Location.URI),
+			Line:      s.Location.Range.Start.Line + 1,
+			Column:    column,
+			Name:      s.Name,
+			Kind:      lspKindToSymbolKind(s.Kind),
+			Container: s.ContainerName,
 		})
 	}
 
@@ -638,6 +639,15 @@ func utf16CharacterToByteCharacter(line string, character int) (int, error) {
 // black-box tests without exporting it as production API.
 func ByteColumnToUTF16CharacterForTest(line string, byteColumn int) (int, error) {
 	return byteColumnToUTF16Character(line, byteColumn)
+}
+
+// DocumentSymbols returns hierarchical document symbols for a file, used by
+// the expensive Rust container disambiguation branch.
+func (a *Adapter) DocumentSymbols(path string) ([]DocumentSymbol, error) {
+	if a.client == nil {
+		return nil, fmt.Errorf("adapter not initialized")
+	}
+	return a.client.DocumentSymbol(path)
 }
 
 // primeWorkspace dispatches to the language-specific priming walker. Failures
