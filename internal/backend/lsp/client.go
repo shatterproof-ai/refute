@@ -758,6 +758,53 @@ func (c *Client) WorkspaceSymbol(query string) ([]WorkspaceSymbolInfo, error) {
 	return syms, nil
 }
 
+// DocumentSymbol holds a hierarchical symbol entry from textDocument/documentSymbol.
+type DocumentSymbol struct {
+	Name           string           `json:"name"`
+	Detail         string           `json:"detail,omitempty"`
+	Kind           int              `json:"kind"`
+	Range          Range            `json:"range"`
+	SelectionRange Range            `json:"selectionRange"`
+	Children       []DocumentSymbol `json:"children,omitempty"`
+}
+
+// Range mirrors the LSP Range type (0-indexed).
+type Range struct {
+	Start Position `json:"start"`
+	End   Position `json:"end"`
+}
+
+// Position mirrors the LSP Position type (0-indexed).
+type Position struct {
+	Line      int `json:"line"`
+	Character int `json:"character"`
+}
+
+// DocumentSymbol requests hierarchical document symbols for a file. If
+// rust-analyzer returns the flat SymbolInformation form instead, callers
+// must fall back to the cheap branch for that file.
+func (c *Client) DocumentSymbol(path string) ([]DocumentSymbol, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("abs path: %w", err)
+	}
+	params := map[string]any{
+		"textDocument": map[string]any{"uri": fileToURI(absPath)},
+	}
+	raw, err := c.request("textDocument/documentSymbol", params)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	var result []DocumentSymbol
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("parsing document symbols: %w", err)
+	}
+	return result, nil
+}
+
 // parseWorkspaceEdit converts an LSP WorkspaceEdit JSON result into []edit.FileEdit.
 // It handles both the `changes` map format and `documentChanges` array format.
 func parseWorkspaceEdit(raw json.RawMessage) ([]edit.FileEdit, error) {
