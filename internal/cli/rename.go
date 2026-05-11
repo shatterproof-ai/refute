@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -224,127 +225,17 @@ func emitJSON(we *edit.WorkspaceEdit, ctx jsonContext, status string) error {
 }
 
 func runRenameTier1(query symbol.Query) error {
-	workspaceRoot, err := tier1WorkspaceRoot()
+	setup, err := setupTier1RenameBackend(query)
 	if err != nil {
 		return err
 	}
+	defer setup.adapter.Shutdown()
 
-	language := "go"
-	if query.File != "" {
-		language = DetectServerKey(query.File)
-	}
-	if language == "" {
-		language = "go" // fallback for naked --symbol without --file
-	}
-
-	cfg, err := config.Load(flagConfig, workspaceRoot)
+	loc, err := resolveTier1Symbol(setup.adapter, setup.language, query)
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return handleTier1RenameError(setup.ctx, err)
 	}
-	serverCfg := cfg.Server(language)
-	if serverCfg.Command == "" {
-		return fmt.Errorf("no server configured for language %q", language)
-	}
-	if _, lookErr := exec.LookPath(serverCfg.Command); lookErr != nil {
-		return &ErrLSPServerMissing{
-			Language:    language,
-			Command:     serverCfg.Command,
-			InstallHint: config.InstallHint(language),
-		}
-	}
-
-	adapter := lsp.NewAdapter(serverCfg, language, nil)
-	if err := adapter.Initialize(workspaceRoot); err != nil {
-		if flagJSON {
-			ctx := jsonContext{
-				Operation:     "rename",
-				Language:      language,
-				Backend:       "lsp",
-				WorkspaceRoot: workspaceRoot,
-			}
-			return emitJSONError(ctx, backendErrorStatus(err), "backend-unavailable", err.Error(), "Run `refute doctor` for backend setup details.")
-		}
-		return fmt.Errorf("initializing backend: %w", err)
-	}
-	defer adapter.Shutdown()
-
-	// Prime so workspace/symbol sees the whole module.
-	if _, err := adapter.PrimeWorkspace(workspaceRoot); err != nil {
-		if flagJSON {
-			ctx := jsonContext{
-				Operation:     "rename",
-				Language:      language,
-				Backend:       "lsp",
-				WorkspaceRoot: workspaceRoot,
-			}
-			return emitJSONError(ctx, edit.StatusBackendFailed, "backend-failed", err.Error(), "")
-		}
-		return fmt.Errorf("priming workspace: %w", err)
-	}
-
-	ctx := jsonContext{
-		Operation:     "rename",
-		Language:      language,
-		Backend:       "lsp",
-		WorkspaceRoot: workspaceRoot,
-	}
-
-	if language == "rust" {
-		modulePath, trait, name, err := ParseRustQualifiedName(query.QualifiedName)
-		if err != nil {
-			return fmt.Errorf("parse --symbol: %w", err)
-		}
-		infos, err := adapter.FindSymbol(symbol.Query{QualifiedName: name})
-		if err != nil {
-			if flagJSON {
-				return emitJSONOperationError(ctx, err)
-			}
-			return fmt.Errorf("symbol resolution: %w", err)
-		}
-		candidates := filterRustCandidates(infos, modulePath, trait, name, adapter)
-		switch len(candidates) {
-		case 0:
-			notFound := &ErrSymbolNotFound{
-				Language:   "rust",
-				Input:      query.QualifiedName,
-				ModulePath: modulePath,
-				Trait:      trait,
-				Name:       name,
-			}
-			if flagJSON {
-				return emitJSONOperationError(ctx, notFound)
-			}
-			return notFound
-		case 1:
-			if err := finishRename(adapter, ctx, candidates[0], flagNewName); err != nil {
-				if flagJSON {
-					return emitJSONOperationError(ctx, err)
-				}
-				return err
-			}
-			return nil
-		default:
-			return ambiguousError(ctx, candidates)
-		}
-	}
-
-	locs, err := adapter.FindSymbol(query)
-	if err != nil {
-		if flagJSON {
-			return emitJSONOperationError(ctx, err)
-		}
-		return fmt.Errorf("symbol resolution: %w", err)
-	}
-	if len(locs) > 1 {
-		return ambiguousError(ctx, locs)
-	}
-	if err := finishRename(adapter, ctx, locs[0], flagNewName); err != nil {
-		if flagJSON {
-			return emitJSONOperationError(ctx, err)
-		}
-		return err
-	}
-	return nil
+	return handleTier1RenameError(setup.ctx, finishRename(setup.adapter, setup.ctx, loc, flagNewName))
 }
 
 // tier1WorkspaceRoot resolves the workspace root for a Tier 1 query.
@@ -362,6 +253,173 @@ func tier1WorkspaceRoot() (string, error) {
 		return "", fmt.Errorf("getting working directory: %w", err)
 	}
 	return FindWorkspaceRootFromDir(cwd)
+}
+
+type tier1RenameBackend struct {
+	adapter  *lsp.Adapter
+	language string
+	ctx      jsonContext
+}
+
+func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
+	workspaceRoot, err := tier1WorkspaceRoot()
+	if err != nil {
+		return nil, err
+	}
+	language := tier1Language(query)
+	ctx := tier1RenameContext(language, workspaceRoot)
+
+	cfg, err := config.Load(flagConfig, workspaceRoot)
+	if err != nil {
+		return nil, fmt.Errorf("loading config: %w", err)
+	}
+	serverCfg := cfg.Server(language)
+	if serverCfg.Command == "" {
+		return nil, fmt.Errorf("no server configured for language %q", language)
+	}
+	if _, lookErr := exec.LookPath(serverCfg.Command); lookErr != nil {
+		return nil, &ErrLSPServerMissing{
+			Language:    language,
+			Command:     serverCfg.Command,
+			InstallHint: config.InstallHint(language),
+		}
+	}
+
+	adapter := lsp.NewAdapter(serverCfg, language, nil)
+	if err := adapter.Initialize(workspaceRoot); err != nil {
+		return nil, handleTier1BackendSetupError(ctx, err)
+	}
+	// Prime so workspace/symbol sees the whole module.
+	if _, err := adapter.PrimeWorkspace(workspaceRoot); err != nil {
+		_ = adapter.Shutdown()
+		return nil, handleTier1WorkspacePrimeError(ctx, err)
+	}
+	return &tier1RenameBackend{adapter: adapter, language: language, ctx: ctx}, nil
+}
+
+func tier1Language(query symbol.Query) string {
+	if query.File == "" {
+		return "go" // fallback for naked --symbol without --file
+	}
+	if language := DetectServerKey(query.File); language != "" {
+		return language
+	}
+	return "go"
+}
+
+func tier1RenameContext(language, workspaceRoot string) jsonContext {
+	return jsonContext{
+		Operation:     "rename",
+		Language:      language,
+		Backend:       "lsp",
+		WorkspaceRoot: workspaceRoot,
+	}
+}
+
+func handleTier1BackendSetupError(ctx jsonContext, err error) error {
+	if flagJSON {
+		return emitJSONError(ctx, backendErrorStatus(err), "backend-unavailable", err.Error(), "Run `refute doctor` for backend setup details.")
+	}
+	return fmt.Errorf("initializing backend: %w", err)
+}
+
+func handleTier1WorkspacePrimeError(ctx jsonContext, err error) error {
+	if flagJSON {
+		return emitJSONError(ctx, edit.StatusBackendFailed, "backend-failed", err.Error(), "")
+	}
+	return fmt.Errorf("priming workspace: %w", err)
+}
+
+func resolveTier1Symbol(adapter backend.RefactoringBackend, language string, query symbol.Query) (symbol.Location, error) {
+	if language == "rust" {
+		return resolveRustTier1Symbol(adapter, query)
+	}
+	locs, err := adapter.FindSymbol(query)
+	if err != nil {
+		return symbol.Location{}, &tier1SymbolResolutionError{err: err}
+	}
+	if len(locs) > 1 {
+		return symbol.Location{}, &backend.ErrAmbiguous{Candidates: locs}
+	}
+	if len(locs) == 0 {
+		return symbol.Location{}, &tier1SymbolResolutionError{err: backend.ErrSymbolNotFound}
+	}
+	return locs[0], nil
+}
+
+func resolveRustTier1Symbol(adapter backend.RefactoringBackend, query symbol.Query) (symbol.Location, error) {
+	modulePath, trait, name, err := ParseRustQualifiedName(query.QualifiedName)
+	if err != nil {
+		return symbol.Location{}, &tier1RustSymbolParseError{err: err}
+	}
+	infos, err := adapter.FindSymbol(symbol.Query{QualifiedName: name})
+	if err != nil {
+		return symbol.Location{}, &tier1SymbolResolutionError{err: err}
+	}
+	candidates := filterRustCandidates(infos, modulePath, trait, name, adapter)
+	switch len(candidates) {
+	case 0:
+		return symbol.Location{}, &ErrSymbolNotFound{
+			Language:   "rust",
+			Input:      query.QualifiedName,
+			ModulePath: modulePath,
+			Trait:      trait,
+			Name:       name,
+		}
+	case 1:
+		return candidates[0], nil
+	default:
+		return symbol.Location{}, &backend.ErrAmbiguous{Candidates: candidates}
+	}
+}
+
+type tier1RustSymbolParseError struct {
+	err error
+}
+
+func (e *tier1RustSymbolParseError) Error() string {
+	return fmt.Sprintf("parse --symbol: %v", e.err)
+}
+
+func (e *tier1RustSymbolParseError) Unwrap() error {
+	return e.err
+}
+
+type tier1SymbolResolutionError struct {
+	err error
+}
+
+func (e *tier1SymbolResolutionError) Error() string {
+	return fmt.Sprintf("symbol resolution: %v", e.err)
+}
+
+func (e *tier1SymbolResolutionError) Unwrap() error {
+	return e.err
+}
+
+func handleTier1RenameError(ctx jsonContext, err error) error {
+	if err == nil {
+		return nil
+	}
+	var ambiguous *backend.ErrAmbiguous
+	if errors.As(err, &ambiguous) {
+		return ambiguousError(ctx, ambiguous.Candidates)
+	}
+	var parseErr *tier1RustSymbolParseError
+	if errors.As(err, &parseErr) {
+		return err
+	}
+	var resolutionErr *tier1SymbolResolutionError
+	if errors.As(err, &resolutionErr) {
+		if flagJSON {
+			return emitJSONOperationError(ctx, resolutionErr.err)
+		}
+		return err
+	}
+	if flagJSON {
+		return emitJSONOperationError(ctx, err)
+	}
+	return err
 }
 
 // ambiguousError formats a Tier 1 ambiguity result. In JSON mode, emit a
