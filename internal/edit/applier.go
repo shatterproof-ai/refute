@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // ApplyResult holds statistics about a completed Apply operation.
@@ -20,6 +21,18 @@ type pendingFile struct {
 	mode       os.FileMode
 }
 
+type resolvedFileEdit struct {
+	requestedPath string
+	resolvedPath  string
+	edits         []TextEdit
+}
+
+type workspaceBoundary struct {
+	requestedRoot string
+	absRoot       string
+	resolvedRoot  string
+}
+
 // Apply applies the WorkspaceEdit atomically across all files.
 // Phase 1: read all files and compute new contents in memory.
 // Phase 2: write new contents to same-directory temp files.
@@ -27,9 +40,25 @@ type pendingFile struct {
 // On any failure, temp files are removed and committed files are restored from
 // their backups.
 func Apply(we *WorkspaceEdit) (*ApplyResult, error) {
+	return apply(we, workspaceBoundary{})
+}
+
+// ApplyWithin applies the WorkspaceEdit only after verifying every edit path is
+// within workspaceRoot. Symlinks are resolved before writes: symlinks whose
+// targets remain inside the workspace edit the target file, while symlinks that
+// resolve outside the workspace are rejected.
+func ApplyWithin(we *WorkspaceEdit, workspaceRoot string) (*ApplyResult, error) {
+	boundary, err := resolveWorkspaceRoot(workspaceRoot)
+	if err != nil {
+		return nil, err
+	}
+	return apply(we, boundary)
+}
+
+func apply(we *WorkspaceEdit, boundary workspaceBoundary) (*ApplyResult, error) {
 	normalizeCodeActionPlaceholders(we)
 
-	pendingFiles, err := computePendingFiles(we)
+	pendingFiles, err := computePendingFiles(we, boundary)
 	if err != nil {
 		return nil, err
 	}
@@ -56,35 +85,110 @@ func normalizeCodeActionPlaceholders(we *WorkspaceEdit) {
 	}
 }
 
-func computePendingFiles(we *WorkspaceEdit) ([]pendingFile, error) {
+func computePendingFiles(we *WorkspaceEdit, boundary workspaceBoundary) ([]pendingFile, error) {
 	pendingFiles := make([]pendingFile, 0, len(we.FileEdits))
 	seen := make(map[string]struct{}, len(we.FileEdits))
+	fileEdits, err := resolveFileEdits(we, boundary)
+	if err != nil {
+		return nil, err
+	}
 
-	for _, fe := range we.FileEdits {
-		if _, ok := seen[fe.Path]; ok {
-			return nil, fmt.Errorf("duplicate file edit for %s", fe.Path)
+	for _, fe := range fileEdits {
+		if _, ok := seen[fe.resolvedPath]; ok {
+			return nil, fmt.Errorf("duplicate file edit for %s", fe.requestedPath)
 		}
-		seen[fe.Path] = struct{}{}
+		seen[fe.resolvedPath] = struct{}{}
 
-		content, err := os.ReadFile(fe.Path)
+		content, err := os.ReadFile(fe.resolvedPath)
 		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", fe.Path, err)
+			return nil, fmt.Errorf("read %s: %w", fe.requestedPath, err)
 		}
-		info, err := os.Stat(fe.Path)
+		info, err := os.Stat(fe.resolvedPath)
 		if err != nil {
-			return nil, fmt.Errorf("stat %s: %w", fe.Path, err)
+			return nil, fmt.Errorf("stat %s: %w", fe.requestedPath, err)
 		}
-		newContent, err := applyEdits(content, fe.Edits)
+		newContent, err := applyEdits(content, fe.edits)
 		if err != nil {
-			return nil, fmt.Errorf("apply edits to %s: %w", fe.Path, err)
+			return nil, fmt.Errorf("apply edits to %s: %w", fe.requestedPath, err)
 		}
 		pendingFiles = append(pendingFiles, pendingFile{
-			origPath:   fe.Path,
+			origPath:   fe.resolvedPath,
 			newContent: newContent,
 			mode:       info.Mode(),
 		})
 	}
 	return pendingFiles, nil
+}
+
+func resolveFileEdits(we *WorkspaceEdit, boundary workspaceBoundary) ([]resolvedFileEdit, error) {
+	fileEdits := make([]resolvedFileEdit, 0, len(we.FileEdits))
+	for _, fe := range we.FileEdits {
+		resolvedPath := fe.Path
+		if boundary.requestedRoot != "" {
+			var err error
+			resolvedPath, err = resolvePathWithinWorkspace(fe.Path, boundary)
+			if err != nil {
+				return nil, err
+			}
+		}
+		fileEdits = append(fileEdits, resolvedFileEdit{
+			requestedPath: fe.Path,
+			resolvedPath:  resolvedPath,
+			edits:         fe.Edits,
+		})
+	}
+	return fileEdits, nil
+}
+
+func resolveWorkspaceRoot(workspaceRoot string) (workspaceBoundary, error) {
+	if workspaceRoot == "" {
+		return workspaceBoundary{}, fmt.Errorf("workspace root is required to apply edits within a workspace")
+	}
+	absRoot, err := filepath.Abs(workspaceRoot)
+	if err != nil {
+		return workspaceBoundary{}, fmt.Errorf("resolve workspace root %s: %w", workspaceRoot, err)
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		return workspaceBoundary{}, fmt.Errorf("resolve workspace root %s: %w", workspaceRoot, err)
+	}
+	return workspaceBoundary{
+		requestedRoot: workspaceRoot,
+		absRoot:       filepath.Clean(absRoot),
+		resolvedRoot:  filepath.Clean(resolvedRoot),
+	}, nil
+}
+
+func resolvePathWithinWorkspace(path string, boundary workspaceBoundary) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("edit path is empty; expected a file path inside workspace %s", boundary.requestedRoot)
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve edit path %s: %w", path, err)
+	}
+	absPath = filepath.Clean(absPath)
+	if !isPathWithin(absPath, boundary.absRoot) && !isPathWithin(absPath, boundary.resolvedRoot) {
+		return "", fmt.Errorf("edit path %s is outside workspace %s; refusing to write outside the workspace", path, boundary.requestedRoot)
+	}
+
+	resolvedPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve edit path %s within workspace %s: %w", path, boundary.requestedRoot, err)
+	}
+	resolvedPath = filepath.Clean(resolvedPath)
+	if !isPathWithin(resolvedPath, boundary.resolvedRoot) {
+		return "", fmt.Errorf("edit path %s resolves to %s, which is outside workspace %s; refusing to follow symlink outside the workspace", path, resolvedPath, boundary.requestedRoot)
+	}
+	return resolvedPath, nil
+}
+
+func isPathWithin(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel))
 }
 
 func writePendingTempFiles(pendingFiles []pendingFile) error {
