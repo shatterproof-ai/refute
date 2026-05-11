@@ -182,7 +182,7 @@ func applyOrPreview(we *edit.WorkspaceEdit, ctx jsonContext) error {
 		fmt.Print(diff)
 		return nil
 	}
-	result, err := edit.Apply(we)
+	result, err := edit.ApplyWithin(we, ctx.WorkspaceRoot)
 	if err != nil {
 		return fmt.Errorf("applying edits: %w", err)
 	}
@@ -211,7 +211,7 @@ func emitJSON(we *edit.WorkspaceEdit, ctx jsonContext, status string) error {
 	res.Backend = ctx.Backend
 	res.WorkspaceRoot = ctx.WorkspaceRoot
 	if !flagDryRun {
-		if _, err := edit.Apply(we); err != nil {
+		if _, err := edit.ApplyWithin(we, ctx.WorkspaceRoot); err != nil {
 			return fmt.Errorf("applying edits: %w", err)
 		}
 	}
