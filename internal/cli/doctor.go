@@ -47,6 +47,7 @@ var errLookPathNotFound = errors.New("not found")
 var lookPathFn = exec.LookPath
 
 var goOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
+var rustOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
 
 func buildDoctorReport() DoctorReport {
 	report := DoctorReport{
@@ -64,8 +65,8 @@ func buildDoctorReport() DoctorReport {
 			"npm install -g typescript-language-server typescript", []string{"rename"},
 			"JavaScript support is experimental for v0.1."),
 		probeLSP("rust", "lsp/rust-analyzer", "rust-analyzer", DoctorStatusExperimental,
-			"rustup component add rust-analyzer", []string{"rename"},
-			"Rust support is experimental for v0.1; CI exercises rename coverage when rust-analyzer is installed."),
+			"rustup component add rust-analyzer", rustOperations,
+			"Rust support is experimental for v0.1; extract and inline operations depend on rust-analyzer assists and inline is single-call-site only."),
 		probeLSP("python", "lsp/pyright", "pyright-langserver", DoctorStatusPlanned,
 			"npm install -g pyright", []string{"rename"},
 			"Python support is planned, not yet covered by integration tests."),
