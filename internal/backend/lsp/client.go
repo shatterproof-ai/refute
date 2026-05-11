@@ -640,23 +640,45 @@ func (c *Client) Rename(filePath string, line, character int, newName string) ([
 func (c *Client) Shutdown() error {
 	var shutdownErr error
 	c.shutdownOnce.Do(func() {
+		defer c.cleanupStderr()
+
 		_, err := c.request("shutdown", nil)
 		if err != nil {
 			shutdownErr = fmt.Errorf("shutdown request: %w", err)
+			if cleanupErr := c.killAndWaitProcess(); cleanupErr != nil {
+				shutdownErr = errors.Join(shutdownErr, cleanupErr)
+			}
 			return
 		}
 
 		if err := c.notify("exit", nil); err != nil {
 			shutdownErr = fmt.Errorf("exit notification: %w", err)
+			if cleanupErr := c.killAndWaitProcess(); cleanupErr != nil {
+				shutdownErr = errors.Join(shutdownErr, cleanupErr)
+			}
 			return
 		}
 
 		// Wait for readLoop to drain and process to exit.
 		<-c.done
 		shutdownErr = c.process.Wait()
-		c.cleanupStderr()
 	})
 	return shutdownErr
+}
+
+func (c *Client) killAndWaitProcess() error {
+	if c == nil || c.process == nil {
+		return nil
+	}
+	if c.process.Process != nil {
+		if err := c.process.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return fmt.Errorf("kill process: %w", err)
+		}
+	}
+	if err := c.process.Wait(); err != nil && c.process.ProcessState == nil {
+		return fmt.Errorf("wait process: %w", err)
+	}
+	return nil
 }
 
 // RenameProvider returns true if the server advertised rename support.
