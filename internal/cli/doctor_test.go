@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -96,4 +97,53 @@ func TestDoctor_GoStatusReflectsLookPath(t *testing.T) {
 	if goEntry.Binary != "/fake/path/to/gopls" {
 		t.Errorf("go binary = %q, want /fake/path/to/gopls", goEntry.Binary)
 	}
+}
+
+func TestDoctor_RustOperationsMatchSupportMatrix(t *testing.T) {
+	report := buildDoctorReport()
+	var rustEntry *DoctorBackendStatus
+	for i := range report.Backends {
+		if report.Backends[i].Language == "rust" {
+			rustEntry = &report.Backends[i]
+			break
+		}
+	}
+	if rustEntry == nil {
+		t.Fatal("doctor report missing rust entry")
+	}
+
+	got := strings.Join(rustEntry.Operations, ", ")
+	want := strings.Join(supportMatrixOperations(t, "Rust"), ", ")
+	if got != want {
+		t.Errorf("rust operations = %q, want support matrix operations %q", got, want)
+	}
+}
+
+func supportMatrixOperations(t *testing.T, language string) []string {
+	t.Helper()
+
+	data, err := os.ReadFile("../../docs/support-matrix.md")
+	if err != nil {
+		t.Fatalf("read support matrix: %v", err)
+	}
+
+	prefix := "| " + language + " |"
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		cells := strings.Split(line, "|")
+		if len(cells) < 6 {
+			t.Fatalf("support matrix row for %s has too few columns: %q", language, line)
+		}
+		rawOps := strings.Split(strings.TrimSpace(cells[5]), ",")
+		ops := make([]string, 0, len(rawOps))
+		for _, op := range rawOps {
+			ops = append(ops, strings.TrimSpace(op))
+		}
+		return ops
+	}
+
+	t.Fatalf("support matrix missing language %s", language)
+	return nil
 }
