@@ -3,6 +3,7 @@ package lsp_test
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -90,5 +91,75 @@ func TestTransport_ReadRejectsNegativeContentLength(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid Content-Length") {
 		t.Fatalf("Read error = %q, want invalid Content-Length error", err)
+	}
+}
+
+func TestTransport_ReadRejectsMissingContentLength(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteString("Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n{}")
+
+	transport := lsp.NewTransport(&buf, nil)
+	_, err := transport.Read()
+	if err == nil {
+		t.Fatal("Read succeeded without Content-Length")
+	}
+	if !strings.Contains(err.Error(), "missing Content-Length") {
+		t.Fatalf("Read error = %q, want missing Content-Length error", err)
+	}
+}
+
+func TestTransport_ReadRejectsMalformedContentLength(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteString("Content-Length: not-a-number\r\n\r\n")
+
+	transport := lsp.NewTransport(&buf, nil)
+	_, err := transport.Read()
+	if err == nil {
+		t.Fatal("Read succeeded with malformed Content-Length")
+	}
+	if !strings.Contains(err.Error(), "invalid Content-Length") {
+		t.Fatalf("Read error = %q, want invalid Content-Length error", err)
+	}
+}
+
+func TestTransport_ReadMalformedHeaderFramingDoesNotSetContentLength(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteString("Content-Length:2\r\n\r\n{}")
+
+	transport := lsp.NewTransport(&buf, nil)
+	_, err := transport.Read()
+	if err == nil {
+		t.Fatal("Read succeeded with malformed Content-Length header framing")
+	}
+	if !strings.Contains(err.Error(), "missing Content-Length") {
+		t.Fatalf("Read error = %q, want missing Content-Length error", err)
+	}
+}
+
+func TestTransport_ReadRejectsTruncatedBody(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteString("Content-Length: 5\r\n\r\nabc")
+
+	transport := lsp.NewTransport(&buf, nil)
+	_, err := transport.Read()
+	if err == nil {
+		t.Fatal("Read succeeded with truncated body")
+	}
+	if err != io.ErrUnexpectedEOF {
+		t.Fatalf("Read error = %v, want %v", err, io.ErrUnexpectedEOF)
+	}
+}
+
+func TestTransport_ReadRejectsEOFWhileReadingBody(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteString("Content-Length: 5\r\n\r\n")
+
+	transport := lsp.NewTransport(&buf, nil)
+	_, err := transport.Read()
+	if err == nil {
+		t.Fatal("Read succeeded after EOF before response body")
+	}
+	if err != io.EOF {
+		t.Fatalf("Read error = %v, want %v", err, io.EOF)
 	}
 }
