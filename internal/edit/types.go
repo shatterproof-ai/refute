@@ -28,6 +28,6 @@ type FileEdit struct {
 
 // WorkspaceEdit describes changes across multiple files.
 type WorkspaceEdit struct {
-	FileEdits     []FileEdit
+	FileEdits      []FileEdit
 	FromCodeAction bool // true for extract/inline edits; enables snippet-placeholder stripping
 }

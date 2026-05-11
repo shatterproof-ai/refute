@@ -42,7 +42,7 @@ func makeRenameCmd(use string, kind symbol.SymbolKind) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   use,
 		Short: fmt.Sprintf("Rename a %s (Go, Rust, TypeScript)", kind),
-		Long: fmt.Sprintf("Rename a %s at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server). See docs/support-matrix.md.", kind),
+		Long:  fmt.Sprintf("Rename a %s at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server). See docs/support-matrix.md.", kind),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRename(kind)
 		},
