@@ -50,7 +50,7 @@ func TestResolveRustTier1SymbolFiltersCandidate(t *testing.T) {
 	b := &tier1FakeBackend{
 		locs: []symbol.Location{
 			{File: "src/lib.rs", Line: 4, Column: 1, Name: "fmt", Container: "module::Other"},
-			{File: "src/lib.rs", Line: 9, Column: 1, Name: "fmt", Container: "module::Greeter impl Display"},
+			{File: "src/lib.rs", Line: 9, Column: 1, Name: "fmt", Container: "module::impl Display for Greeter"},
 		},
 	}
 
