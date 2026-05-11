@@ -27,6 +27,23 @@ type pendingFile struct {
 // On any failure, temp files are removed and committed files are restored from
 // their backups.
 func Apply(we *WorkspaceEdit) (*ApplyResult, error) {
+	normalizeCodeActionPlaceholders(we)
+
+	pendingFiles, err := computePendingFiles(we)
+	if err != nil {
+		return nil, err
+	}
+	if err := writePendingTempFiles(pendingFiles); err != nil {
+		return nil, err
+	}
+	if err := commitPendingFiles(pendingFiles); err != nil {
+		return nil, err
+	}
+
+	return &ApplyResult{FilesModified: len(pendingFiles)}, nil
+}
+
+func normalizeCodeActionPlaceholders(we *WorkspaceEdit) {
 	if we.FromCodeAction {
 		for i := range we.FileEdits {
 			for j := range we.FileEdits[i].Edits {
@@ -37,7 +54,9 @@ func Apply(we *WorkspaceEdit) (*ApplyResult, error) {
 			}
 		}
 	}
-	// Phase 1: compute new contents for every file.
+}
+
+func computePendingFiles(we *WorkspaceEdit) ([]pendingFile, error) {
 	pendingFiles := make([]pendingFile, 0, len(we.FileEdits))
 	seen := make(map[string]struct{}, len(we.FileEdits))
 
@@ -65,19 +84,22 @@ func Apply(we *WorkspaceEdit) (*ApplyResult, error) {
 			mode:       info.Mode(),
 		})
 	}
+	return pendingFiles, nil
+}
 
-	// Phase 2: write to unique same-directory temp files.
+func writePendingTempFiles(pendingFiles []pendingFile) error {
 	for i, p := range pendingFiles {
 		tmpPath, err := writeTempFile(p.origPath, p.newContent, p.mode)
 		if err != nil {
 			cleanupPending(pendingFiles[:i])
-			return nil, fmt.Errorf("write temp file for %s: %w", p.origPath, err)
+			return fmt.Errorf("write temp file for %s: %w", p.origPath, err)
 		}
 		pendingFiles[i].tmpPath = tmpPath
 	}
+	return nil
+}
 
-	// Phase 3: swap each file through a backup so prior replacements can be
-	// restored if a later file fails.
+func commitPendingFiles(pendingFiles []pendingFile) error {
 	committed := make([]pendingFile, 0, len(pendingFiles))
 	for i := range pendingFiles {
 		p := &pendingFiles[i]
@@ -85,14 +107,14 @@ func Apply(we *WorkspaceEdit) (*ApplyResult, error) {
 		if err != nil {
 			rollback(committed)
 			cleanupPending(pendingFiles[i:])
-			return nil, fmt.Errorf("reserve backup for %s: %w", p.origPath, err)
+			return fmt.Errorf("reserve backup for %s: %w", p.origPath, err)
 		}
 		p.backupPath = backupPath
 
 		if err := os.Rename(p.origPath, p.backupPath); err != nil {
 			rollback(committed)
 			cleanupPending(pendingFiles[i:])
-			return nil, fmt.Errorf("backup %s -> %s: %w", p.origPath, p.backupPath, err)
+			return fmt.Errorf("backup %s -> %s: %w", p.origPath, p.backupPath, err)
 		}
 		if err := os.Rename(p.tmpPath, p.origPath); err != nil {
 			if restoreErr := os.Rename(p.backupPath, p.origPath); restoreErr != nil {
@@ -100,7 +122,7 @@ func Apply(we *WorkspaceEdit) (*ApplyResult, error) {
 			}
 			rollback(committed)
 			cleanupPending(pendingFiles[i:])
-			return nil, fmt.Errorf("rename %s -> %s: %w", p.tmpPath, p.origPath, err)
+			return fmt.Errorf("rename %s -> %s: %w", p.tmpPath, p.origPath, err)
 		}
 		p.tmpPath = ""
 		committed = append(committed, *p)
@@ -109,8 +131,7 @@ func Apply(we *WorkspaceEdit) (*ApplyResult, error) {
 	for _, p := range committed {
 		os.Remove(p.backupPath)
 	}
-
-	return &ApplyResult{FilesModified: len(pendingFiles)}, nil
+	return nil
 }
 
 func writeTempFile(origPath string, content []byte, mode os.FileMode) (string, error) {
