@@ -4,7 +4,7 @@ package symbol
 type SymbolKind int
 
 const (
-	KindUnknown   SymbolKind = iota
+	KindUnknown SymbolKind = iota
 	KindFunction
 	KindClass
 	KindField
