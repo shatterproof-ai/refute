@@ -30,6 +30,19 @@ func TestClientRequestTimesOutWhenServerDoesNotRespond(t *testing.T) {
 	}
 }
 
+func TestClientHandleProgressNormalizesMixedTokenTypes(t *testing.T) {
+	client := &Client{progress: newProgressTracker()}
+
+	client.handleProgress([]byte(`{"token":5,"value":{"kind":"begin"}}`))
+	client.handleProgress([]byte(`{"token":"5","value":{"kind":"end"}}`))
+
+	client.progress.mu.Lock()
+	defer client.progress.mu.Unlock()
+	if len(client.progress.active) != 0 {
+		t.Fatalf("expected mixed numeric/string progress token to end, active tokens: %v", client.progress.active)
+	}
+}
+
 func TestStartClientIncludesServerStderrOnInitializeFailure(t *testing.T) {
 	dir := t.TempDir()
 	server := filepath.Join(dir, "stderr-lsp")
