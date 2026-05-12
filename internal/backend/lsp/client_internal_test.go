@@ -30,6 +30,41 @@ func TestClientRequestTimesOutWhenServerDoesNotRespond(t *testing.T) {
 	}
 }
 
+func TestClientRequestTimeoutIncludesServerStderr(t *testing.T) {
+	stderrFile, err := os.CreateTemp("", "refute-lsp-stderr-test-*")
+	if err != nil {
+		t.Fatalf("create stderr temp file: %v", err)
+	}
+	stderrPath := stderrFile.Name()
+	t.Cleanup(func() {
+		stderrFile.Close()
+		os.Remove(stderrPath)
+	})
+	const stderrMessage = "panic: gopls exploded"
+	if _, err := stderrFile.WriteString(stderrMessage + "\n"); err != nil {
+		t.Fatalf("write stderr: %v", err)
+	}
+
+	client := &Client{
+		transport:      NewTransport(nil, io.Discard),
+		pending:        make(map[int]chan jsonrpcResponse),
+		stderrFile:     stderrFile,
+		stderrPath:     stderrPath,
+		requestTimeout: 10 * time.Millisecond,
+	}
+
+	_, err = client.request("workspace/symbol", map[string]string{"query": "x"})
+	if err == nil {
+		t.Fatal("expected request timeout, got nil")
+	}
+	if !errors.Is(err, ErrRequestTimeout) {
+		t.Fatalf("expected ErrRequestTimeout in chain, got %v", err)
+	}
+	if !strings.Contains(err.Error(), stderrMessage) {
+		t.Fatalf("expected error to include server stderr %q, got %v", stderrMessage, err)
+	}
+}
+
 func TestClientHandleProgressNormalizesMixedTokenTypes(t *testing.T) {
 	tests := []struct {
 		name  string
