@@ -48,11 +48,12 @@ Adapters:
 
 ```bash
 ( cd adapters/tsmorph    && npm install && npm test 2>&1 | head -200 )
-( cd adapters/openrewrite && ./gradlew --no-daemon build 2>&1 | head -200 )
+( cd adapters/openrewrite && mvn -B verify 2>&1 | head -200 )
 ```
 
 Adapter build failures are **high** unless the adapter is documented as
 unsupported in `docs/support-matrix.md`.
+The OpenRewrite adapter build requires JDK 17 or newer and Maven on PATH.
 
 ## Phase 2 — Static analysis (detected tools)
 
@@ -305,10 +306,10 @@ ts-morph adapter:
 ( cd adapters/tsmorph && npm outdated; npm audit --omit=dev )
 ```
 
-OpenRewrite adapter (Gradle assumed; confirm in `adapters/openrewrite/`):
+OpenRewrite adapter (Maven):
 
 ```bash
-( cd adapters/openrewrite && ./gradlew dependencyUpdates -q || true )
+( cd adapters/openrewrite && mvn -B versions:display-dependency-updates || true )
 ```
 
 Major-version drift on actively used deps → **medium**. Any CVE on a

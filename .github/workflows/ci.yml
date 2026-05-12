@@ -98,6 +98,25 @@ jobs:
 
           shellcheck "${shell_scripts[@]}"
 
+  openrewrite:
+    name: OpenRewrite adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Build OpenRewrite adapter
+        run: mvn -B verify --file adapters/openrewrite/pom.xml
+
   gitleaks:
     name: Gitleaks
     runs-on: ubuntu-latest
