@@ -889,6 +889,169 @@ func TestEndToEnd_FileNotFound(t *testing.T) {
 	}
 }
 
+// TestEndToEnd_JSONBackendMissing exercises the --json failure envelope when
+// the configured LSP binary cannot be found on PATH. Uses the tier-1 setup
+// path so no real LSP server is required.
+func TestEndToEnd_JSONBackendMissing(t *testing.T) {
+	srcDir := filepath.Join("../testdata/fixtures/go/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	cfgContent := `{"servers": {"go": {"command": "refute-nonexistent-lsp-binary-xyz"}}}`
+	cfgFile := filepath.Join(t.TempDir(), "bad-config.json")
+	if err := os.WriteFile(cfgFile, []byte(cfgContent), 0o644); err != nil {
+		t.Fatalf("write bad config: %v", err)
+	}
+
+	refuteBin := buildRefute(t)
+	cmd := exec.Command(refuteBin,
+		"--config", cfgFile,
+		"rename-function",
+		"--symbol", "FormatGreeting",
+		"--new-name", "BuildGreeting",
+		"--json",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit for missing backend, got success:\n%s", out)
+	}
+	envelope := extractJSONEnvelope(t, out)
+	var parsed struct {
+		SchemaVersion string `json:"schemaVersion"`
+		Status        string `json:"status"`
+		Error         *struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Hint    string `json:"hint"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(envelope), &parsed); err != nil {
+		t.Fatalf("parse JSON envelope: %v\nraw:\n%s", err, out)
+	}
+	if parsed.SchemaVersion != "1" {
+		t.Errorf("schemaVersion = %q, want \"1\"", parsed.SchemaVersion)
+	}
+	if parsed.Status != "backend-missing" {
+		t.Errorf("status = %q, want backend-missing; envelope:\n%s", parsed.Status, envelope)
+	}
+	if parsed.Error == nil || parsed.Error.Code == "" {
+		t.Errorf("missing error code; envelope:\n%s", envelope)
+	}
+	if parsed.Error != nil && parsed.Error.Hint == "" {
+		t.Errorf("expected non-empty hint; envelope:\n%s", envelope)
+	}
+}
+
+// TestEndToEnd_JSONInvalidPosition exercises the --json failure envelope when
+// the requested symbol position cannot be resolved.
+func TestEndToEnd_JSONInvalidPosition(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/go/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	helperFile := filepath.Join(dir, "util", "helper.go")
+	cmd := exec.Command(refuteBin,
+		"rename-function",
+		"--file", helperFile,
+		"--line", "4",
+		"--name", "NoSuchSymbol",
+		"--new-name", "Whatever",
+		"--json",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit for invalid position, got success:\n%s", out)
+	}
+	envelope := extractJSONEnvelope(t, out)
+	var parsed struct {
+		Status string `json:"status"`
+		Error  *struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(envelope), &parsed); err != nil {
+		t.Fatalf("parse JSON envelope: %v\nraw:\n%s", err, out)
+	}
+	if parsed.Status != "invalid-position" {
+		t.Errorf("status = %q, want invalid-position; envelope:\n%s", parsed.Status, envelope)
+	}
+	if parsed.Error == nil || parsed.Error.Code == "" {
+		t.Errorf("missing error code; envelope:\n%s", envelope)
+	}
+}
+
+// TestEndToEnd_JSONBackendFailed exercises the --json failure envelope when
+// the configured LSP binary spawns but exits immediately.
+func TestEndToEnd_JSONBackendFailed(t *testing.T) {
+	falseBin, err := exec.LookPath("false")
+	if err != nil {
+		t.Skip("/bin/false not available")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/go/rename")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	cfgContent := `{"servers": {"go": {"command": "` + falseBin + `"}}}`
+	cfgFile := filepath.Join(t.TempDir(), "false-config.json")
+	if err := os.WriteFile(cfgFile, []byte(cfgContent), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	refuteBin := buildRefute(t)
+	cmd := exec.Command(refuteBin,
+		"--config", cfgFile,
+		"rename-function",
+		"--symbol", "FormatGreeting",
+		"--new-name", "BuildGreeting",
+		"--json",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit for failing backend, got success:\n%s", out)
+	}
+	envelope := extractJSONEnvelope(t, out)
+	var parsed struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(envelope), &parsed); err != nil {
+		t.Fatalf("parse JSON envelope: %v\nraw:\n%s", err, out)
+	}
+	if parsed.Status != "backend-failed" && parsed.Status != "backend-missing" {
+		t.Errorf("status = %q, want backend-failed (or backend-missing); envelope:\n%s", parsed.Status, envelope)
+	}
+}
+
+// extractJSONEnvelope pulls the first balanced JSON object out of combined
+// stdout/stderr. The CLI prints the envelope to stdout; backend stderr noise
+// can be interleaved by CombinedOutput.
+func extractJSONEnvelope(t *testing.T, out []byte) string {
+	t.Helper()
+	start := -1
+	depth := 0
+	for i, b := range out {
+		if b == '{' {
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		} else if b == '}' {
+			depth--
+			if depth == 0 && start != -1 {
+				return string(out[start : i+1])
+			}
+		}
+	}
+	t.Fatalf("no JSON object found in output:\n%s", out)
+	return ""
+}
+
 // buildRefute compiles the refute binary into a temp dir and returns its path.
 func buildRefute(t *testing.T) string {
 	t.Helper()

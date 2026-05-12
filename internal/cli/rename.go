@@ -271,18 +271,18 @@ func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
 
 	cfg, err := config.Load(flagConfig, workspaceRoot)
 	if err != nil {
-		return nil, fmt.Errorf("loading config: %w", err)
+		return nil, handleTier1BackendSetupError(ctx, fmt.Errorf("loading config: %w", err))
 	}
 	serverCfg := cfg.Server(language)
 	if serverCfg.Command == "" {
-		return nil, fmt.Errorf("no server configured for language %q", language)
+		return nil, handleTier1BackendSetupError(ctx, fmt.Errorf("no server configured for language %q", language))
 	}
 	if _, lookErr := exec.LookPath(serverCfg.Command); lookErr != nil {
-		return nil, &ErrLSPServerMissing{
+		return nil, handleTier1BackendSetupError(ctx, &ErrLSPServerMissing{
 			Language:    language,
 			Command:     serverCfg.Command,
 			InstallHint: config.InstallHint(language),
-		}
+		})
 	}
 
 	adapter := lsp.NewAdapter(serverCfg, language, nil)
