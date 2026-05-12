@@ -2,13 +2,13 @@ package selector
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/backend/lsp"
 	"github.com/shatterproof-ai/refute/internal/backend/openrewrite"
 	"github.com/shatterproof-ai/refute/internal/backend/tsmorph"
 	"github.com/shatterproof-ai/refute/internal/config"
+	"github.com/shatterproof-ai/refute/internal/language"
 )
 
 // Selection describes the backend chosen for a file.
@@ -37,8 +37,9 @@ var (
 // behavior for existing languages while allowing TypeScript/JavaScript to
 // prefer ts-morph when it is available locally.
 func ForFile(cfg *config.Config, workspaceRoot string, filePath string) (*Selection, error) {
-	language := detectServerKey(filePath)
-	languageID := detectLanguageID(filePath)
+	detected := language.Detect(filePath)
+	language := detected.Language
+	languageID := detected.LanguageID
 
 	if prefersTSMorph(language) && tsMorphAvailable() {
 		return &Selection{
@@ -87,55 +88,5 @@ func prefersOpenRewrite(language string) bool {
 		return true
 	default:
 		return false
-	}
-}
-
-func detectServerKey(filePath string) string {
-	switch filepath.Ext(filePath) {
-	case ".go":
-		return "go"
-	case ".ts", ".tsx":
-		return "typescript"
-	case ".js", ".jsx":
-		return "javascript"
-	case ".py":
-		return "python"
-	case ".java":
-		return "java"
-	case ".kt":
-		return "kotlin"
-	case ".rs":
-		return "rust"
-	case ".cs":
-		return "csharp"
-	default:
-		return ""
-	}
-}
-
-func detectLanguageID(filePath string) string {
-	switch filepath.Ext(filePath) {
-	case ".ts":
-		return "typescript"
-	case ".tsx":
-		return "typescriptreact"
-	case ".js":
-		return "javascript"
-	case ".jsx":
-		return "javascriptreact"
-	case ".go":
-		return "go"
-	case ".py":
-		return "python"
-	case ".java":
-		return "java"
-	case ".kt":
-		return "kotlin"
-	case ".rs":
-		return "rust"
-	case ".cs":
-		return "csharp"
-	default:
-		return ""
 	}
 }

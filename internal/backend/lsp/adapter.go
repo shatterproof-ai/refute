@@ -264,25 +264,18 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 }
 
 func (a *Adapter) ExtractFunction(r symbol.SourceRange, name string) (*edit.WorkspaceEdit, error) {
-	if a.languageID == "rust" {
-		return a.runCodeAction(r, name, opExtractFunction)
-	}
-	we, placeholder, err := a.extractImpl(r, "function")
-	if err != nil {
-		return nil, err
-	}
-	we.FromCodeAction = true
-	if name != "" && placeholder != "" && placeholder != name {
-		rewritePlaceholder(we, placeholder, name)
-	}
-	return we, nil
+	return a.extract(r, name, "function", opExtractFunction)
 }
 
 func (a *Adapter) ExtractVariable(r symbol.SourceRange, name string) (*edit.WorkspaceEdit, error) {
+	return a.extract(r, name, "variable", opExtractVariable)
+}
+
+func (a *Adapter) extract(r symbol.SourceRange, name string, kind string, rustOp rustActionOp) (*edit.WorkspaceEdit, error) {
 	if a.languageID == "rust" {
-		return a.runCodeAction(r, name, opExtractVariable)
+		return a.runCodeAction(r, name, rustOp)
 	}
-	we, placeholder, err := a.extractImpl(r, "variable")
+	we, placeholder, err := a.extractImpl(r, kind)
 	if err != nil {
 		return nil, err
 	}
