@@ -62,20 +62,18 @@ backends produce out-of-date refactorings.
 
 ## First use
 
-Preview a Go rename without touching the working tree:
+Preview a Go rename without touching the working tree, then apply it:
 
 ```bash
+# Preview — print the diff to stdout, no files modified.
 refute rename \
   --file testdata/fixtures/go/rename/util/helper.go \
   --line 4 \
   --name FormatGreeting \
   --new-name BuildGreeting \
   --dry-run
-```
 
-Apply the same rename:
-
-```bash
+# Apply the same rename.
 refute rename \
   --file testdata/fixtures/go/rename/util/helper.go \
   --line 4 \
