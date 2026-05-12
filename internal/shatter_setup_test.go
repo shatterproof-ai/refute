@@ -123,6 +123,27 @@ func TestShatterHierarchicalConfigSetsFullCoverageDefaults(t *testing.T) {
 	}
 }
 
+func TestShatterCleanTargetExistsInMakefile(t *testing.T) {
+	data, err := os.ReadFile("../Makefile")
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	content := string(data)
+	for _, want := range []string{
+		"shatter-clean",
+		".shatter-cache",
+		"shatter-artifacts",
+		"shatter-report",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("Makefile missing %q", want)
+		}
+	}
+	if !strings.Contains(content, ".PHONY") {
+		t.Error("Makefile missing .PHONY declaration")
+	}
+}
+
 func TestShatterGeneratedArtifactsAreIgnored(t *testing.T) {
 	data, err := os.ReadFile("../.gitignore")
 	if err != nil {
