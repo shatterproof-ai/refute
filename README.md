@@ -66,10 +66,10 @@ Preview a Go rename without touching the working tree:
 
 ```bash
 refute rename \
-  --file internal/widget/widget.go \
-  --line 42 \
-  --name OldName \
-  --new-name NewName \
+  --file testdata/fixtures/go/rename/util/helper.go \
+  --line 4 \
+  --name FormatGreeting \
+  --new-name BuildGreeting \
   --dry-run
 ```
 
@@ -77,10 +77,10 @@ Apply the same rename:
 
 ```bash
 refute rename \
-  --file internal/widget/widget.go \
-  --line 42 \
-  --name OldName \
-  --new-name NewName
+  --file testdata/fixtures/go/rename/util/helper.go \
+  --line 4 \
+  --name FormatGreeting \
+  --new-name BuildGreeting
 ```
 
 ## Dry-run and JSON
