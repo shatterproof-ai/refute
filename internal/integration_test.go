@@ -12,6 +12,15 @@ import (
 	"testing"
 )
 
+const experimentalIntegrationEnv = "REFUTE_EXPERIMENTAL_INTEGRATION"
+
+func requireExperimentalIntegration(t *testing.T, area string) {
+	t.Helper()
+	if os.Getenv(experimentalIntegrationEnv) == "" {
+		t.Skipf("%s integration is experimental. Experimental integration tests are opt-in: set %s=1 to run this lane.", area, experimentalIntegrationEnv)
+	}
+}
+
 func TestEndToEnd_RenameGoFunction(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
 		t.Skip("gopls not found on PATH")
@@ -152,6 +161,7 @@ func TestEndToEnd_DryRun(t *testing.T) {
 }
 
 func TestEndToEnd_RenameTypeScriptFunction(t *testing.T) {
+	requireExperimentalIntegration(t, "TypeScript")
 	srcDir := filepath.Join("../testdata/fixtures/typescript/rename")
 	requireFixtureTypeScriptLanguageServer(t, srcDir)
 	dir := t.TempDir()
@@ -195,6 +205,7 @@ func TestEndToEnd_RenameTypeScriptFunction(t *testing.T) {
 }
 
 func TestEndToEnd_TypeScriptDryRun(t *testing.T) {
+	requireExperimentalIntegration(t, "TypeScript")
 	srcDir := filepath.Join("../testdata/fixtures/typescript/rename")
 	requireFixtureTypeScriptLanguageServer(t, srcDir)
 	dir := t.TempDir()
@@ -231,6 +242,7 @@ func TestEndToEnd_TypeScriptDryRun(t *testing.T) {
 }
 
 func TestEndToEnd_RenameTypeScriptClass(t *testing.T) {
+	requireExperimentalIntegration(t, "TypeScript")
 	srcDir := filepath.Join("../testdata/fixtures/typescript/rename")
 	requireFixtureTypeScriptLanguageServer(t, srcDir)
 	dir := t.TempDir()
@@ -272,6 +284,7 @@ func TestEndToEnd_RenameTypeScriptClass(t *testing.T) {
 }
 
 func TestEndToEnd_RenameTypeScriptInterface(t *testing.T) {
+	requireExperimentalIntegration(t, "TypeScript")
 	srcDir := filepath.Join("../testdata/fixtures/typescript/rename")
 	requireFixtureTypeScriptLanguageServer(t, srcDir)
 	dir := t.TempDir()
@@ -313,6 +326,7 @@ func TestEndToEnd_RenameTypeScriptInterface(t *testing.T) {
 }
 
 func TestEndToEnd_RenameTypeScriptLocalVariable(t *testing.T) {
+	requireExperimentalIntegration(t, "TypeScript")
 	srcDir := filepath.Join("../testdata/fixtures/typescript/rename")
 	requireFixtureTypeScriptLanguageServer(t, srcDir)
 	dir := t.TempDir()
@@ -345,6 +359,7 @@ func TestEndToEnd_RenameTypeScriptLocalVariable(t *testing.T) {
 }
 
 func TestEndToEnd_RenameTypeScriptTSXComponent(t *testing.T) {
+	requireExperimentalIntegration(t, "TypeScript")
 	srcDir := filepath.Join("../testdata/fixtures/typescript/rename")
 	requireFixtureTypeScriptLanguageServer(t, srcDir)
 	dir := t.TempDir()
@@ -386,6 +401,7 @@ func TestEndToEnd_RenameTypeScriptTSXComponent(t *testing.T) {
 }
 
 func TestEndToEnd_RenameTypeScriptMethodBySymbol(t *testing.T) {
+	requireExperimentalIntegration(t, "TypeScript")
 	srcDir := filepath.Join("../testdata/fixtures/typescript/rename")
 	requireFixtureTypeScriptLanguageServer(t, srcDir)
 	dir := t.TempDir()
@@ -426,6 +442,7 @@ func TestEndToEnd_RenameTypeScriptMethodBySymbol(t *testing.T) {
 }
 
 func TestEndToEnd_RenameJavaScriptFunction(t *testing.T) {
+	requireExperimentalIntegration(t, "JavaScript")
 	srcDir := filepath.Join("../testdata/fixtures/javascript/rename")
 	requireFixtureTypeScriptLanguageServer(t, srcDir)
 	dir := t.TempDir()
@@ -467,6 +484,7 @@ func TestEndToEnd_RenameJavaScriptFunction(t *testing.T) {
 }
 
 func TestEndToEnd_RenameJavaScriptFunctionBySymbol(t *testing.T) {
+	requireExperimentalIntegration(t, "JavaScript")
 	srcDir := filepath.Join("../testdata/fixtures/javascript/rename")
 	requireFixtureTypeScriptLanguageServer(t, srcDir)
 	dir := t.TempDir()
@@ -507,6 +525,7 @@ func TestEndToEnd_RenameJavaScriptFunctionBySymbol(t *testing.T) {
 }
 
 func TestEndToEnd_RenameJavaScriptJSXComponent(t *testing.T) {
+	requireExperimentalIntegration(t, "JavaScript")
 	srcDir := filepath.Join("../testdata/fixtures/javascript/rename")
 	requireFixtureTypeScriptLanguageServer(t, srcDir)
 	dir := t.TempDir()
@@ -548,6 +567,7 @@ func TestEndToEnd_RenameJavaScriptJSXComponent(t *testing.T) {
 }
 
 func TestEndToEnd_RenameRustFunction(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -602,6 +622,7 @@ func TestEndToEnd_RenameRustFunction(t *testing.T) {
 }
 
 func TestEndToEnd_RenameJavaMethod(t *testing.T) {
+	requireExperimentalIntegration(t, "Java")
 	if _, err := exec.LookPath("jdtls"); err != nil {
 		t.Skip("jdtls not found on PATH")
 	}
@@ -646,6 +667,7 @@ func TestEndToEnd_RenameJavaMethod(t *testing.T) {
 }
 
 func TestEndToEnd_RustDryRun(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -684,6 +706,7 @@ func TestEndToEnd_RustDryRun(t *testing.T) {
 }
 
 func TestEndToEnd_RenameRustStruct(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -813,6 +836,7 @@ func TestEndToEnd_SymbolNotFound(t *testing.T) {
 }
 
 func TestEndToEnd_BadServerConfig(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	srcDir := filepath.Join("../testdata/fixtures/rust/rename")
 	dir := t.TempDir()
 	copyDir(t, srcDir, dir)
@@ -887,6 +911,7 @@ func requireFixtureTypeScriptLanguageServer(t *testing.T, fixtureDir string) str
 	if err != nil {
 		t.Fatalf("resolve typescript-language-server path: %v", err)
 	}
+	t.Setenv("PATH", filepath.Dir(abs)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return abs
 }
 
@@ -1087,6 +1112,7 @@ func TestEndToEnd_JSONOutput(t *testing.T) {
 }
 
 func TestEndToEnd_RenameRustLocalVariable(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -1135,6 +1161,7 @@ func runCargoBuild(t *testing.T, dir string) error {
 }
 
 func TestEndToEnd_RenameRustParameter(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -1173,6 +1200,7 @@ func TestEndToEnd_RenameRustParameter(t *testing.T) {
 }
 
 func TestEndToEnd_ExtractRustFunction(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -1209,6 +1237,7 @@ func TestEndToEnd_ExtractRustFunction(t *testing.T) {
 }
 
 func TestEndToEnd_ExtractRustVariable(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -1244,6 +1273,7 @@ func TestEndToEnd_ExtractRustVariable(t *testing.T) {
 }
 
 func TestEndToEnd_InlineRustCallSite(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -1286,6 +1316,7 @@ func TestEndToEnd_InlineRustCallSite(t *testing.T) {
 }
 
 func TestEndToEnd_InlineRustRequiresCallSite(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -1310,6 +1341,7 @@ func TestEndToEnd_InlineRustRequiresCallSite(t *testing.T) {
 }
 
 func TestEndToEnd_RustSnippetPlaceholderStripped(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -1343,6 +1375,7 @@ func TestEndToEnd_RustSnippetPlaceholderStripped(t *testing.T) {
 }
 
 func TestEndToEnd_Tier1RustRename(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -1380,6 +1413,7 @@ func TestEndToEnd_Tier1RustRename(t *testing.T) {
 }
 
 func TestEndToEnd_Tier1RustTraitQualified(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -1417,6 +1451,7 @@ func TestEndToEnd_Tier1RustTraitQualified(t *testing.T) {
 }
 
 func TestEndToEnd_Tier1RustAmbiguous(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -1449,6 +1484,7 @@ func TestEndToEnd_Tier1RustAmbiguous(t *testing.T) {
 }
 
 func TestEndToEnd_Tier1RustNotFound(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	if _, err := exec.LookPath("rust-analyzer"); err != nil {
 		t.Skip("rust-analyzer not found on PATH")
 	}
@@ -1478,6 +1514,7 @@ func TestEndToEnd_Tier1RustNotFound(t *testing.T) {
 }
 
 func TestEndToEnd_RustAnalyzerMissing(t *testing.T) {
+	requireExperimentalIntegration(t, "Rust")
 	// Skip if rust-analyzer is in a bin dir we can't scrub.
 	if path, _ := exec.LookPath("rust-analyzer"); strings.HasPrefix(path, "/usr/bin") || strings.HasPrefix(path, "/bin") {
 		t.Skip("rust-analyzer installed in non-scrubbable location; install hint test cannot run")

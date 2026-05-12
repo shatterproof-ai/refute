@@ -26,10 +26,16 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install integration backends
+      - name: Install supported Go integration backend
         run: |
           go install golang.org/x/tools/gopls@latest
+
+      - name: Install experimental integration backends and fixture dependencies
+        continue-on-error: true
+        run: |
           rustup component add rust-analyzer
+          npm ci --prefix testdata/fixtures/typescript/rename
+          npm ci --prefix testdata/fixtures/javascript/rename
 
       - name: Check Go formatting
         shell: bash
@@ -58,7 +64,13 @@ jobs:
       - name: Run unit tests
         run: go test ./...
 
-      - name: Run integration tests
+      - name: Run supported Go integration tests
+        run: go test -tags integration ./internal/
+
+      - name: Run experimental integration tests
+        continue-on-error: true
+        env:
+          REFUTE_EXPERIMENTAL_INTEGRATION: "1"
         run: go test -tags integration ./internal/
 
   shellcheck:
