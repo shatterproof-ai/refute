@@ -66,32 +66,3 @@ func DetectServerKey(filePath string) string {
 		return ""
 	}
 }
-
-// DetectLanguageID returns the LSP language ID for a file based on its
-// extension. Passed to the LSP server's textDocument/didOpen notification.
-func DetectLanguageID(filePath string) string {
-	switch filepath.Ext(filePath) {
-	case ".ts":
-		return "typescript"
-	case ".tsx":
-		return "typescriptreact"
-	case ".js":
-		return "javascript"
-	case ".jsx":
-		return "javascriptreact"
-	case ".go":
-		return "go"
-	case ".py":
-		return "python"
-	case ".java":
-		return "java"
-	case ".kt":
-		return "kotlin"
-	case ".rs":
-		return "rust"
-	case ".cs":
-		return "csharp"
-	default:
-		return ""
-	}
-}
