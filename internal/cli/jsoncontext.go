@@ -76,6 +76,10 @@ func emitJSONError(ctx jsonContext, status, code, message, hint string) error {
 }
 
 func backendErrorStatus(err error) string {
+	var missing *ErrLSPServerMissing
+	if errors.As(err, &missing) {
+		return edit.StatusBackendMissing
+	}
 	msg := err.Error()
 	if strings.Contains(msg, "executable file not found") ||
 		strings.Contains(msg, "no server configured") ||
