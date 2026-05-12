@@ -33,16 +33,6 @@ type workspaceBoundary struct {
 	resolvedRoot  string
 }
 
-// Apply applies the WorkspaceEdit atomically across all files.
-// Phase 1: read all files and compute new contents in memory.
-// Phase 2: write new contents to same-directory temp files.
-// Phase 3: move each original to a backup, then rename each temp into place.
-// On any failure, temp files are removed and committed files are restored from
-// their backups.
-func Apply(we *WorkspaceEdit) (*ApplyResult, error) {
-	return apply(we, workspaceBoundary{})
-}
-
 // ApplyWithin applies the WorkspaceEdit only after verifying every edit path is
 // within workspaceRoot. Symlinks are resolved before writes: symlinks whose
 // targets remain inside the workspace edit the target file, while symlinks that

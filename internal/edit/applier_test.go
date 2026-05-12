@@ -35,9 +35,9 @@ func TestApply_SingleFileRename(t *testing.T) {
 		},
 	}
 
-	result, err := edit.Apply(we)
+	result, err := edit.ApplyWithin(we, dir)
 	if err != nil {
-		t.Fatalf("Apply failed: %v", err)
+		t.Fatalf("ApplyWithin failed: %v", err)
 	}
 
 	if result.FilesModified != 1 {
@@ -88,9 +88,9 @@ func TestApply_MultipleEditsReverseOrder(t *testing.T) {
 		},
 	}
 
-	result, err := edit.Apply(we)
+	result, err := edit.ApplyWithin(we, dir)
 	if err != nil {
-		t.Fatalf("Apply failed: %v", err)
+		t.Fatalf("ApplyWithin failed: %v", err)
 	}
 
 	if result.FilesModified != 1 {
@@ -148,9 +148,9 @@ func TestApply_MultiFileEdit(t *testing.T) {
 		},
 	}
 
-	result, err := edit.Apply(we)
+	result, err := edit.ApplyWithin(we, dir)
 	if err != nil {
-		t.Fatalf("Apply failed: %v", err)
+		t.Fatalf("ApplyWithin failed: %v", err)
 	}
 
 	if result.FilesModified != 2 {
@@ -205,9 +205,9 @@ func TestApply_RollbackOnFailure(t *testing.T) {
 		},
 	}
 
-	_, err := edit.Apply(we)
+	_, err := edit.ApplyWithin(we, dir)
 	if err == nil {
-		t.Fatal("expected Apply to return error for nonexistent file, got nil")
+		t.Fatal("expected ApplyWithin to return error for nonexistent file, got nil")
 	}
 
 	// The real file must be unchanged.
@@ -257,9 +257,9 @@ func TestApply_DuplicateFileEditDoesNotPartiallyCommit(t *testing.T) {
 		},
 	}
 
-	_, err := edit.Apply(we)
+	_, err := edit.ApplyWithin(we, dir)
 	if err == nil {
-		t.Fatal("expected Apply to reject duplicate file edits, got nil")
+		t.Fatal("expected ApplyWithin to reject duplicate file edits, got nil")
 	}
 
 	got, err := os.ReadFile(path)

@@ -381,22 +381,6 @@ func findExtractPlaceholder(we *edit.WorkspaceEdit, kind string) string {
 	return last
 }
 
-func matchIdentAfter(s, needle string) string {
-	i := strings.Index(s, needle)
-	if i < 0 {
-		return ""
-	}
-	rest := s[i+len(needle):]
-	end := 0
-	for end < len(rest) && isIdentByte(rest[end]) {
-		end++
-	}
-	if end == 0 {
-		return ""
-	}
-	return rest[:end]
-}
-
 func matchLastIdentAfter(s, needle string) string {
 	var last string
 	for i := 0; ; {
@@ -472,11 +456,6 @@ func replaceWholeIdent(s, old, newID string) string {
 		i = rightIdx
 	}
 	return b.String()
-}
-
-// ReplaceWholeIdentForTest is a test-only export of replaceWholeIdent.
-func ReplaceWholeIdentForTest(s, old, newID string) string {
-	return replaceWholeIdent(s, old, newID)
 }
 
 // runCodeAction requests code actions at the given range, selects one via the
@@ -715,12 +694,6 @@ func utf16CharacterToByteCharacter(line string, character int) (int, error) {
 		return len(line), nil
 	}
 	return 0, fmt.Errorf("character %d out of range", character)
-}
-
-// ByteColumnToUTF16CharacterForTest exposes byteColumnToUTF16Character to
-// black-box tests without exporting it as production API.
-func ByteColumnToUTF16CharacterForTest(line string, byteColumn int) (int, error) {
-	return byteColumnToUTF16Character(line, byteColumn)
 }
 
 // DocumentSymbols returns hierarchical document symbols for a file, used by
