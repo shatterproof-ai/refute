@@ -41,6 +41,54 @@ rtk pip list            rtk pnpm install        rtk npm run <script>
 - `rtk proxy <cmd>` runs command without filtering but tracks usage
 <!-- /headroom:rtk-instructions -->
 
+## Repo Layout
+
+- `cmd/` — CLI entrypoints (`cmd/refute/`).
+- `internal/` — core packages: `backend/` (LSP and rewrite drivers), `cli/`,
+  `config/`, `edit/` (edit applier), `symbol/`, `telemetry/`, plus
+  cross-package integration tests.
+- `adapters/` — non-Go adapters invoked as subprocesses (`openrewrite/`,
+  `tsmorph/`).
+- `docs/` — design notes, plans, and reference material.
+- `scripts/` — repo automation and developer helpers.
+- `testdata/` — fixtures consumed by tests.
+
+## Build and Test Commands
+
+```bash
+go test ./...                                  # unit tests
+go test -tags integration ./internal/...       # integration tests (need backends)
+go vet ./...                                   # static checks
+gofmt -l .                                     # formatting; output must be empty
+govulncheck ./...                              # vulnerability scan
+```
+
+## Integration Backend Prerequisites
+
+Integration tests shell out to real language servers and rewrite tools. Install
+the backend(s) you intend to exercise before running the integration tag:
+
+- Go: `gopls` on `PATH` (`go install golang.org/x/tools/gopls@latest`).
+- Rust: `rust-analyzer` on `PATH`.
+- TypeScript: the `tsmorph` adapter under `adapters/tsmorph/` (Node dependencies
+  installed; see that directory's README).
+- Java: OpenRewrite via the `adapters/openrewrite/` adapter.
+
+Tests that cannot find their backend skip rather than fail; check skip output
+when a backend appears silent.
+
+## Adding or Updating a Backend
+
+- LSP-driven backends live in `internal/backend/lsp/`. Register a new language
+  by extending the selector in `internal/backend/selector/` and the dispatch in
+  `internal/backend/backend.go`.
+- Non-LSP rewrite backends live under `internal/backend/openrewrite/` and
+  `internal/backend/tsmorph/`, with their subprocess adapters under
+  `adapters/`. Update both the in-process driver and the adapter together when
+  changing the wire contract.
+- Add or expand fixtures under `testdata/` and integration coverage under
+  `internal/integration_test.go` (build tag `integration`).
+
 ## Landing Work
 
 Never use the pull request workflow. Always finish feature branches using the
