@@ -83,7 +83,7 @@ func runInline() error {
 	if err != nil {
 		return err
 	}
-	defer sel.Backend.Shutdown()
+	defer func() { _ = sel.Backend.Shutdown() }()
 
 	we, err := sel.Backend.InlineSymbol(loc)
 	if err != nil {

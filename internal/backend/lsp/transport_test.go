@@ -2,6 +2,7 @@ package lsp_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -145,7 +146,7 @@ func TestTransport_ReadRejectsTruncatedBody(t *testing.T) {
 	if err == nil {
 		t.Fatal("Read succeeded with truncated body")
 	}
-	if err != io.ErrUnexpectedEOF {
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Fatalf("Read error = %v, want %v", err, io.ErrUnexpectedEOF)
 	}
 }
@@ -159,7 +160,7 @@ func TestTransport_ReadRejectsEOFWhileReadingBody(t *testing.T) {
 	if err == nil {
 		t.Fatal("Read succeeded after EOF before response body")
 	}
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		t.Fatalf("Read error = %v, want %v", err, io.EOF)
 	}
 }

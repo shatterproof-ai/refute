@@ -1,0 +1,27 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - errorlint
+    - ineffassign
+    - staticcheck
+  settings:
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - os.Remove
+        - os.RemoveAll
+    staticcheck:
+      checks:
+        - SA*
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck

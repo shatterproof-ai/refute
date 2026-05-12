@@ -212,7 +212,7 @@ func commitPendingFiles(pendingFiles []pendingFile) error {
 		}
 		if err := os.Rename(p.tmpPath, p.origPath); err != nil {
 			if restoreErr := os.Rename(p.backupPath, p.origPath); restoreErr != nil {
-				err = fmt.Errorf("%w; restore %s -> %s: %v", err, p.backupPath, p.origPath, restoreErr)
+				err = fmt.Errorf("%w; restore %s -> %s: %w", err, p.backupPath, p.origPath, restoreErr)
 			}
 			rollback(committed)
 			cleanupPending(pendingFiles[i:])
@@ -290,8 +290,8 @@ func rollback(files []pendingFile) {
 		if p.backupPath == "" {
 			continue
 		}
-		os.Remove(p.origPath)
-		os.Rename(p.backupPath, p.origPath)
+		_ = os.Remove(p.origPath)
+		_ = os.Rename(p.backupPath, p.origPath)
 	}
 }
 

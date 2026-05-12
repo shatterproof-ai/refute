@@ -117,7 +117,7 @@ func runRename(kind symbol.SymbolKind) error {
 		}
 		return err
 	}
-	defer sel.Backend.Shutdown()
+	defer func() { _ = sel.Backend.Shutdown() }()
 
 	ctx := contextFromSelection("rename", sel, workspaceRoot)
 	if err := finishRename(sel.Backend, ctx, loc, flagNewName); err != nil {
@@ -229,7 +229,7 @@ func runRenameTier1(query symbol.Query) error {
 	if err != nil {
 		return err
 	}
-	defer setup.adapter.Shutdown()
+	defer func() { _ = setup.adapter.Shutdown() }()
 
 	loc, err := resolveTier1Symbol(setup.adapter, setup.language, query)
 	if err != nil {
