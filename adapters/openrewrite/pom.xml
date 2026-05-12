@@ -15,8 +15,20 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <openrewrite.version>8.33.3</openrewrite.version>
-        <jackson.version>2.17.0</jackson.version>
+        <jackson.version>2.18.6</jackson.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Override transitive commons-lang3 brought in by OpenRewrite to a
+                 fixed version (GHSA-j288-q9x7-2f5v). -->
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-lang3</artifactId>
+                <version>3.18.0</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- OpenRewrite core and Java support -->
