@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/shatterproof-ai/refute/internal/language"
 )
 
 var workspaceMarkers = []string{
@@ -47,22 +49,5 @@ func FindWorkspaceRootFromFile(filePath string) (string, error) {
 // DetectServerKey returns the server config key for a file based on its
 // extension. Used to look up the language server in the config.
 func DetectServerKey(filePath string) string {
-	switch filepath.Ext(filePath) {
-	case ".go":
-		return "go"
-	case ".ts", ".tsx", ".js", ".jsx":
-		return "typescript"
-	case ".py":
-		return "python"
-	case ".java":
-		return "java"
-	case ".kt":
-		return "kotlin"
-	case ".rs":
-		return "rust"
-	case ".cs":
-		return "csharp"
-	default:
-		return ""
-	}
+	return language.Detect(filePath).CLIConfigKey
 }
