@@ -449,6 +449,276 @@ func TestApplyWithin_ResolvesSymlinkTargetInsideWorkspace(t *testing.T) {
 	}
 }
 
+func TestApply_OverlappingEditsRejected(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "overlap.go")
+	original := "abcdef\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	we := &edit.WorkspaceEdit{
+		FileEdits: []edit.FileEdit{
+			{
+				Path: path,
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 0, Character: 0},
+							End:   edit.Position{Line: 0, Character: 3},
+						},
+						NewText: "X",
+					},
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 0, Character: 2},
+							End:   edit.Position{Line: 0, Character: 5},
+						},
+						NewText: "Y",
+					},
+				},
+			},
+		},
+	}
+
+	_, err := edit.ApplyWithin(we, dir)
+	if err == nil {
+		t.Fatal("expected ApplyWithin to reject overlapping edits, got nil")
+	}
+	if !strings.Contains(err.Error(), "overlap") {
+		t.Fatalf("expected overlap error, got %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != original {
+		t.Errorf("file was modified despite overlap rejection\ngot:  %q\nwant: %q", string(got), original)
+	}
+}
+
+func TestApply_AdjacentNonOverlappingEditsAllowed(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "adjacent.go")
+	if err := os.WriteFile(path, []byte("abcdef\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	we := &edit.WorkspaceEdit{
+		FileEdits: []edit.FileEdit{
+			{
+				Path: path,
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 0, Character: 0},
+							End:   edit.Position{Line: 0, Character: 3},
+						},
+						NewText: "X",
+					},
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 0, Character: 3},
+							End:   edit.Position{Line: 0, Character: 6},
+						},
+						NewText: "Y",
+					},
+				},
+			},
+		},
+	}
+
+	if _, err := edit.ApplyWithin(we, dir); err != nil {
+		t.Fatalf("ApplyWithin rejected adjacent non-overlapping edits: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "XY\n" {
+		t.Errorf("adjacent edits result mismatch\ngot:  %q\nwant: %q", string(got), "XY\n")
+	}
+}
+
+func TestApply_PreservesCRLFLineEndings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "crlf.txt")
+	original := "first line\r\nsecond line\r\nthird line\r\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	we := &edit.WorkspaceEdit{
+		FileEdits: []edit.FileEdit{
+			{
+				Path: path,
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 1, Character: 0},
+							End:   edit.Position{Line: 1, Character: 6},
+						},
+						NewText: "SECOND",
+					},
+				},
+			},
+		},
+	}
+
+	if _, err := edit.ApplyWithin(we, dir); err != nil {
+		t.Fatalf("ApplyWithin failed on CRLF content: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "first line\r\nSECOND line\r\nthird line\r\n"
+	if string(got) != want {
+		t.Errorf("CRLF content mismatch\ngot:  %q\nwant: %q", string(got), want)
+	}
+}
+
+func TestApply_RollbackCleansUpTempFiles(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("read-only directory write semantics differ on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory write permissions")
+	}
+
+	workspace := t.TempDir()
+	writableDir := filepath.Join(workspace, "writable")
+	if err := os.Mkdir(writableDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writablePath := filepath.Join(writableDir, "writable.go")
+	writableOriginal := "func writable() {}\n"
+	if err := os.WriteFile(writablePath, []byte(writableOriginal), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	readonlyDir := filepath.Join(workspace, "readonly")
+	if err := os.Mkdir(readonlyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	readonlyPath := filepath.Join(readonlyDir, "readonly.go")
+	readonlyOriginal := "func readonly() {}\n"
+	if err := os.WriteFile(readonlyPath, []byte(readonlyOriginal), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(readonlyDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readonlyDir, 0o755) })
+
+	we := &edit.WorkspaceEdit{
+		FileEdits: []edit.FileEdit{
+			{
+				Path: writablePath,
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 0, Character: 5},
+							End:   edit.Position{Line: 0, Character: 13},
+						},
+						NewText: "renamed",
+					},
+				},
+			},
+			{
+				Path: readonlyPath,
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 0, Character: 5},
+							End:   edit.Position{Line: 0, Character: 13},
+						},
+						NewText: "renamed",
+					},
+				},
+			},
+		},
+	}
+
+	if _, err := edit.ApplyWithin(we, workspace); err == nil {
+		t.Fatal("expected ApplyWithin to fail when a target dir is read-only")
+	}
+
+	gotWritable, err := os.ReadFile(writablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotWritable) != writableOriginal {
+		t.Errorf("writable file was modified despite later failure\ngot:  %q\nwant: %q", string(gotWritable), writableOriginal)
+	}
+
+	entries, err := os.ReadDir(writableDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".refute.tmp") || strings.Contains(e.Name(), ".refute.bak") {
+			t.Errorf("leftover scratch file in writable dir: %s", e.Name())
+		}
+	}
+}
+
+func TestApplyWithin_SymlinkInsideWorkspaceLeavesLinkIntact(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated permissions on some Windows setups")
+	}
+
+	workspace := t.TempDir()
+	targetPath := filepath.Join(workspace, "target.go")
+	if err := os.WriteFile(targetPath, []byte("func target() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(workspace, "link.go")
+	if err := os.Symlink(targetPath, linkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	we := &edit.WorkspaceEdit{
+		FileEdits: []edit.FileEdit{
+			{
+				Path: linkPath,
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 0, Character: 5},
+							End:   edit.Position{Line: 0, Character: 11},
+						},
+						NewText: "renamed",
+					},
+				},
+			},
+		},
+	}
+
+	if _, err := edit.ApplyWithin(we, workspace); err != nil {
+		t.Fatalf("ApplyWithin on symlinked path failed: %v", err)
+	}
+
+	gotTarget, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotTarget) != "func renamed() {}\n" {
+		t.Errorf("symlink target content mismatch: %q", string(gotTarget))
+	}
+
+	info, err := os.Lstat(linkPath)
+	if err != nil {
+		t.Fatalf("expected link path to remain present: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("expected link path to remain a symlink, mode is %v", info.Mode())
+	}
+}
+
 func TestApplyWithin_AcceptsPathsUnderSymlinkedWorkspaceRoot(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink creation requires elevated permissions on some Windows setups")

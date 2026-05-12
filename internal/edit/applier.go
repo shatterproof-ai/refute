@@ -310,6 +310,14 @@ func applyEdits(content []byte, edits []TextEdit) ([]byte, error) {
 		return a.Character > b.Character
 	})
 
+	for i := 0; i < len(sorted)-1; i++ {
+		later := sorted[i].Range
+		earlier := sorted[i+1].Range
+		if positionLess(later.Start, earlier.End) {
+			return nil, fmt.Errorf("overlapping edits: %+v and %+v", earlier, later)
+		}
+	}
+
 	result := content
 	for _, e := range sorted {
 		startOff := positionToOffset(result, e.Range.Start)
@@ -324,6 +332,13 @@ func applyEdits(content []byte, edits []TextEdit) ([]byte, error) {
 		result = newContent
 	}
 	return result, nil
+}
+
+func positionLess(a, b Position) bool {
+	if a.Line != b.Line {
+		return a.Line < b.Line
+	}
+	return a.Character < b.Character
 }
 
 // positionToOffset converts a 0-indexed line/character Position to a byte offset
