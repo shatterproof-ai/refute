@@ -397,7 +397,7 @@ func (c *Client) request(method string, params interface{}) (json.RawMessage, er
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
-		return nil, fmt.Errorf("write request: %w", err)
+		return nil, c.withServerStderr(fmt.Errorf("write request: %w", err))
 	}
 
 	timeout := c.requestTimeout
@@ -414,7 +414,7 @@ func (c *Client) request(method string, params interface{}) (json.RawMessage, er
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
-		return nil, fmt.Errorf("%s request: %w after %s", method, ErrRequestTimeout, timeout)
+		return nil, c.withServerStderr(fmt.Errorf("%s request: %w after %s", method, ErrRequestTimeout, timeout))
 	case <-c.done:
 		c.mu.Lock()
 		delete(c.pending, id)
@@ -422,7 +422,7 @@ func (c *Client) request(method string, params interface{}) (json.RawMessage, er
 		return nil, c.withServerStderr(fmt.Errorf("%s request: server exited before response", method))
 	}
 	if resp.Error != nil {
-		return nil, resp.Error
+		return nil, c.withServerStderr(resp.Error)
 	}
 	return resp.Result, nil
 }
@@ -675,7 +675,7 @@ func (c *Client) Shutdown() error {
 
 		_, err := c.request("shutdown", nil)
 		if err != nil {
-			shutdownErr = fmt.Errorf("shutdown request: %w", err)
+			shutdownErr = c.withServerStderr(fmt.Errorf("shutdown request: %w", err))
 			if cleanupErr := c.killAndWaitProcess(); cleanupErr != nil {
 				shutdownErr = errors.Join(shutdownErr, cleanupErr)
 			}
@@ -683,7 +683,7 @@ func (c *Client) Shutdown() error {
 		}
 
 		if err := c.notify("exit", nil); err != nil {
-			shutdownErr = fmt.Errorf("exit notification: %w", err)
+			shutdownErr = c.withServerStderr(fmt.Errorf("exit notification: %w", err))
 			if cleanupErr := c.killAndWaitProcess(); cleanupErr != nil {
 				shutdownErr = errors.Join(shutdownErr, cleanupErr)
 			}
@@ -692,7 +692,9 @@ func (c *Client) Shutdown() error {
 
 		// Wait for readLoop to drain and process to exit.
 		<-c.done
-		shutdownErr = c.process.Wait()
+		if err := c.process.Wait(); err != nil {
+			shutdownErr = c.withServerStderr(fmt.Errorf("wait process: %w", err))
+		}
 	})
 	return shutdownErr
 }
