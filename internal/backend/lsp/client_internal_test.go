@@ -113,8 +113,8 @@ func TestClientShutdownCleansUpAfterExitNotificationFailure(t *testing.T) {
 }
 
 func TestClientShutdownCleansUpAfterNormalShutdown(t *testing.T) {
-	reader := bytes.NewBuffer(lspFrame([]byte(`{"jsonrpc":"2.0","id":1,"result":null}`)))
-	client, stderrPath := newShutdownTestClient(t, NewTransport(reader, io.Discard), exitedCommand(t))
+	responder := newResponseAfterWrite(t, lspFrame([]byte(`{"jsonrpc":"2.0","id":1,"result":null}`)))
+	client, stderrPath := newShutdownTestClient(t, NewTransport(responder.reader, responder), exitedCommand(t))
 	go client.readLoop()
 
 	if err := client.Shutdown(); err != nil {
@@ -199,6 +199,37 @@ type failAfterWrite struct {
 func (w *failAfterWrite) Write(p []byte) (int, error) {
 	if w.writes.Add(1) >= w.failAt {
 		return 0, errors.New("write failed")
+	}
+	return len(p), nil
+}
+
+type responseAfterWrite struct {
+	reader *io.PipeReader
+	writer *io.PipeWriter
+	body   []byte
+	writes atomic.Int64
+}
+
+func newResponseAfterWrite(t *testing.T, body []byte) *responseAfterWrite {
+	t.Helper()
+	reader, writer := io.Pipe()
+	t.Cleanup(func() {
+		reader.Close()
+		writer.Close()
+	})
+	return &responseAfterWrite{
+		reader: reader,
+		writer: writer,
+		body:   body,
+	}
+}
+
+func (w *responseAfterWrite) Write(p []byte) (int, error) {
+	if w.writes.Add(1) == 1 {
+		go func() {
+			_, _ = w.writer.Write(w.body)
+			_ = w.writer.Close()
+		}()
 	}
 	return len(p), nil
 }
