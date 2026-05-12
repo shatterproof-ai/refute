@@ -69,54 +69,164 @@ func TestDoctorCommand_HumanShape(t *testing.T) {
 	}
 }
 
-func TestDoctor_GoStatusReflectsLookPath(t *testing.T) {
+func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 	origLookPath := lookPathFn
 	t.Cleanup(func() { lookPathFn = origLookPath })
 
-	lookPathFn = func(name string) (string, error) {
-		if name == "gopls" {
-			return "/fake/path/to/gopls", nil
-		}
-		return "", errLookPathNotFound
+	presentBinaries := map[string]string{
+		"gopls":                      "/fake/bin/gopls",
+		"typescript-language-server": "/fake/bin/typescript-language-server",
+		"rust-analyzer":              "/fake/bin/rust-analyzer",
+		"pyright-langserver":         "/fake/bin/pyright-langserver",
 	}
 
-	report := buildDoctorReport()
-	var goEntry *DoctorBackendStatus
-	for i := range report.Backends {
-		if report.Backends[i].Language == "go" {
-			goEntry = &report.Backends[i]
-			break
-		}
+	tests := []struct {
+		name              string
+		availableBinaries map[string]string
+		want              []DoctorBackendStatus
+	}{
+		{
+			name:              "dependencies present",
+			availableBinaries: presentBinaries,
+			want: []DoctorBackendStatus{
+				{
+					Language:    "go",
+					Status:      DoctorStatusOK,
+					Binary:      "/fake/bin/gopls",
+					InstallHint: "go install golang.org/x/tools/gopls@latest",
+				},
+				{
+					Language:    "typescript",
+					Status:      DoctorStatusExperimental,
+					Binary:      "/fake/bin/typescript-language-server",
+					InstallHint: "npm install -g typescript-language-server typescript",
+				},
+				{
+					Language:    "javascript",
+					Status:      DoctorStatusExperimental,
+					Binary:      "/fake/bin/typescript-language-server",
+					InstallHint: "npm install -g typescript-language-server typescript",
+				},
+				{
+					Language:    "rust",
+					Status:      DoctorStatusExperimental,
+					Binary:      "/fake/bin/rust-analyzer",
+					InstallHint: "rustup component add rust-analyzer",
+				},
+				{
+					Language:    "python",
+					Status:      DoctorStatusPlanned,
+					Binary:      "/fake/bin/pyright-langserver",
+					InstallHint: "npm install -g pyright",
+				},
+				{
+					Language: "java",
+					Status:   DoctorStatusNotClaimed,
+				},
+				{
+					Language: "kotlin",
+					Status:   DoctorStatusNotClaimed,
+				},
+			},
+		},
+		{
+			name:              "dependencies missing",
+			availableBinaries: map[string]string{},
+			want: []DoctorBackendStatus{
+				{
+					Language:          "go",
+					Status:            DoctorStatusMissing,
+					MissingDependency: "gopls",
+					InstallHint:       "go install golang.org/x/tools/gopls@latest",
+				},
+				{
+					Language:          "typescript",
+					Status:            DoctorStatusMissing,
+					MissingDependency: "typescript-language-server",
+					InstallHint:       "npm install -g typescript-language-server typescript",
+				},
+				{
+					Language:          "javascript",
+					Status:            DoctorStatusMissing,
+					MissingDependency: "typescript-language-server",
+					InstallHint:       "npm install -g typescript-language-server typescript",
+				},
+				{
+					Language:          "rust",
+					Status:            DoctorStatusMissing,
+					MissingDependency: "rust-analyzer",
+					InstallHint:       "rustup component add rust-analyzer",
+				},
+				{
+					Language:          "python",
+					Status:            DoctorStatusMissing,
+					MissingDependency: "pyright-langserver",
+					InstallHint:       "npm install -g pyright",
+				},
+				{
+					Language: "java",
+					Status:   DoctorStatusNotClaimed,
+				},
+				{
+					Language: "kotlin",
+					Status:   DoctorStatusNotClaimed,
+				},
+			},
+		},
 	}
-	if goEntry == nil {
-		t.Fatal("doctor report missing go entry")
-	}
-	if goEntry.Status != DoctorStatusOK {
-		t.Errorf("go status = %q with gopls on PATH, want %q", goEntry.Status, DoctorStatusOK)
-	}
-	if goEntry.Binary != "/fake/path/to/gopls" {
-		t.Errorf("go binary = %q, want /fake/path/to/gopls", goEntry.Binary)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lookPathFn = func(name string) (string, error) {
+				path, ok := tt.availableBinaries[name]
+				if !ok {
+					return "", errLookPathNotFound
+				}
+				return path, nil
+			}
+
+			report := buildDoctorReport()
+			for _, want := range tt.want {
+				got := doctorBackendByLanguage(t, report, want.Language)
+				if got.Status != want.Status {
+					t.Errorf("%s status = %q, want %q", want.Language, got.Status, want.Status)
+				}
+				if got.Binary != want.Binary {
+					t.Errorf("%s binary = %q, want %q", want.Language, got.Binary, want.Binary)
+				}
+				if got.MissingDependency != want.MissingDependency {
+					t.Errorf("%s missing dependency = %q, want %q", want.Language, got.MissingDependency, want.MissingDependency)
+				}
+				if got.InstallHint != want.InstallHint {
+					t.Errorf("%s install hint = %q, want %q", want.Language, got.InstallHint, want.InstallHint)
+				}
+			}
+		})
 	}
 }
 
 func TestDoctor_RustOperationsMatchSupportMatrix(t *testing.T) {
 	report := buildDoctorReport()
-	var rustEntry *DoctorBackendStatus
-	for i := range report.Backends {
-		if report.Backends[i].Language == "rust" {
-			rustEntry = &report.Backends[i]
-			break
-		}
-	}
-	if rustEntry == nil {
-		t.Fatal("doctor report missing rust entry")
-	}
+	rustEntry := doctorBackendByLanguage(t, report, "rust")
 
 	got := strings.Join(rustEntry.Operations, ", ")
 	want := strings.Join(supportMatrixOperations(t, "Rust"), ", ")
 	if got != want {
 		t.Errorf("rust operations = %q, want support matrix operations %q", got, want)
 	}
+}
+
+func doctorBackendByLanguage(t *testing.T, report DoctorReport, language string) DoctorBackendStatus {
+	t.Helper()
+
+	for _, backend := range report.Backends {
+		if backend.Language == language {
+			return backend
+		}
+	}
+
+	t.Fatalf("doctor report missing %s entry", language)
+	return DoctorBackendStatus{}
 }
 
 func supportMatrixOperations(t *testing.T, language string) []string {
