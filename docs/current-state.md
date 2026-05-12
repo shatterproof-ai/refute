@@ -175,8 +175,11 @@ The repository has unit tests for config loading, edit application, diff/JSON
 rendering, symbol resolution, backend selection, LSP transport/client/adapter
 logic, ts-morph adapter behavior, and OpenRewrite helper behavior. Integration
 tests under the `integration` build tag exercise end-to-end CLI behavior against
-fixture projects. CI runs unit tests and integration tests with Go and
-rust-analyzer installed.
+fixture projects. CI requires the supported Go integration path with `gopls`
+installed. Rust, TypeScript, JavaScript, and unsupported-language integration
+tests are opt-in with `REFUTE_EXPERIMENTAL_INTEGRATION=1`; CI runs them in a
+separate non-blocking experimental lane with Rust and TS/JS fixture dependencies
+installed.
 
 ### Release Infrastructure
 

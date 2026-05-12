@@ -23,10 +23,10 @@ short of all three is at most **experimental**.
 
 | Language | Extensions | Backend | Dependency install | Operations | Test coverage | Status | Caveats |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Go | `.go` | `lsp/gopls` | `go install golang.org/x/tools/gopls@latest` | rename, extract-function, extract-variable, inline | unit + integration (`internal/integration_test.go`) | supported | Primary v0.1 dogfood target. |
-| Rust | `.rs` | `lsp/rust-analyzer` | `rustup component add rust-analyzer` | rename, extract-function, extract-variable, inline | unit + integration (`internal/integration_test.go`; CI installs rust-analyzer) | experimental | Tier-1 --symbol supports forms 1–7 (crate::module::Type::method, <Type as Trait>::method). Inline is single-call-site only. Experimental while dogfood confidence is still building. |
-| TypeScript | `.ts`, `.tsx` | `lsp/typescript-language-server` | `npm install -g typescript-language-server typescript` | rename | unit | experimental | ts-morph adapter is **implemented but not packaged**; tracked in [issue #1](https://github.com/shatterproof-ai/refute/issues/1). |
-| JavaScript | `.js`, `.jsx` | `lsp/typescript-language-server` | `npm install -g typescript-language-server typescript` | rename | unit | experimental | Same packaging caveat as TypeScript. |
+| Go | `.go` | `lsp/gopls` | `go install golang.org/x/tools/gopls@latest` | rename, extract-function, extract-variable, inline | unit + required integration (`internal/integration_test.go`) | supported | Primary v0.1 dogfood target. |
+| Rust | `.rs` | `lsp/rust-analyzer` | `rustup component add rust-analyzer` | rename, extract-function, extract-variable, inline | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI) | experimental | Tier-1 --symbol supports forms 1–7 (crate::module::Type::method, <Type as Trait>::method). Inline is single-call-site only. Experimental while dogfood confidence is still building. |
+| TypeScript | `.ts`, `.tsx` | `lsp/typescript-language-server` | `npm install -g typescript-language-server typescript` | rename | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI with fixture dependencies installed) | experimental | ts-morph adapter is **implemented but not packaged**; tracked in [issue #1](https://github.com/shatterproof-ai/refute/issues/1). |
+| JavaScript | `.js`, `.jsx` | `lsp/typescript-language-server` | `npm install -g typescript-language-server typescript` | rename | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI with fixture dependencies installed) | experimental | Same packaging caveat as TypeScript. |
 | Python | `.py` | `lsp/pyright` | `npm install -g pyright` | rename | none | planned | Promote once fixture and integration coverage land. |
 | Java | `.java` | OpenRewrite | — | — | none | unsupported | Not claimed for v0.1. JAR packaging deferred. |
 | Kotlin | `.kt` | OpenRewrite | — | — | none | unsupported | Not claimed for v0.1. |
@@ -40,6 +40,19 @@ backend in the current release. Operations not listed return the
 For Tier 1 rename (`refute rename --symbol pkg.Func --new-name New`) the
 backend is selected from the file's extension once the symbol is resolved,
 following the same rules as Tier 2.
+
+## Integration lane policy
+
+The required CI integration lane covers the supported Go path only. CI installs
+`gopls` and runs `go test -tags integration ./internal/` without experimental
+opt-in so Rust, TypeScript, JavaScript, and unsupported-language fixtures skip
+with an explicit opt-in message.
+
+Experimental integration scenarios are available by setting
+`REFUTE_EXPERIMENTAL_INTEGRATION=1`. The CI workflow runs the same integration
+suite in a separate non-blocking lane after installing `rust-analyzer` and the
+TypeScript/JavaScript fixture dependencies. Local runs should use the same
+environment variable when intentionally exercising these experimental paths.
 
 ## Process for promoting a status
 
