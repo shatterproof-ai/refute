@@ -1,4 +1,5 @@
 node_modules/
+adapters/openrewrite/target/
 .shatter-cache/
 shatter-artifacts/
 shatter-report/

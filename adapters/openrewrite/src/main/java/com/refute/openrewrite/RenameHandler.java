@@ -6,6 +6,7 @@ import org.openrewrite.InMemoryExecutionContext;
 import org.openrewrite.Recipe;
 import org.openrewrite.Result;
 import org.openrewrite.SourceFile;
+import org.openrewrite.internal.InMemoryLargeSourceSet;
 import org.openrewrite.java.ChangeMethodName;
 import org.openrewrite.java.ChangeType;
 import org.openrewrite.java.JavaParser;
@@ -58,7 +59,7 @@ public class RenameHandler {
         }
 
         Recipe recipe = buildRecipe(params, newName);
-        List<Result> results = recipe.run(sources, ctx).getChangeset().getAllResults();
+        List<Result> results = recipe.run(new InMemoryLargeSourceSet(sources), ctx).getChangeset().getAllResults();
 
         return results.stream()
                 .filter(r -> r.getAfter() != null)
