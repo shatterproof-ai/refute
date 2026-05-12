@@ -142,65 +142,83 @@ function pushNamedNode(candidates, namedNode, name, kind) {
   candidates.push(locationForNamedNode(namedNode, name, kind));
 }
 
-function collectMatches(sourceFile, query) {
+function collectMethodMatches(sourceFile, query) {
   const candidates = [];
+  for (const cls of sourceFile.getClasses()) {
+    if (query.containerName && cls.getName() !== query.containerName) {
+      continue;
+    }
+    for (const method of cls.getMethods()) {
+      if (method.getName() === query.symbolName) {
+        pushNamedNode(candidates, method.getNameNode(), method.getName(), "method");
+      }
+    }
+  }
+  return candidates;
+}
 
-  switch (query.kind) {
-    case "method":
-      for (const cls of sourceFile.getClasses()) {
-        if (query.containerName && cls.getName() !== query.containerName) {
-          continue;
-        }
-        for (const method of cls.getMethods()) {
-          if (method.getName() === query.symbolName) {
-            pushNamedNode(candidates, method.getNameNode(), method.getName(), "method");
-          }
-        }
-      }
-      break;
-    case "class":
-      for (const cls of sourceFile.getClasses()) {
-        if (cls.getName() === query.symbolName) {
-          pushNamedNode(candidates, cls.getNameNode(), cls.getName(), "class");
-        }
-      }
-      break;
-    case "type":
-      for (const iface of sourceFile.getInterfaces()) {
-        if (iface.getName() === query.symbolName) {
-          pushNamedNode(candidates, iface.getNameNode(), iface.getName(), "type");
-        }
-      }
-      for (const alias of sourceFile.getTypeAliases()) {
-        if (alias.getName() === query.symbolName) {
-          pushNamedNode(candidates, alias.getNameNode(), alias.getName(), "type");
-        }
-      }
-      break;
-    case "variable":
-      for (const decl of sourceFile.getVariableDeclarations()) {
-        if (decl.getName() === query.symbolName) {
-          pushNamedNode(candidates, decl.getNameNode(), decl.getName(), "variable");
-        }
-      }
-      break;
-    case "function":
-      for (const fn of sourceFile.getFunctions()) {
-        if (fn.getName() === query.symbolName) {
-          pushNamedNode(candidates, fn.getNameNode(), fn.getName(), "function");
-        }
-      }
-      break;
-    default:
-      candidates.push(...collectMatches(sourceFile, { ...query, kind: "function" }));
-      candidates.push(...collectMatches(sourceFile, { ...query, kind: "class" }));
-      candidates.push(...collectMatches(sourceFile, { ...query, kind: "type" }));
-      candidates.push(...collectMatches(sourceFile, { ...query, kind: "variable" }));
-      candidates.push(...collectMatches(sourceFile, { ...query, kind: "method" }));
-      break;
+function collectClassMatches(sourceFile, query) {
+  const candidates = [];
+  for (const cls of sourceFile.getClasses()) {
+    if (cls.getName() === query.symbolName) {
+      pushNamedNode(candidates, cls.getNameNode(), cls.getName(), "class");
+    }
+  }
+  return candidates;
+}
+
+function collectTypeMatches(sourceFile, query) {
+  const candidates = [];
+  for (const iface of sourceFile.getInterfaces()) {
+    if (iface.getName() === query.symbolName) {
+      pushNamedNode(candidates, iface.getNameNode(), iface.getName(), "type");
+    }
+  }
+  for (const alias of sourceFile.getTypeAliases()) {
+    if (alias.getName() === query.symbolName) {
+      pushNamedNode(candidates, alias.getNameNode(), alias.getName(), "type");
+    }
+  }
+  return candidates;
+}
+
+function collectVariableMatches(sourceFile, query) {
+  const candidates = [];
+  for (const decl of sourceFile.getVariableDeclarations()) {
+    if (decl.getName() === query.symbolName) {
+      pushNamedNode(candidates, decl.getNameNode(), decl.getName(), "variable");
+    }
+  }
+  return candidates;
+}
+
+function collectFunctionMatches(sourceFile, query) {
+  const candidates = [];
+  for (const fn of sourceFile.getFunctions()) {
+    if (fn.getName() === query.symbolName) {
+      pushNamedNode(candidates, fn.getNameNode(), fn.getName(), "function");
+    }
+  }
+  return candidates;
+}
+
+const matchCollectors = {
+  class: collectClassMatches,
+  function: collectFunctionMatches,
+  method: collectMethodMatches,
+  type: collectTypeMatches,
+  variable: collectVariableMatches,
+};
+
+function collectMatches(sourceFile, query) {
+  const collect = matchCollectors[query.kind];
+  if (collect) {
+    return collect(sourceFile, query);
   }
 
-  return candidates;
+  return ["function", "class", "type", "variable", "method"].flatMap(kind =>
+    collectMatches(sourceFile, { ...query, kind }),
+  );
 }
 
 function findSymbol(project, workspaceRoot, req) {
