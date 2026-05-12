@@ -1,0 +1,1 @@
+refute extract-function --file {{tmpdir}}/main.go --start-line 7 --start-col 2 --end-line 7 --end-col 19 --name computeResult

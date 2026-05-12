@@ -1,0 +1,1 @@
+refute rename-function --symbol FormatGreeting --new-name BuildGreeting

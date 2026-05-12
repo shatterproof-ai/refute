@@ -1,0 +1,1 @@
+refute rename-function --file {{tmpdir}}/util/helper.go --line 4 --name FormatGreeting --new-name BuildGreeting
