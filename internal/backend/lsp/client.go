@@ -193,6 +193,7 @@ func (p *progressTracker) waitIdle(ctx context.Context) error {
 type Client struct {
 	transport      *Transport
 	process        *exec.Cmd
+	stderrMu       sync.Mutex
 	stderrFile     *os.File
 	stderrPath     string
 	nextID         atomic.Int64
@@ -449,7 +450,12 @@ func (c *Client) errorWithServerStderr(err error) string {
 }
 
 func (c *Client) serverStderr() string {
-	if c == nil || c.stderrPath == "" {
+	if c == nil {
+		return ""
+	}
+	c.stderrMu.Lock()
+	defer c.stderrMu.Unlock()
+	if c.stderrPath == "" {
 		return ""
 	}
 	if c.stderrFile != nil {
@@ -480,7 +486,12 @@ func (c *Client) serverStderr() string {
 }
 
 func (c *Client) cleanupStderr() {
-	if c == nil || c.stderrPath == "" {
+	if c == nil {
+		return
+	}
+	c.stderrMu.Lock()
+	defer c.stderrMu.Unlock()
+	if c.stderrPath == "" {
 		return
 	}
 	if c.stderrFile != nil {
