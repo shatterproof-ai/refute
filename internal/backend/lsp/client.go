@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -329,13 +330,32 @@ func (c *Client) handleProgress(params json.RawMessage) {
 	if err := json.Unmarshal(params, &p); err != nil {
 		return
 	}
-	token := string(p.Token)
+	token, ok := progressTokenKey(p.Token)
+	if !ok {
+		return
+	}
 	switch p.Value.Kind {
 	case "begin":
 		c.progress.begin(token)
 	case "end":
 		c.progress.end(token)
 	}
+}
+
+func progressTokenKey(raw json.RawMessage) (string, bool) {
+	var token string
+	if err := json.Unmarshal(raw, &token); err == nil {
+		return token, true
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var number json.Number
+	if err := decoder.Decode(&number); err == nil {
+		return number.String(), true
+	}
+
+	return "", false
 }
 
 // WaitForIdle blocks until all in-flight $/progress tokens have ended or ctx
