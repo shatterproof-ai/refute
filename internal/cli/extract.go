@@ -64,7 +64,7 @@ func runExtract(kind string) error {
 	if err != nil {
 		return err
 	}
-	defer sel.Backend.Shutdown()
+	defer func() { _ = sel.Backend.Shutdown() }()
 
 	r := symbol.SourceRange{
 		File:      absFile,
