@@ -126,11 +126,17 @@ packaging is resolved.
 `internal/backend/openrewrite` defines a JVM subprocess adapter for Java/Kotlin
 rename paths. It expects a shaded adapter JAR at
 `adapters/openrewrite/target/openrewrite-adapter.jar` and shells out to
-`java -jar`.
+`java -jar`. The adapter source lives under `adapters/openrewrite/src/` and is
+built with Maven:
 
-The Go side can build rename request parameters and parse line-delimited JSON
-responses, but the repository currently contains only the Maven `pom.xml`, not
-Java source for the adapter JAR. OpenRewrite is **unsupported for v0.1**.
+```bash
+mvn -B package --file adapters/openrewrite/pom.xml
+```
+
+The build requires JDK 17 or newer and Maven on PATH. The Go side can build
+rename request parameters and parse line-delimited JSON responses, but
+OpenRewrite remains **unsupported for v0.1** while adapter packaging is
+deferred.
 
 ### Edit Model and Applier
 
