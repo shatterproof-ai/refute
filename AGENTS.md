@@ -89,6 +89,20 @@ when a backend appears silent.
 - Add or expand fixtures under `testdata/` and integration coverage under
   `internal/integration_test.go` (build tag `integration`).
 
+## Issue-Backed Work
+
+Every implementation or documentation change must be backed by a Beads issue
+before work begins. If the user reports a bug or requests a change directly in
+chat, create or identify the Beads issue first, then reference that issue while
+working.
+
+Do not treat an unavailable or misconfigured tracker CLI as permission to
+continue without an issue. Stop and surface the tracker problem so the issue can
+be created or selected before repository files are edited.
+
+Tracker-only administration, such as creating or updating the issue itself, does
+not require a separate issue.
+
 ## Landing Work
 
 Never use the pull request workflow. Always finish feature branches using the
