@@ -344,6 +344,9 @@ func positionLess(a, b Position) bool {
 // positionToOffset converts a 0-indexed line/character Position to a byte offset
 // within content. Returns -1 if the position is out of range.
 func positionToOffset(content []byte, pos Position) int {
+	if pos.Line < 0 || pos.Character < 0 {
+		return -1
+	}
 	line := 0
 	offset := 0
 	for offset < len(content) {
