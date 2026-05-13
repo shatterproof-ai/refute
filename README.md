@@ -92,6 +92,29 @@ Two flags shape every operation's output:
 Scripts and agents should default to `--json --dry-run` to inspect a proposed
 refactoring before applying it.
 
+## Local telemetry
+
+`refute` writes local, opt-out invocation telemetry to:
+
+```bash
+~/.local/share/refute/telemetry.jsonl
+```
+
+Each invocation records start/end events with timing, exit status, detected
+agent session, project identity, backend metadata, and edit counts. Refactoring
+operations also store compressed before/planned-after snapshots under:
+
+```bash
+~/.local/share/refute/snapshots/
+```
+
+When an agent session ID is detected, `refute` appends a human-readable session
+transcript under `~/.local/share/refute/sessions/`. Passing `--verbose` prints
+the same invocation summary to stderr; normal output stays quiet.
+
+Set `REFUTE_TELEMETRY=0` to disable telemetry entirely, or
+`REFUTE_TELEMETRY_SNAPSHOTS=0` to keep metadata while skipping snapshots.
+
 ## Operations
 
 | Command | Purpose |

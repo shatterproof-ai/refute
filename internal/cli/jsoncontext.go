@@ -54,6 +54,9 @@ func statusForFlags() string {
 // ExitCodeError so Run() exits with a non-zero status without printing the
 // message twice. Intended for use only when flagJSON is set.
 func emitJSONError(ctx jsonContext, status, code, message, hint string) error {
+	telemetrySetContext(ctx)
+	telemetrySetStatus(status)
+	telemetrySetError(code, message)
 	res := &edit.JSONResult{
 		SchemaVersion: edit.SchemaVersion,
 		Status:        status,

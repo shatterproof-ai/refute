@@ -74,6 +74,7 @@ func init() {
 }
 
 func runRename(kind symbol.SymbolKind) error {
+	telemetrySetContext(jsonContext{Operation: "rename"})
 	query := symbol.Query{
 		QualifiedName: flagSymbol,
 		File:          flagFile,
@@ -95,7 +96,9 @@ func runRename(kind symbol.SymbolKind) error {
 		return runRenameTier1(query)
 	}
 
+	resolveDone := telemetryPhase("symbol-resolution")
 	loc, err := symbol.Resolve(query)
+	resolveDone()
 	if err != nil {
 		if flagJSON {
 			return emitJSONError(
@@ -131,20 +134,25 @@ func runRename(kind symbol.SymbolKind) error {
 
 // buildBackend selects and initializes a refactoring backend for the given file.
 func buildBackend(filePath string) (*selector.Selection, string, error) {
+	selectDone := telemetryPhase("backend-selection")
 	workspaceRoot, err := FindWorkspaceRootFromFile(filePath)
 	if err != nil {
+		selectDone()
 		return nil, "", err
 	}
 	cfg, err := config.Load(flagConfig, workspaceRoot)
 	if err != nil {
+		selectDone()
 		return nil, "", fmt.Errorf("loading config: %w", err)
 	}
 	sel, err := selector.ForFile(cfg, workspaceRoot, filePath)
 	if err != nil {
+		selectDone()
 		return nil, "", err
 	}
 	if sel.BackendName == "lsp" && sel.Server.Command != "" {
 		if _, lookErr := exec.LookPath(sel.Server.Command); lookErr != nil {
+			selectDone()
 			return nil, "", &ErrLSPServerMissing{
 				Language:    sel.Language,
 				Command:     sel.Server.Command,
@@ -152,15 +160,22 @@ func buildBackend(filePath string) (*selector.Selection, string, error) {
 			}
 		}
 	}
+	selectDone()
+	initDone := telemetryPhase("backend-initialization")
 	if err := sel.Backend.Initialize(workspaceRoot); err != nil {
+		initDone()
 		return nil, "", fmt.Errorf("initializing backend: %w", err)
 	}
+	initDone()
 	return sel, workspaceRoot, nil
 }
 
 // finishRename requests the rename edit and routes it through the output pipeline.
 func finishRename(b backend.RefactoringBackend, ctx jsonContext, loc symbol.Location, newName string) error {
+	telemetrySetContext(ctx)
+	refactorDone := telemetryPhase("backend-refactor-request")
 	we, err := b.Rename(loc, newName)
+	refactorDone()
 	if err != nil {
 		return fmt.Errorf("rename failed: %w", err)
 	}
@@ -172,21 +187,33 @@ func finishRename(b backend.RefactoringBackend, ctx jsonContext, loc symbol.Loca
 
 // applyOrPreview emits the result per --dry-run/--json/default flags.
 func applyOrPreview(we *edit.WorkspaceEdit, ctx jsonContext) error {
+	telemetrySetContext(ctx)
 	if flagJSON {
 		return emitJSON(we, ctx, statusForFlags())
 	}
 	if flagDryRun {
+		telemetrySetStatus(edit.StatusDryRun)
+		telemetryCaptureSnapshot(we)
+		renderDone := telemetryPhase("output-rendering")
 		diff, err := edit.RenderDiff(we)
+		renderDone()
 		if err != nil {
+			telemetrySetStatus("failed")
 			return fmt.Errorf("rendering diff: %w", err)
 		}
 		fmt.Print(diff)
 		return nil
 	}
+	telemetryCaptureSnapshot(we)
+	applyDone := telemetryPhase("apply")
 	result, err := edit.ApplyWithin(we, ctx.WorkspaceRoot)
+	applyDone()
 	if err != nil {
 		return fmt.Errorf("applying edits: %w", err)
 	}
+	telemetrySetStatus(edit.StatusApplied)
+	telemetryMarkApplied()
+	telemetrySetFilesModified(result.FilesModified)
 	green := color.New(color.FgGreen).SprintFunc()
 	fmt.Fprintf(os.Stderr, "%s Modified %d file(s):", green("ok"), result.FilesModified)
 	for _, fe := range we.FileEdits {
@@ -206,18 +233,35 @@ func applyOrPreview(we *edit.WorkspaceEdit, ctx jsonContext) error {
 }
 
 func emitJSON(we *edit.WorkspaceEdit, ctx jsonContext, status string) error {
+	telemetrySetContext(ctx)
+	if flagDryRun {
+		telemetrySetStatus(status)
+	}
+	telemetryCaptureSnapshot(we)
+	renderDone := telemetryPhase("output-rendering")
 	res := edit.RenderJSON(we, status)
 	res.Operation = ctx.Operation
 	res.Language = ctx.Language
 	res.Backend = ctx.Backend
 	res.WorkspaceRoot = ctx.WorkspaceRoot
+	renderDone()
 	if !flagDryRun {
+		applyDone := telemetryPhase("apply")
 		if _, err := edit.ApplyWithin(we, ctx.WorkspaceRoot); err != nil {
+			applyDone()
+			telemetrySetStatus("failed")
 			return fmt.Errorf("applying edits: %w", err)
 		}
+		applyDone()
+		telemetrySetStatus(status)
+		telemetryMarkApplied()
 	}
+	telemetrySetFilesModified(res.FilesModified)
+	marshalDone := telemetryPhase("output-rendering")
 	data, err := res.Marshal()
+	marshalDone()
 	if err != nil {
+		telemetrySetStatus("failed")
 		return fmt.Errorf("marshalling JSON: %w", err)
 	}
 	fmt.Println(string(data))
@@ -268,32 +312,44 @@ func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
 	}
 	language := tier1Language(query)
 	ctx := tier1RenameContext(language, workspaceRoot)
+	telemetrySetContext(ctx)
 
+	selectDone := telemetryPhase("backend-selection")
 	cfg, err := config.Load(flagConfig, workspaceRoot)
 	if err != nil {
+		selectDone()
 		return nil, handleTier1BackendSetupError(ctx, fmt.Errorf("loading config: %w", err))
 	}
 	serverCfg := cfg.Server(language)
 	if serverCfg.Command == "" {
+		selectDone()
 		return nil, handleTier1BackendSetupError(ctx, fmt.Errorf("no server configured for language %q", language))
 	}
 	if _, lookErr := exec.LookPath(serverCfg.Command); lookErr != nil {
+		selectDone()
 		return nil, handleTier1BackendSetupError(ctx, &ErrLSPServerMissing{
 			Language:    language,
 			Command:     serverCfg.Command,
 			InstallHint: config.InstallHint(language),
 		})
 	}
+	selectDone()
 
 	adapter := lsp.NewAdapter(serverCfg, language, nil)
+	initDone := telemetryPhase("backend-initialization")
 	if err := adapter.Initialize(workspaceRoot); err != nil {
+		initDone()
 		return nil, handleTier1BackendSetupError(ctx, err)
 	}
+	initDone()
 	// Prime so workspace/symbol sees the whole module.
+	primeDone := telemetryPhase("workspace-priming")
 	if _, err := adapter.PrimeWorkspace(workspaceRoot); err != nil {
+		primeDone()
 		_ = adapter.Shutdown()
 		return nil, handleTier1WorkspacePrimeError(ctx, err)
 	}
+	primeDone()
 	return &tier1RenameBackend{adapter: adapter, language: language, ctx: ctx}, nil
 }
 
@@ -331,6 +387,8 @@ func handleTier1WorkspacePrimeError(ctx jsonContext, err error) error {
 }
 
 func resolveTier1Symbol(adapter backend.RefactoringBackend, language string, query symbol.Query) (symbol.Location, error) {
+	done := telemetryPhase("symbol-resolution")
+	defer done()
 	if language == "rust" {
 		return resolveRustTier1Symbol(adapter, query)
 	}
@@ -425,6 +483,9 @@ func handleTier1RenameError(ctx jsonContext, err error) error {
 // ambiguousError formats a Tier 1 ambiguity result. In JSON mode, emit a
 // structured candidates list; otherwise print a human-readable message.
 func ambiguousError(ctx jsonContext, locs []symbol.Location) error {
+	telemetrySetContext(ctx)
+	telemetrySetStatus(edit.StatusAmbiguous)
+	telemetrySetError("ambiguous", "multiple candidates")
 	if flagJSON {
 		res := &edit.JSONResult{
 			SchemaVersion: edit.SchemaVersion,
