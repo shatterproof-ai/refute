@@ -131,6 +131,8 @@ func TestShatterCleanTargetExistsInMakefile(t *testing.T) {
 	content := string(data)
 	for _, want := range []string{
 		"shatter-clean",
+		"build:",
+		"go build -buildvcs=false ./cmd/refute",
 		".shatter-cache",
 		"shatter-artifacts",
 		"shatter-report",
@@ -142,6 +144,28 @@ func TestShatterCleanTargetExistsInMakefile(t *testing.T) {
 	if !strings.Contains(content, ".PHONY") {
 		t.Error("Makefile missing .PHONY declaration")
 	}
+}
+
+func TestMakefileDefaultTargetBuildsRefute(t *testing.T) {
+	data, err := os.ReadFile("../Makefile")
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, ".") || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+		if strings.HasSuffix(line, ":") {
+			if line != "build:" {
+				t.Fatalf("default Makefile target = %q, want build", strings.TrimSuffix(line, ":"))
+			}
+			return
+		}
+	}
+
+	t.Fatal("Makefile has no default target")
 }
 
 func TestShatterGeneratedArtifactsAreIgnored(t *testing.T) {
