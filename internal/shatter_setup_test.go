@@ -131,6 +131,8 @@ func TestShatterCleanTargetExistsInMakefile(t *testing.T) {
 	content := string(data)
 	for _, want := range []string{
 		"shatter-clean",
+		"build:",
+		"go build -buildvcs=false ./cmd/refute",
 		".shatter-cache",
 		"shatter-artifacts",
 		"shatter-report",
