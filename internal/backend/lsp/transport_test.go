@@ -164,3 +164,26 @@ func TestTransport_ReadRejectsEOFWhileReadingBody(t *testing.T) {
 		t.Fatalf("Read error = %v, want %v", err, io.EOF)
 	}
 }
+
+func FuzzRead(f *testing.F) {
+	f.Add([]byte("Content-Length: 2\r\n\r\n{}"))
+	f.Add([]byte("Content-Length: 13\r\nContent-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\nhello, world!"))
+	f.Add([]byte("\r\n\r\nContent-Length: 2\r\n\r\n{}"))
+	f.Add([]byte("Content-Length: 0\r\n\r\n"))
+	f.Add([]byte(""))
+	f.Add([]byte("Content-Length: -1\r\n\r\n"))
+	f.Add([]byte("Content-Length: not-a-number\r\n\r\n"))
+	f.Add([]byte("Content-Length: 99999999999999999999\r\n\r\n"))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		transport := lsp.NewTransport(bytes.NewReader(data), nil)
+		body, err := transport.Read()
+		if err == nil {
+			// On success: bounded to the documented 32 MiB cap.
+			const cap = 32 * 1024 * 1024
+			if len(body) > cap {
+				t.Fatalf("Read returned %d bytes, exceeds cap %d", len(body), cap)
+			}
+		}
+	})
+}
