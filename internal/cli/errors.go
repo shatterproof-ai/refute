@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/shatterproof-ai/refute/internal/edit"
 	"github.com/shatterproof-ai/refute/internal/telemetry"
 )
 
@@ -76,24 +77,45 @@ func (e *ErrSymbolNotFound) ExitCode() int { return 2 }
 //	anything else        → 1 (message printed to stderr)
 func Run(fn func() error) {
 	cwd, _ := os.Getwd()
-	telemetry.Append(telemetry.DefaultPath(), telemetry.Capture(os.Args[1:], cwd))
+	rec := telemetry.Start(os.Args[1:], cwd, telemetry.Options{Verbose: argsContainVerbose(os.Args[1:])})
+	setActiveTelemetry(rec)
 
 	err := fn()
+	code, message := exitDetails(err)
+	if err != nil {
+		telemetrySetDefaultStatus(defaultStatusForError(err))
+		telemetrySetDefaultError("error", err.Error())
+	}
+	rec.Finish(telemetry.FinishInfo{ExitCode: code})
+	if message != "" {
+		fmt.Fprintln(os.Stderr, message)
+	}
+	os.Exit(code)
+}
+
+func exitDetails(err error) (int, string) {
 	if err == nil {
-		os.Exit(0)
+		return 0, ""
 	}
 	var ec *ExitCodeError
 	if errors.As(err, &ec) {
-		if ec.Message != "" {
-			fmt.Fprintln(os.Stderr, ec.Message)
-		}
-		os.Exit(ec.Code)
+		return ec.Code, ec.Message
 	}
 	var em *ErrLSPServerMissing
 	if errors.As(err, &em) {
-		fmt.Fprintln(os.Stderr, em.Error())
-		os.Exit(3)
+		return 3, em.Error()
 	}
-	fmt.Fprintln(os.Stderr, err)
-	os.Exit(1)
+	return 1, err.Error()
+}
+
+func defaultStatusForError(err error) string {
+	var ec *ExitCodeError
+	if errors.As(err, &ec) && ec.Code == 2 {
+		return edit.StatusNoOp
+	}
+	var em *ErrLSPServerMissing
+	if errors.As(err, &em) {
+		return edit.StatusBackendMissing
+	}
+	return "failed"
 }

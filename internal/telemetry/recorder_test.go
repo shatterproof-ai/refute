@@ -173,6 +173,71 @@ func TestRecorderWritesTranscriptAndVerboseSummary(t *testing.T) {
 	}
 }
 
+func TestRecorderTelemetryOptOut(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "telemetry.jsonl")
+	rec := telemetry.Start([]string{"rename"}, dir, telemetry.Options{
+		TelemetryPath: path,
+		SnapshotRoot:  filepath.Join(dir, "snapshots"),
+		SessionRoot:   filepath.Join(dir, "sessions"),
+		Environ:       []string{"REFUTE_TELEMETRY=0", "CLAUDE_CODE_SESSION_ID=session-123"},
+	})
+	rec.SetOperation(telemetry.OperationContext{Operation: "rename", WorkspaceRoot: dir})
+	rec.Finish(telemetry.FinishInfo{ExitCode: 0})
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("telemetry file should not exist when opted out; stat err=%v", err)
+	}
+}
+
+func TestRecorderSnapshotOptOutKeepsMetadata(t *testing.T) {
+	dir := t.TempDir()
+	workspace := filepath.Join(dir, "workspace")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(workspace, "main.go")
+	if err := os.WriteFile(source, []byte("package main\n\nfunc oldName() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(dir, "telemetry.jsonl")
+	rec := telemetry.Start([]string{"rename"}, workspace, telemetry.Options{
+		TelemetryPath: path,
+		SnapshotRoot:  filepath.Join(dir, "snapshots"),
+		SessionRoot:   filepath.Join(dir, "sessions"),
+		Environ:       []string{"REFUTE_TELEMETRY_SNAPSHOTS=0", "CLAUDE_CODE_SESSION_ID=session-123"},
+		Now:           fixedClock(time.Date(2026, 5, 13, 10, 0, 0, 0, time.UTC)),
+	})
+	rec.SetOperation(telemetry.OperationContext{Operation: "rename", WorkspaceRoot: workspace})
+	we := &edit.WorkspaceEdit{FileEdits: []edit.FileEdit{{
+		Path: source,
+		Edits: []edit.TextEdit{{
+			Range:   edit.Range{Start: edit.Position{Line: 2, Character: 5}, End: edit.Position{Line: 2, Character: 12}},
+			NewText: "newName",
+		}},
+	}}}
+	manifest, err := rec.CaptureSnapshot(we)
+	if err != nil {
+		t.Fatalf("CaptureSnapshot: %v", err)
+	}
+	if manifest != nil {
+		t.Fatalf("manifest = %+v, want nil when snapshots are disabled", manifest)
+	}
+	rec.Finish(telemetry.FinishInfo{ExitCode: 0})
+
+	events := readTelemetryEvents(t, path)
+	if len(events) != 2 {
+		t.Fatalf("events len = %d, want 2", len(events))
+	}
+	if _, ok := events[1]["snapshotManifest"]; ok {
+		t.Fatalf("snapshotManifest should be absent when snapshots are disabled: %+v", events[1])
+	}
+	if _, err := os.Stat(filepath.Join(dir, "snapshots")); !os.IsNotExist(err) {
+		t.Fatalf("snapshots dir should not exist when snapshot telemetry is disabled; stat err=%v", err)
+	}
+}
+
 func fixedClock(t time.Time) func() time.Time {
 	current := t
 	return func() time.Time {
@@ -212,11 +277,6 @@ func readGzipFile(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	defer zr.Close()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = data
 	var buf bytes.Buffer
 	if _, err := buf.ReadFrom(zr); err != nil {
 		t.Fatal(err)

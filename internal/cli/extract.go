@@ -56,6 +56,8 @@ func init() {
 }
 
 func runExtract(kind string) error {
+	operation := "extract-" + kind
+	telemetrySetContext(jsonContext{Operation: operation})
 	absFile, err := filepath.Abs(flagFile)
 	if err != nil {
 		return fmt.Errorf("resolving file path: %w", err)
@@ -77,7 +79,10 @@ func runExtract(kind string) error {
 	switch kind {
 	case "function":
 		ctx := contextFromSelection("extract-function", sel, workspaceRoot)
+		telemetrySetContext(ctx)
+		refactorDone := telemetryPhase("backend-refactor-request")
 		result, err := sel.Backend.ExtractFunction(r, flagExtName)
+		refactorDone()
 		if err != nil {
 			return fmt.Errorf("extract-function failed: %w", err)
 		}
@@ -87,7 +92,10 @@ func runExtract(kind string) error {
 		return applyOrPreview(result, ctx)
 	case "variable":
 		ctx := contextFromSelection("extract-variable", sel, workspaceRoot)
+		telemetrySetContext(ctx)
+		refactorDone := telemetryPhase("backend-refactor-request")
 		result, err := sel.Backend.ExtractVariable(r, flagExtName)
+		refactorDone()
 		if err != nil {
 			return fmt.Errorf("extract-variable failed: %w", err)
 		}

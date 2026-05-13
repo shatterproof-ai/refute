@@ -93,6 +93,16 @@ then run the project's required verification gate.
 
 If the preview is empty, touches unexpected files, or reports an error, stop
 and use normal code-editing workflow instead of forcing the refactor.
+
+Refute keeps local observability data outside the project tree:
+
+- invocation JSONL: `~/.local/share/refute/telemetry.jsonl`
+- compressed before/after snapshots: `~/.local/share/refute/snapshots/`
+- agent-session transcripts: `~/.local/share/refute/sessions/`
+
+Use `--verbose` when you want the agent transcript summary echoed into the
+current session. Set `REFUTE_TELEMETRY=0` to disable all telemetry, or
+`REFUTE_TELEMETRY_SNAPSHOTS=0` to skip snapshots only.
 ````
 
 ## Global install

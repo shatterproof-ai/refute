@@ -171,9 +171,17 @@ partial identifier matches.
 
 ### Invocation Telemetry
 
-A user-local invocation log records command, exit code, timestamp, and duration
-per invocation. The log is stored outside the project tree and is strictly
-opt-out.
+A user-local invocation log records start/end events with command arguments,
+exit code, status, timestamp, duration, agent/session identity, best-effort
+project identity, backend metadata, phase timings, and edit counts. The JSONL
+log is stored at `~/.local/share/refute/telemetry.jsonl`.
+
+For refactoring operations, `refute` stores compressed before/planned-after
+snapshots under `~/.local/share/refute/snapshots/<invocationId>/`. When an
+agent session ID is detected, it also appends a human-readable transcript under
+`~/.local/share/refute/sessions/<caller>/<sessionId>.log`. Telemetry remains
+local and opt-out via `REFUTE_TELEMETRY=0`; snapshots can be disabled with
+`REFUTE_TELEMETRY_SNAPSHOTS=0`.
 
 ### Tests and Fixtures
 

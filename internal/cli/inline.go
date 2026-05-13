@@ -37,6 +37,7 @@ For Rust: use --symbol with --call-site <file>:<line>:<column>. See docs/support
 }
 
 func runInline() error {
+	telemetrySetContext(jsonContext{Operation: "inline"})
 	if flagSymbol != "" && callSiteFlag == "" {
 		return fmt.Errorf("inline: --symbol requires --call-site <file>:<line>:<column> " +
 			"to disambiguate which call site to inline")
@@ -72,7 +73,9 @@ func runInline() error {
 			Column: flagCol,
 			Name:   flagName,
 		}
+		resolveDone := telemetryPhase("symbol-resolution")
 		resolved, err := symbol.Resolve(query)
+		resolveDone()
 		if err != nil {
 			return fmt.Errorf("symbol resolution: %w", err)
 		}
@@ -85,14 +88,17 @@ func runInline() error {
 	}
 	defer func() { _ = sel.Backend.Shutdown() }()
 
+	ctx := contextFromSelection("inline", sel, workspaceRoot)
+	telemetrySetContext(ctx)
+	refactorDone := telemetryPhase("backend-refactor-request")
 	we, err := sel.Backend.InlineSymbol(loc)
+	refactorDone()
 	if err != nil {
 		return fmt.Errorf("inline failed: %w", err)
 	}
 	if len(we.FileEdits) == 0 {
 		return NoEditsError()
 	}
-	ctx := contextFromSelection("inline", sel, workspaceRoot)
 	return applyOrPreview(we, ctx)
 }
 
