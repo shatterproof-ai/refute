@@ -8,6 +8,31 @@ import (
 	"testing"
 )
 
+func TestPositionToOffset_NegativeInputsReturnSentinel(t *testing.T) {
+	// "hello\nworld\n": line 0 = "hello", line 1 = "world"
+	content := []byte("hello\nworld\n")
+	cases := []struct {
+		name string
+		pos  Position
+	}{
+		// Line > 0 so the loop walks past the first newline before matching;
+		// without the guard, offset + Character yields a positive non-negative
+		// value that passes the > len(content) check, returning a bogus offset.
+		{"negative Character on non-zero line", Position{Line: 1, Character: -1}},
+		{"negative Character on zero line", Position{Line: 0, Character: -1}},
+		{"negative Line", Position{Line: -1, Character: 0}},
+		{"both negative", Position{Line: -1, Character: -1}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := positionToOffset(content, tc.pos)
+			if got != -1 {
+				t.Errorf("positionToOffset(%q, %+v) = %d; want -1", content, tc.pos, got)
+			}
+		})
+	}
+}
+
 func FuzzPositionToOffset(f *testing.F) {
 	add := func(content string, line, char int) {
 		var hdr [8]byte
