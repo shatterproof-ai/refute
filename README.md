@@ -32,14 +32,25 @@ regress between releases.
 
 ## Install
 
+For projects that already use Go modules with Go 1.24 or newer, prefer
+tracking `refute` as a Go tool dependency:
+
+```bash
+go get -tool github.com/shatterproof-ai/refute/cmd/refute@latest
+go tool refute version
+```
+
+For personal shell use:
+
 ```bash
 go install github.com/shatterproof-ai/refute/cmd/refute@latest
 refute version
 ```
 
-`refute` builds with the toolchain pinned in `go.mod` (currently Go 1.26.1).
-See [`INSTALL.md`](INSTALL.md) for project-local nightly installs intended for
-agent-driven repositories.
+`refute` builds with the toolchain pinned in `go.mod` (currently Go 1.26.3).
+See [`INSTALL.md`](INSTALL.md) for dependency-managed project installs,
+project-local release binaries, and nightlies intended for agent-driven
+repositories.
 
 ## Backend prerequisites
 
