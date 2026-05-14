@@ -1,7 +1,15 @@
 {
-  "name": "refute-tsmorph-adapter",
+  "name": "@shatterproof-ai/refute-ts-adapter",
   "version": "1.0.0",
-  "private": true,
+  "description": "ts-morph adapter for the refute code-refactoring CLI",
+  "main": "rename.cjs",
+  "files": [
+    "rename.cjs"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shatterproof-ai/refute.git"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

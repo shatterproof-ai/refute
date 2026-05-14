@@ -71,7 +71,11 @@ func TestDoctorCommand_HumanShape(t *testing.T) {
 
 func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 	origLookPath := lookPathFn
-	t.Cleanup(func() { lookPathFn = origLookPath })
+	origTSAdapter := tsAdapterAvailableFn
+	t.Cleanup(func() {
+		lookPathFn = origLookPath
+		tsAdapterAvailableFn = origTSAdapter
+	})
 
 	presentBinaries := map[string]string{
 		"gopls":                      "/fake/bin/gopls",
@@ -82,11 +86,13 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 
 	tests := []struct {
 		name              string
+		tsAdapterPresent  bool
 		availableBinaries map[string]string
 		want              []DoctorBackendStatus
 	}{
 		{
 			name:              "dependencies present",
+			tsAdapterPresent:  true,
 			availableBinaries: presentBinaries,
 			want: []DoctorBackendStatus{
 				{
@@ -97,6 +103,13 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 				},
 				{
 					Language:    "typescript",
+					Backend:     "tsmorph",
+					Status:      DoctorStatusOK,
+					InstallHint: "npm install -g @shatterproof-ai/refute-ts-adapter",
+				},
+				{
+					Language:    "typescript",
+					Backend:     "lsp/typescript-language-server",
 					Status:      DoctorStatusExperimental,
 					Binary:      "/fake/bin/typescript-language-server",
 					InstallHint: "npm install -g typescript-language-server typescript",
@@ -131,6 +144,7 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 		},
 		{
 			name:              "dependencies missing",
+			tsAdapterPresent:  false,
 			availableBinaries: map[string]string{},
 			want: []DoctorBackendStatus{
 				{
@@ -141,6 +155,14 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 				},
 				{
 					Language:          "typescript",
+					Backend:           "tsmorph",
+					Status:            DoctorStatusMissing,
+					MissingDependency: "@shatterproof-ai/refute-ts-adapter",
+					InstallHint:       "npm install -g @shatterproof-ai/refute-ts-adapter",
+				},
+				{
+					Language:          "typescript",
+					Backend:           "lsp/typescript-language-server",
 					Status:            DoctorStatusMissing,
 					MissingDependency: "typescript-language-server",
 					InstallHint:       "npm install -g typescript-language-server typescript",
@@ -177,6 +199,8 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			adapterPresent := tt.tsAdapterPresent
+			tsAdapterAvailableFn = func() bool { return adapterPresent }
 			lookPathFn = func(name string) (string, error) {
 				path, ok := tt.availableBinaries[name]
 				if !ok {
@@ -187,18 +211,27 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 
 			report := buildDoctorReport()
 			for _, want := range tt.want {
-				got := doctorBackendByLanguage(t, report, want.Language)
+				var got DoctorBackendStatus
+				if want.Backend != "" {
+					got = doctorBackendByLangAndBackend(t, report, want.Language, want.Backend)
+				} else {
+					got = doctorBackendByLanguage(t, report, want.Language)
+				}
+				label := want.Language
+				if want.Backend != "" {
+					label += "/" + want.Backend
+				}
 				if got.Status != want.Status {
-					t.Errorf("%s status = %q, want %q", want.Language, got.Status, want.Status)
+					t.Errorf("%s status = %q, want %q", label, got.Status, want.Status)
 				}
 				if got.Binary != want.Binary {
-					t.Errorf("%s binary = %q, want %q", want.Language, got.Binary, want.Binary)
+					t.Errorf("%s binary = %q, want %q", label, got.Binary, want.Binary)
 				}
 				if got.MissingDependency != want.MissingDependency {
-					t.Errorf("%s missing dependency = %q, want %q", want.Language, got.MissingDependency, want.MissingDependency)
+					t.Errorf("%s missing dependency = %q, want %q", label, got.MissingDependency, want.MissingDependency)
 				}
 				if got.InstallHint != want.InstallHint {
-					t.Errorf("%s install hint = %q, want %q", want.Language, got.InstallHint, want.InstallHint)
+					t.Errorf("%s install hint = %q, want %q", label, got.InstallHint, want.InstallHint)
 				}
 			}
 		})
@@ -226,6 +259,19 @@ func doctorBackendByLanguage(t *testing.T, report DoctorReport, language string)
 	}
 
 	t.Fatalf("doctor report missing %s entry", language)
+	return DoctorBackendStatus{}
+}
+
+func doctorBackendByLangAndBackend(t *testing.T, report DoctorReport, language, backendName string) DoctorBackendStatus {
+	t.Helper()
+
+	for _, b := range report.Backends {
+		if b.Language == language && b.Backend == backendName {
+			return b
+		}
+	}
+
+	t.Fatalf("doctor report missing %s/%s entry", language, backendName)
 	return DoctorBackendStatus{}
 }
 

@@ -46,8 +46,8 @@ func TestForFile_TypeScriptTSXPrefersTSMorphWhenAvailable(t *testing.T) {
 
 	oldAvailable := tsMorphAvailable
 	oldNew := newTSMorphBackend
-	tsMorphAvailable = func() bool { return true }
-	newTSMorphBackend = func() backend.RefactoringBackend { return fakeBackend{} }
+	tsMorphAvailable = func(_, _ string) bool { return true }
+	newTSMorphBackend = func(_ string) backend.RefactoringBackend { return fakeBackend{} }
 	t.Cleanup(func() {
 		tsMorphAvailable = oldAvailable
 		newTSMorphBackend = oldNew
@@ -79,7 +79,7 @@ func TestForFile_JavaScriptJSXUsesBuiltinServer(t *testing.T) {
 	}
 
 	oldAvailable := tsMorphAvailable
-	tsMorphAvailable = func() bool { return false }
+	tsMorphAvailable = func(_, _ string) bool { return false }
 	t.Cleanup(func() {
 		tsMorphAvailable = oldAvailable
 	})

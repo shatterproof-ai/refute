@@ -19,29 +19,43 @@ var _ backend.RefactoringBackend = (*Adapter)(nil)
 
 type Adapter struct {
 	workspaceRoot string
+	adapterPath   string // explicit override; empty means auto-discover
 }
 
 func NewAdapter() *Adapter {
 	return &Adapter{}
 }
 
+// NewAdapterWithPath creates an adapter that uses explicitPath as the rename.cjs
+// script location instead of the auto-discovery chain.
+func NewAdapterWithPath(explicitPath string) *Adapter {
+	return &Adapter{adapterPath: explicitPath}
+}
+
+// Available reports whether the ts-morph adapter can be located using the
+// repo-relative development path or global npm. Use AvailableAt when the
+// workspace root is known to also check workspace-local node_modules.
 func Available() bool {
 	if _, err := exec.LookPath("node"); err != nil {
 		return false
 	}
-	paths := wrapperPaths()
-	if _, err := os.Stat(paths.script); err != nil {
+	_, ok := resolveAdapterPaths("", "")
+	return ok
+}
+
+// AvailableAt reports whether the ts-morph adapter can be located given the
+// workspace root and an optional explicit path override.
+func AvailableAt(workspaceRoot, explicitPath string) bool {
+	if _, err := exec.LookPath("node"); err != nil {
 		return false
 	}
-	if _, err := os.Stat(paths.moduleDir); err != nil {
-		return false
-	}
-	return true
+	_, ok := resolveAdapterPaths(workspaceRoot, explicitPath)
+	return ok
 }
 
 func (a *Adapter) Initialize(workspaceRoot string) error {
-	if !Available() {
-		return fmt.Errorf("ts-morph backend not installed; run npm install in adapters/tsmorph")
+	if !AvailableAt(workspaceRoot, a.adapterPath) {
+		return fmt.Errorf("ts-morph adapter not found; install with: npm install -g @shatterproof-ai/refute-ts-adapter")
 	}
 	absRoot, err := filepath.Abs(workspaceRoot)
 	if err != nil {
@@ -212,8 +226,11 @@ func (a *Adapter) run(req any, resp any) error {
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	paths := wrapperPaths()
-	cmd := exec.Command("node", paths.script)
+	p, ok := resolveAdapterPaths(a.workspaceRoot, a.adapterPath)
+	if !ok {
+		return fmt.Errorf("ts-morph adapter not found; install with: npm install -g @shatterproof-ai/refute-ts-adapter")
+	}
+	cmd := exec.Command("node", p.script)
 	cmd.Dir = a.workspaceRoot
 	cmd.Stdin = bytes.NewReader(data)
 
@@ -260,11 +277,85 @@ func parseKind(name string) symbol.SymbolKind {
 	}
 }
 
-func wrapperPaths() paths {
+// resolveAdapterPaths returns the script and ts-morph module directory by
+// walking the discovery chain: explicit override → workspace node_modules →
+// global npm root → repo-relative development fallback.
+func resolveAdapterPaths(workspaceRoot, explicitPath string) (paths, bool) {
+	// 1. Explicit config override.
+	if explicitPath != "" {
+		dir := filepath.Dir(explicitPath)
+		p := paths{
+			script:    explicitPath,
+			moduleDir: filepath.Join(dir, "node_modules", "ts-morph"),
+		}
+		if pathsExist(p) {
+			return p, true
+		}
+		// ts-morph may be hoisted to workspace node_modules.
+		if workspaceRoot != "" {
+			p.moduleDir = filepath.Join(workspaceRoot, "node_modules", "ts-morph")
+			if pathsExist(p) {
+				return p, true
+			}
+		}
+	}
+
+	// 2. Workspace node_modules/@shatterproof-ai/refute-ts-adapter.
+	if workspaceRoot != "" {
+		pkgDir := filepath.Join(workspaceRoot, "node_modules", "@shatterproof-ai", "refute-ts-adapter")
+		script := filepath.Join(pkgDir, "rename.cjs")
+		// Prefer bundled ts-morph; fall back to hoisted.
+		for _, modDir := range []string{
+			filepath.Join(pkgDir, "node_modules", "ts-morph"),
+			filepath.Join(workspaceRoot, "node_modules", "ts-morph"),
+		} {
+			p := paths{script: script, moduleDir: modDir}
+			if pathsExist(p) {
+				return p, true
+			}
+		}
+	}
+
+	// 3. Global npm root.
+	if root := globalNpmRoot(); root != "" {
+		pkgDir := filepath.Join(root, "@shatterproof-ai", "refute-ts-adapter")
+		p := paths{
+			script:    filepath.Join(pkgDir, "rename.cjs"),
+			moduleDir: filepath.Join(pkgDir, "node_modules", "ts-morph"),
+		}
+		if pathsExist(p) {
+			return p, true
+		}
+	}
+
+	// 4. Repo-relative (development fallback using compile-time source path).
 	_, file, _, _ := runtime.Caller(0)
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
-	return paths{
+	p := paths{
 		script:    filepath.Join(repoRoot, "adapters", "tsmorph", "rename.cjs"),
 		moduleDir: filepath.Join(repoRoot, "adapters", "tsmorph", "node_modules", "ts-morph"),
 	}
+	if pathsExist(p) {
+		return p, true
+	}
+
+	return paths{}, false
+}
+
+func pathsExist(p paths) bool {
+	if _, err := os.Stat(p.script); err != nil {
+		return false
+	}
+	if _, err := os.Stat(p.moduleDir); err != nil {
+		return false
+	}
+	return true
+}
+
+func globalNpmRoot() string {
+	out, err := exec.Command("npm", "root", "-g").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
