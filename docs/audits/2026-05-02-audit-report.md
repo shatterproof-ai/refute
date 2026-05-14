@@ -426,8 +426,8 @@ Doc utility findings:
 
 - CI is the single highest-leverage missing piece. Without it the rest
   of the audit findings cannot be enforced.
-- Decide a tracker (GitHub Issues vs Beads vs internal) and wire
-  `docs/position-encoding.md`'s "file an issue" guidance to it.
+- GitHub Issues is the project tracker. Wire `docs/position-encoding.md`'s
+  "file an issue" guidance to it.
 - Establish a promotion checklist for "experimental → supported": doc,
   CI lane, integration coverage, install path, doctor entry. Apply to
   Rust first, then TypeScript / JavaScript.

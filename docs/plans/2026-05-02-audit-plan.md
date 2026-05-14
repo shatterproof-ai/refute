@@ -376,9 +376,8 @@ Consolidate findings into three buckets at the end of the audit run.
 
 ## Notes
 
-- This audit is **not tracker-backed**: the repo has no detected issue
-  tracker (Beads, GitHub Issues, etc.). Findings should be filed as a
-  follow-up doc PR or a list in the audit report, not as tracker items.
+- This audit predates the project tracker requirement. Current follow-up work
+  should be filed as GitHub Issues.
 - The repo uses linked worktrees and the bento workflow skills. Any
   remediation work should be launched via `bento:launch-work` per the
   global agent guidance.
