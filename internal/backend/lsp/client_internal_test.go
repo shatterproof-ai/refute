@@ -15,6 +15,31 @@ import (
 	"time"
 )
 
+func TestParseWorkspaceEditRejectsEmptyURIInDocumentChanges(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "missing textDocument field",
+			input: `{"documentChanges":[{}]}`,
+		},
+		{
+			name:  "explicit empty uri",
+			input: `{"documentChanges":[{"textDocument":{"uri":""}}]}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := parseWorkspaceEdit(json.RawMessage(tc.input))
+			if err == nil {
+				t.Fatal("expected error for documentChanges entry with empty or missing textDocument.uri, got nil")
+			}
+		})
+	}
+}
+
 func FuzzParseWorkspaceEdit(f *testing.F) {
 	f.Add([]byte(`null`))
 	f.Add([]byte(`{}`))

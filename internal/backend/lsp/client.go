@@ -922,6 +922,9 @@ func parseWorkspaceEdit(raw json.RawMessage) ([]edit.FileEdit, error) {
 		fileEdits := make([]edit.FileEdit, 0, len(we.DocumentChanges))
 		for _, dc := range we.DocumentChanges {
 			path := uriToFile(dc.TextDocument.URI)
+			if path == "" {
+				return nil, fmt.Errorf("documentChanges entry has empty or missing textDocument.uri")
+			}
 			edits, err := convertEdits(path, dc.Edits)
 			if err != nil {
 				return nil, err
