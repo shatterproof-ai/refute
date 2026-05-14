@@ -45,6 +45,29 @@ uploads them as workflow artifacts, and publishes a GitHub release using the
 existing tag. The workflow can also be run manually with an existing `vX.Y.Z`
 tag.
 
+## Consumer Update Channels
+
+Prefer semver tags for dependency-manager driven consumers. Go-module projects
+can track `refute` directly in `go.mod` as a tool dependency:
+
+```bash
+go get -tool github.com/shatterproof-ai/refute/cmd/refute@v0.1.0
+go tool refute version
+```
+
+That keeps `refute` visible to the consuming repository's ordinary Go module
+update flow. Use `@latest` to move to the newest tagged release, or a commit
+hash when a project deliberately needs an unreleased source build.
+If no semver tag has been published, Go consumers will get a pseudo-version
+instead of a clean release version, so tagged releases are the dependency
+manager friendly path.
+
+Use release archives when a consuming project needs pinned binary artifacts,
+checksums, and version metadata stamped by this release workflow. Package
+manager wrappers for ecosystems such as npm, Homebrew, or asdf/mise should be
+thin adapters over these semver release archives rather than separate source
+builds.
+
 ## Nightly Release
 
 The `Nightly Release` workflow builds an unofficial channel from `main` on
