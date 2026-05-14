@@ -21,9 +21,11 @@ type Selection struct {
 }
 
 var (
-	tsMorphAvailable  = tsmorph.Available
-	newTSMorphBackend = func() backend.RefactoringBackend {
-		return tsmorph.NewAdapter()
+	tsMorphAvailable = func(workspaceRoot, explicitPath string) bool {
+		return tsmorph.AvailableAt(workspaceRoot, explicitPath)
+	}
+	newTSMorphBackend = func(adapterPath string) backend.RefactoringBackend {
+		return tsmorph.NewAdapterWithPath(adapterPath)
 	}
 	newOpenRewriteBackend = func() backend.RefactoringBackend {
 		return openrewrite.NewAdapter("")
@@ -41,12 +43,13 @@ func ForFile(cfg *config.Config, workspaceRoot string, filePath string) (*Select
 	language := detected.Language
 	languageID := detected.LanguageID
 
-	if prefersTSMorph(language) && tsMorphAvailable() {
+	explicitAdapterPath := cfg.Tools.TSMorph.Adapter
+	if prefersTSMorph(language) && tsMorphAvailable(workspaceRoot, explicitAdapterPath) {
 		return &Selection{
 			Language:    language,
 			LanguageID:  languageID,
 			BackendName: "tsmorph",
-			Backend:     newTSMorphBackend(),
+			Backend:     newTSMorphBackend(explicitAdapterPath),
 		}, nil
 	}
 

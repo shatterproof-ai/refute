@@ -26,11 +26,25 @@ type DaemonConfig struct {
 	IdleTimeout int  `json:"idleTimeout"`
 }
 
+// TSMorphConfig holds optional overrides for the ts-morph adapter.
+type TSMorphConfig struct {
+	// Adapter is the explicit filesystem path to the rename.cjs script.
+	// When empty, refute discovers the adapter via workspace node_modules,
+	// global npm, or the repo-relative development path.
+	Adapter string `json:"adapter"`
+}
+
+// ToolsConfig holds per-tool configuration overrides.
+type ToolsConfig struct {
+	TSMorph TSMorphConfig `json:"tsmorph"`
+}
+
 // Config is the resolved configuration for refute.
 type Config struct {
 	Servers map[string]ServerConfig `json:"servers"`
 	Timeout int                     `json:"timeout"`
 	Daemon  DaemonConfig            `json:"daemon"`
+	Tools   ToolsConfig             `json:"tools"`
 }
 
 // builtinServers defines the default language-server configurations shipped
@@ -83,11 +97,20 @@ type fileLayer struct {
 	Servers map[string]ServerConfig `json:"servers"`
 	Timeout *int                    `json:"timeout"`
 	Daemon  *daemonLayer            `json:"daemon"`
+	Tools   *toolsLayer             `json:"tools"`
 }
 
 type daemonLayer struct {
 	AutoStart   *bool `json:"autoStart"`
 	IdleTimeout *int  `json:"idleTimeout"`
+}
+
+type toolsLayer struct {
+	TSMorph *tsMorphLayer `json:"tsmorph"`
+}
+
+type tsMorphLayer struct {
+	Adapter *string `json:"adapter"`
 }
 
 // mergeLayer applies the non-zero values from a file layer onto dst.
@@ -104,6 +127,11 @@ func mergeLayer(dst *Config, layer fileLayer) {
 		}
 		if layer.Daemon.IdleTimeout != nil {
 			dst.Daemon.IdleTimeout = *layer.Daemon.IdleTimeout
+		}
+	}
+	if layer.Tools != nil && layer.Tools.TSMorph != nil {
+		if layer.Tools.TSMorph.Adapter != nil {
+			dst.Tools.TSMorph.Adapter = *layer.Tools.TSMorph.Adapter
 		}
 	}
 }

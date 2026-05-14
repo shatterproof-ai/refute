@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shatterproof-ai/refute/internal/backend/tsmorph"
 	"github.com/shatterproof-ai/refute/internal/edit"
 )
 
@@ -46,6 +47,10 @@ var errLookPathNotFound = errors.New("not found")
 // lookPathFn is exec.LookPath in production and is overridden in tests.
 var lookPathFn = exec.LookPath
 
+// tsAdapterAvailableFn checks ts-morph adapter availability without a
+// workspace root (doctor context). Overridable in tests.
+var tsAdapterAvailableFn = func() bool { return tsmorph.Available() }
+
 var goOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
 var rustOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
 
@@ -58,9 +63,10 @@ func buildDoctorReport() DoctorReport {
 		probeLSP("go", "lsp/gopls", "gopls", DoctorStatusOK,
 			"go install golang.org/x/tools/gopls@latest", goOperations,
 			"Primary v0.1 target."),
+		probeTSMorphAdapter(),
 		probeLSP("typescript", "lsp/typescript-language-server", "typescript-language-server", DoctorStatusExperimental,
 			"npm install -g typescript-language-server typescript", []string{"rename"},
-			"TypeScript support is experimental for v0.1; ts-morph adapter is not packaged."),
+			"Fallback for TypeScript/JavaScript when ts-morph adapter is unavailable."),
 		probeLSP("javascript", "lsp/typescript-language-server", "typescript-language-server", DoctorStatusExperimental,
 			"npm install -g typescript-language-server typescript", []string{"rename"},
 			"JavaScript support is experimental for v0.1."),
@@ -84,6 +90,26 @@ func buildDoctorReport() DoctorReport {
 		},
 	}
 	return report
+}
+
+// probeTSMorphAdapter checks whether the ts-morph adapter npm package is
+// discoverable on the current machine (global install or repo-relative dev path).
+func probeTSMorphAdapter() DoctorBackendStatus {
+	const pkg = "@shatterproof-ai/refute-ts-adapter"
+	row := DoctorBackendStatus{
+		Language:    "typescript",
+		Backend:     "tsmorph",
+		Operations:  []string{"rename"},
+		InstallHint: "npm install -g " + pkg,
+		Caveats:     "Preferred adapter for TypeScript/JavaScript rename; falls back to language server when missing.",
+	}
+	if tsAdapterAvailableFn() {
+		row.Status = DoctorStatusOK
+	} else {
+		row.Status = DoctorStatusMissing
+		row.MissingDependency = pkg
+	}
+	return row
 }
 
 // probeLSP looks up the named binary on PATH. okStatus is the status returned
