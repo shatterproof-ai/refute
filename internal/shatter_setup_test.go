@@ -123,13 +123,22 @@ func TestShatterHierarchicalConfigSetsFullCoverageDefaults(t *testing.T) {
 	}
 }
 
-func TestShatterCleanTargetExistsInMakefile(t *testing.T) {
+func TestShatterTargetsExistInMakefile(t *testing.T) {
 	data, err := os.ReadFile("../Makefile")
 	if err != nil {
 		t.Fatalf("read Makefile: %v", err)
 	}
 	content := string(data)
 	for _, want := range []string{
+		"SHATTER_BIN ?= $(HOME)/project/shatter/target/release/shatter",
+		"shatter:",
+		"$(SHATTER_BIN) scan",
+		"--project-dir .",
+		"--language go",
+		"--all",
+		"--resume auto",
+		"--progress",
+		".PHONY: build shatter shatter-clean",
 		"shatter-clean",
 		"build:",
 		"go build -buildvcs=false ./cmd/refute",
