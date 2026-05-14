@@ -91,9 +91,9 @@ when a backend appears silent.
 
 ## Issue-Backed Work
 
-Every implementation or documentation change must be backed by a Beads issue
+Every implementation or documentation change must be backed by a GitHub issue
 before work begins. If the user reports a bug or requests a change directly in
-chat, create or identify the Beads issue first, then reference that issue while
+chat, create or identify the GitHub issue first, then reference that issue while
 working.
 
 Do not treat an unavailable or misconfigured tracker CLI as permission to
