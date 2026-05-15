@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -155,7 +156,7 @@ func download(ctx context.Context, rawURL, dest string) error {
 	}
 }
 
-func extractRefuteBinary(archivePath, dest string) error {
+func extractRefuteBinary(archivePath, dest string) (err error) {
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return fmt.Errorf("open archive %s: %w", archivePath, err)
@@ -165,11 +166,15 @@ func extractRefuteBinary(archivePath, dest string) error {
 	if err != nil {
 		return fmt.Errorf("read gzip archive %s: %w", archivePath, err)
 	}
-	defer gz.Close()
+	defer func() {
+		if closeErr := gz.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close gzip archive %s: %w", archivePath, closeErr)
+		}
+	}()
 	tr := tar.NewReader(gz)
 	for {
 		header, err := tr.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
