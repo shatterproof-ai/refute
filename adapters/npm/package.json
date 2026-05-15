@@ -1,0 +1,16 @@
+{
+  "name": "@shatterproof-ai/refute-tool",
+  "version": "0.0.0-dev",
+  "description": "Registryless npm shim for the shared refute toolchain",
+  "license": "Apache-2.0",
+  "bin": {
+    "refute": "bin/refute.js",
+    "refute-tool": "bin/refute-tool.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "scripts": {
+    "test": "node bin/refute-tool.js --help"
+  }
+}
