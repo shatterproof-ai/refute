@@ -1,8 +1,9 @@
 # Release Process
 
-This project ships a CLI-only v0.1 release. The release automation builds
-static `refute` archives for linux and macOS on amd64 and arm64, stamps version
-metadata into `refute version`, and writes SHA-256 checksums.
+This project ships a CLI release plus registryless package-manager adapters.
+The release automation builds static `refute` archives for linux and macOS on
+amd64 and arm64, stamps version metadata into `refute version`, writes a
+canonical manifest, and checksums every binary and adapter artifact.
 
 ## Local Artifact Build
 
@@ -20,6 +21,11 @@ Outputs are written to `dist/`:
 | `refute_v0.1.0_linux_arm64.tar.gz` | linux arm64 binary |
 | `refute_v0.1.0_darwin_amd64.tar.gz` | macOS amd64 binary |
 | `refute_v0.1.0_darwin_arm64.tar.gz` | macOS arm64 binary |
+| `refute-manifest-v0.1.0.json` | Canonical lockfile source for platform artifact URLs and SHA-256 values |
+| `refute-tool-npm-0.1.0.tgz` | npm-family shim package |
+| `refute_tool-0.1.0-py3-none-any.whl` | pip/uv shim package |
+| `cargo-refute-0.1.0.tar.gz` | Cargo helper source package |
+| `refute-tool-maven-repository-0.1.0.tar.gz` | File-backed Maven repository bundle for Maven and Gradle |
 | `checksums.txt` | SHA-256 checksums for all archives |
 | `release-notes.md` | Release notes used by the GitHub release workflow |
 
@@ -62,11 +68,12 @@ If no semver tag has been published, Go consumers will get a pseudo-version
 instead of a clean release version, so tagged releases are the dependency
 manager friendly path.
 
-Use release archives when a consuming project needs pinned binary artifacts,
-checksums, and version metadata stamped by this release workflow. Package
-manager wrappers for ecosystems such as npm, Homebrew, or asdf/mise should be
-thin adapters over these semver release archives rather than separate source
-builds.
+Use release manifests when a consuming project needs pinned binary artifacts,
+checksums, and version metadata stamped by this release workflow.
+`refute.lock.json` should point at immutable release URLs, select the platform
+artifact by OS and architecture, and install the one active project binary at
+`.refute/bin/refute`. npm, Python, Cargo, Go, Maven, and Gradle adapters are
+thin shims over that path rather than separate refute owners.
 
 ## Nightly Release
 
@@ -74,15 +81,18 @@ The `Nightly Release` workflow builds an unofficial channel from `main` on
 every push, every day, and on manual dispatch. It stamps binaries with:
 
 ```bash
-nightly-<UTC YYYYMMDD>-<short commit>
+nightly-<UTC YYYYMMDD>-<short commit>-<workflow run id>
 ```
 
-The workflow force-moves the lightweight `nightly` tag to the current `main`
-commit, deletes any existing `nightly` GitHub release, and recreates it as a
-prerelease with fresh archives and checksums. Automatic push and schedule runs
-skip publication when the existing `nightly` release is less than five minutes
-old; manual runs bypass that cooldown. Nightly builds are intentionally not
-semver releases.
+The workflow publishes an immutable prerelease under that full nightly tag,
+then force-moves the lightweight `nightly` tag and recreates the moving
+`nightly` prerelease as a convenience channel. Lockfiles and package-manager
+dependencies must use the immutable nightly tag, not the moving `nightly`
+release. Automatic push and schedule runs skip publication when the existing
+moving nightly release is less than five minutes old; manual runs bypass that
+cooldown. Nightly binary versions are intentionally not semver releases; adapter
+package versions use semver-compatible prerelease versions such as
+`0.0.0-nightly.20260507.abc1234.123456789`.
 
 Use this channel when another project needs the newest refute binary before a
 formal `vX.Y.Z` tag exists. Agents should verify the installed binary with:

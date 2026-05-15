@@ -1,8 +1,12 @@
 node_modules/
+__pycache__/
+*.pyc
 adapters/openrewrite/target/
+adapters/cargo/target/
 .shatter-cache/
 shatter-artifacts/
 shatter-report/
+.refute/
 
 # Beads / Dolt files (added by bd init)
 .dolt/

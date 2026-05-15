@@ -1,10 +1,73 @@
 # Install refute
 
 `refute` can be installed globally, but consuming projects should prefer an
-install path that their normal dependency update workflow can see. Use the Go
-tool dependency path for Go modules, release archives for pinned binary
-installs, and nightlies only when a project needs an unreleased build from
-`main`.
+install path that their normal dependency update workflow can see. Polyglot
+projects should use the shared registryless toolchain: one committed
+`refute.lock.json`, one uncommitted `.refute/bin/refute` binary, and thin
+package-manager shims that delegate to that binary.
+
+## Shared registryless toolchain
+
+Commit `refute.lock.json` and ignore `.refute/`:
+
+```json
+{
+  "version": "v0.1.0",
+  "manifest_url": "https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-manifest-v0.1.0.json",
+  "artifacts": [
+    {
+      "platform": "linux",
+      "architecture": "amd64",
+      "url": "https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute_v0.1.0_linux_amd64.tar.gz",
+      "sha256": "<sha256>",
+      "filename": "refute_v0.1.0_linux_amd64.tar.gz"
+    }
+  ]
+}
+```
+
+The shared command surface is:
+
+```bash
+refute-tool sync
+refute-tool run -- version
+refute-tool doctor
+```
+
+`sync` downloads the current platform artifact, verifies SHA-256, extracts it
+under `.refute/cache/<sha256>/`, and atomically updates `.refute/bin/refute`.
+`run` and all package-manager `refute` shims execute `.refute/bin/refute` and
+preserve arguments and exit status.
+
+Package-manager adapters are distributed from GitHub Releases instead of public
+registries:
+
+```json
+{
+  "devDependencies": {
+    "@shatterproof-ai/refute-tool": "https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-tool-npm-0.1.0.tgz"
+  },
+  "scripts": {
+    "refute:sync": "refute-tool sync",
+    "refute:doctor": "refute-tool doctor"
+  }
+}
+```
+
+```txt
+refute-tool @ https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute_tool-0.1.0-py3-none-any.whl
+```
+
+```toml
+[tool.uv.sources]
+refute-tool = { url = "https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute_tool-0.1.0-py3-none-any.whl" }
+```
+
+Cargo consumers can pin `adapters/cargo` by repository tag or commit and run
+`cargo refute -- <args>`. Maven and Gradle consumers can unpack the
+`refute-tool-maven-repository-<version>.tar.gz` release asset as a file-backed
+repository and invoke the `ai.shatterproof:refute-tool` launcher. These
+adapters are shims; none bundles a private refute binary.
 
 ## Go module tool dependency
 
@@ -41,7 +104,7 @@ stamped by `scripts/release.sh`.
 
 ## Project-local release archive install
 
-For non-Go projects, or projects that want the exact released binary rather
+For single-language non-Go projects, or projects that want the exact released binary rather
 than a source build, install a semver release archive into the project-local
 tool directory. Download the archive through the project's normal automation,
 then install it with:
@@ -58,9 +121,8 @@ This installs to:
 .agents/bin/refute
 ```
 
-Package-manager wrappers for npm, Homebrew, or asdf/mise should use the same
-release archives and checksums so those ecosystems can pin `refute` in their
-native lockfiles or manifests without inventing a separate build path.
+Prefer the shared `.refute/bin/refute` workflow above when more than one
+language package manager needs to invoke refute.
 
 ## Project-local nightly install
 

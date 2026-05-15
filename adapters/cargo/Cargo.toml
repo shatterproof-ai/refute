@@ -1,0 +1,10 @@
+[package]
+name = "cargo-refute"
+version = "0.0.0-dev"
+edition = "2021"
+license = "Apache-2.0"
+description = "Cargo shim for the shared refute toolchain"
+
+[[bin]]
+name = "cargo-refute"
+path = "src/main.rs"
