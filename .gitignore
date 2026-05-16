@@ -12,3 +12,4 @@ shatter-report/
 .dolt/
 *.db
 .beads-credential-key
+docs/stories/drift-todo.md

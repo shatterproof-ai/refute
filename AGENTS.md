@@ -107,3 +107,7 @@ not require a separate issue.
 
 Never use the pull request workflow. Always finish feature branches using the
 `bento:land-work` skill, which merges directly to main.
+
+## Intent Stories
+
+User-facing capability descriptions live in `docs/stories/`. Consult them before changing user-facing behavior and update them when behavior changes.
