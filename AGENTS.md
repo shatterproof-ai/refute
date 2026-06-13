@@ -43,7 +43,8 @@ rtk pip list            rtk pnpm install        rtk npm run <script>
 
 ## Repo Layout
 
-- `cmd/` — CLI entrypoints (`cmd/refute/`).
+- `cmd/` — CLI entrypoints (`cmd/refute/`) and the lockfile-bootstrap shim
+  (`cmd/refute-tool/`).
 - `internal/` — core packages: `backend/` (LSP and rewrite drivers), `cli/`,
   `config/`, `edit/` (edit applier), `symbol/`, `telemetry/`, plus
   cross-package integration tests.
