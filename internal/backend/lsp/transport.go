@@ -2,10 +2,12 @@ package lsp
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
@@ -15,8 +17,9 @@ const (
 
 // Transport implements the LSP base protocol framing (Content-Length headers).
 type Transport struct {
-	reader *bufio.Reader
-	writer io.Writer
+	reader  *bufio.Reader
+	writer  io.Writer
+	writeMu sync.Mutex
 }
 
 // NewTransport creates a Transport. reader may be nil if only writing; writer
@@ -29,13 +32,19 @@ func NewTransport(reader io.Reader, writer io.Writer) *Transport {
 	return t
 }
 
-// Write sends data with a Content-Length frame.
+// Write sends data with a Content-Length frame. The header and body are
+// composed into a single buffer and emitted with one write to the underlying
+// writer, under a mutex, so concurrent callers cannot interleave frames and
+// corrupt the LSP stream.
 func (t *Transport) Write(data []byte) error {
-	header := fmt.Sprintf("%s: %d\r\n\r\n", contentLengthHeader, len(data))
-	if _, err := io.WriteString(t.writer, header); err != nil {
-		return err
-	}
-	_, err := t.writer.Write(data)
+	var frame bytes.Buffer
+	frame.Grow(len(contentLengthHeader) + len(data) + 16)
+	fmt.Fprintf(&frame, "%s: %d\r\n\r\n", contentLengthHeader, len(data))
+	frame.Write(data)
+
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+	_, err := t.writer.Write(frame.Bytes())
 	return err
 }
 
