@@ -57,12 +57,20 @@ def sync():
         print(f"checksum mismatch for {artifact['url']}: got {got}, want {artifact['sha256']}", file=sys.stderr)
         return 1
     with tarfile.open(archive, "r:gz") as tar:
-        member = next((item for item in tar.getmembers() if Path(item.name).name == "refute"), None)
+        member = find_refute_member(tar)
         if member is None:
             print(f"{archive} does not contain refute", file=sys.stderr)
             return 1
-        tar.extract(member, cache_dir)
-        extracted = cache_dir / member.name
+        if not is_safe_archive_member(member.name):
+            print(f"{archive} contains unsafe refute member {member.name!r}", file=sys.stderr)
+            return 1
+        extracted = cache_dir / "refute"
+        source = tar.extractfile(member)
+        if source is None:
+            print(f"{archive} refute member is not a regular file", file=sys.stderr)
+            return 1
+        with source, extracted.open("wb") as output:
+            shutil.copyfileobj(source, output)
     ACTIVE.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(extracted, ACTIVE)
     ACTIVE.chmod(0o755)
@@ -116,6 +124,15 @@ def download(url, dest):
         shutil.copyfile(url[7:], dest)
         return
     urllib.request.urlretrieve(url, dest)
+
+
+def find_refute_member(tar):
+    return next((item for item in tar.getmembers() if item.isfile() and Path(item.name).name == "refute"), None)
+
+
+def is_safe_archive_member(name):
+    path = Path(name)
+    return not path.is_absolute() and ".." not in path.parts
 
 
 def sha256(path):

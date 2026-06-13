@@ -186,6 +186,9 @@ func extractRefuteBinary(archivePath, dest string) (err error) {
 		if filepath.Base(header.Name) != "refute" {
 			continue
 		}
+		if !safeTarMemberName(header.Name) {
+			return fmt.Errorf("archive %s contains unsafe refute member %q", archivePath, header.Name)
+		}
 		out, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
 		if err != nil {
 			return fmt.Errorf("create %s: %w", dest, err)
@@ -200,6 +203,20 @@ func extractRefuteBinary(archivePath, dest string) (err error) {
 		return nil
 	}
 	return fmt.Errorf("archive %s does not contain refute binary", archivePath)
+}
+
+func safeTarMemberName(name string) bool {
+	if name == "" || filepath.IsAbs(name) {
+		return false
+	}
+	for _, part := range strings.FieldsFunc(name, func(r rune) bool {
+		return r == '/' || r == '\\'
+	}) {
+		if part == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 func hasDigest(path, want string) bool {

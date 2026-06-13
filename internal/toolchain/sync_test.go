@@ -108,6 +108,26 @@ func TestSyncRejectsChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestSyncRejectsTraversalMemberWithoutWritingOutsideCache(t *testing.T) {
+	root := t.TempDir()
+	archive, digest := writeArchive(t, root, "../../../outside/refute", "#!/bin/sh\necho escaped\n")
+	writeLock(t, root, archive, digest)
+
+	_, err := Sync(context.Background(), SyncOptions{ProjectRoot: root, Platform: "linux", Arch: "amd64"})
+	if err == nil {
+		t.Fatal("Sync unexpectedly accepted traversal member")
+	}
+	if !strings.Contains(err.Error(), "unsafe refute member") {
+		t.Fatalf("error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "outside", "refute")); !os.IsNotExist(err) {
+		t.Fatalf("escaped file exists or stat failed unexpectedly: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ActiveBinPath)); !os.IsNotExist(err) {
+		t.Fatalf("active binary exists or stat failed unexpectedly: %v", err)
+	}
+}
+
 func TestSyncRejectsUnsupportedPlatform(t *testing.T) {
 	root := t.TempDir()
 	archive, digest := writeRefuteArchive(t, root, "#!/bin/sh\necho ok\n")
@@ -135,12 +155,16 @@ func writeLock(t *testing.T, root, archive, digest string) {
 }
 
 func writeRefuteArchive(t *testing.T, root, script string) (string, string) {
+	return writeArchive(t, root, "refute", script)
+}
+
+func writeArchive(t *testing.T, root, name, script string) (string, string) {
 	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
 	body := []byte(script)
-	if err := tw.WriteHeader(&tar.Header{Name: "refute", Mode: 0o755, Size: int64(len(body))}); err != nil {
+	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(body))}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tw.Write(body); err != nil {
