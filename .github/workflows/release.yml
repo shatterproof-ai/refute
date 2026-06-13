@@ -11,11 +11,51 @@ on:
         required: true
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
+  gate:
+    name: Require successful CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    outputs:
+      ci_ok: ${{ steps.gate.outputs.ci_ok }}
+      target_sha: ${{ steps.gate.outputs.target_sha }}
+
+    steps:
+      - name: Check out release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - name: Verify CI success for release commit
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          target_sha="$(git rev-list -n 1 "${RELEASE_VERSION}^{commit}")"
+          echo "target_sha=${target_sha}" >> "$GITHUB_OUTPUT"
+
+          success_count="$(
+            gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${target_sha}&status=success&per_page=1" \
+              --jq '.workflow_runs | map(select(.conclusion == "success")) | length'
+          )"
+          if (( success_count == 0 )); then
+            echo "ci_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::error::CI has not succeeded for ${target_sha}; refusing to publish ${RELEASE_VERSION}."
+            exit 1
+          fi
+
+          echo "ci_ok=true" >> "$GITHUB_OUTPUT"
+
   release:
     name: Build release artifacts
+    needs: gate
+    if: needs.gate.outputs.ci_ok == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -25,7 +65,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref }}
+          ref: ${{ needs.gate.outputs.target_sha }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -58,7 +98,15 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          GATED_SHA: ${{ needs.gate.outputs.target_sha }}
         run: |
+          git fetch --force --tags origin "refs/tags/${RELEASE_VERSION}:refs/tags/${RELEASE_VERSION}"
+          current_sha="$(git rev-list -n 1 "${RELEASE_VERSION}^{commit}")"
+          if [[ "${current_sha}" != "${GATED_SHA}" ]]; then
+            echo "::error::${RELEASE_VERSION} now points to ${current_sha}, not gated SHA ${GATED_SHA}; refusing to publish."
+            exit 1
+          fi
+
           gh release create "$RELEASE_VERSION" \
             dist/*.tar.gz \
             dist/*.tgz \
