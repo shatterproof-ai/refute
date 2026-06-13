@@ -11,6 +11,6 @@
     "bin"
   ],
   "scripts": {
-    "test": "node bin/refute-tool.js --help"
+    "test": "node bin/refute-tool.js --help && node test/refute-tool.test.js"
   }
 }

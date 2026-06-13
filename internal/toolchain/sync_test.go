@@ -183,6 +183,41 @@ func TestSyncRejectsSymlinkedCacheRoot(t *testing.T) {
 	}
 }
 
+func TestSyncRejectsSymlinkedBinRoot(t *testing.T) {
+	root := t.TempDir()
+	archive, digest := writeRefuteArchive(t, root, "#!/bin/sh\necho ok\n")
+	writeLock(t, root, archive, digest)
+	toolRoot := filepath.Join(root, ToolRoot)
+	outside := filepath.Join(root, "outside-bin")
+	if err := os.Mkdir(toolRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(toolRoot, "cache"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(toolRoot, "bin")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	_, err := Sync(context.Background(), SyncOptions{ProjectRoot: root, Platform: "linux", Arch: "amd64"})
+	if err == nil {
+		t.Fatal("Sync unexpectedly accepted symlinked bin root")
+	}
+	if !strings.Contains(err.Error(), "not a real directory") {
+		t.Fatalf("error = %v", err)
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("outside bin was written: %v", entries)
+	}
+}
+
 func TestSyncRejectsTraversalMemberWithoutWritingOutsideCache(t *testing.T) {
 	root := t.TempDir()
 	archive, digest := writeArchive(t, root, "../../../outside/refute", "#!/bin/sh\necho escaped\n")

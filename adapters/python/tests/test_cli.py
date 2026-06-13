@@ -77,6 +77,27 @@ class SyncTests(unittest.TestCase):
             self.assertEqual(list(outside.iterdir()), [])
             self.assertFalse((root / ".refute" / "bin" / "refute").exists())
 
+    def test_sync_rejects_symlinked_bin_root(self):
+        if not hasattr(os, "symlink"):
+            self.skipTest("symlink unavailable")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive, digest = write_archive(root)
+            write_lock(root, archive, digest)
+            tool_root = root / ".refute"
+            outside = root / "outside-bin"
+            tool_root.mkdir()
+            (tool_root / "cache").mkdir()
+            outside.mkdir()
+            os.symlink(outside, tool_root / "bin")
+
+            with chdir(root):
+                result = cli.sync()
+
+            self.assertEqual(result, 1)
+            self.assertTrue((tool_root / "bin").is_symlink())
+            self.assertEqual(list(outside.iterdir()), [])
+
     def test_sync_rejects_traversal_member_without_writing_outside_cache(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

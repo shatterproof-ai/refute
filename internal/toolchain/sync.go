@@ -66,6 +66,10 @@ func Sync(ctx context.Context, opts SyncOptions) (SyncResult, error) {
 	}
 
 	active := filepath.Join(root, ActiveBinPath)
+	activeDir := filepath.Dir(active)
+	if err := ensureRealDirectory(activeDir); err != nil {
+		return SyncResult{}, err
+	}
 	if activeMatches(active, artifact.SHA256) {
 		return SyncResult{Installed: false, Path: active, SHA256: artifact.SHA256}, nil
 	}
@@ -115,9 +119,6 @@ func Sync(ctx context.Context, opts SyncOptions) (SyncResult, error) {
 		}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(active), 0o755); err != nil {
-		return SyncResult{}, fmt.Errorf("create active bin dir: %w", err)
-	}
 	if err := copyFileAtomic(cachedBinary, active); err != nil {
 		return SyncResult{}, err
 	}

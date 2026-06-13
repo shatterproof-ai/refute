@@ -38,6 +38,7 @@ function sync() {
   try {
     ensureRealDirectory(".refute");
     ensureRealDirectory(path.join(".refute", "cache"));
+    ensureRealDirectory(path.dirname(ACTIVE));
   } catch (err) {
     console.error(err.message);
     return 1;
@@ -67,7 +68,6 @@ function sync() {
   }
   const extract = spawnSync("tar", ["-xzf", archive, "-C", cacheDir, "refute"], { stdio: "inherit" });
   if (extract.status !== 0) return extract.status || 1;
-  fs.mkdirSync(path.dirname(ACTIVE), { recursive: true });
   fs.copyFileSync(cachedBinary, ACTIVE);
   fs.chmodSync(ACTIVE, 0o755);
   fs.writeFileSync(`${ACTIVE}.artifact-sha256`, `${artifactSha}\n`);

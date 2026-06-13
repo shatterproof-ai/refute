@@ -56,6 +56,7 @@ def sync():
         ensure_real_directory(tool_root)
         cache_root = tool_root / "cache"
         ensure_real_directory(cache_root)
+        ensure_real_directory(ACTIVE.parent)
     except ValueError as err:
         print(err, file=sys.stderr)
         return 1
@@ -90,7 +91,6 @@ def sync():
             return 1
         with source, extracted.open("wb") as output:
             shutil.copyfileobj(source, output)
-    ACTIVE.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(extracted, ACTIVE)
     ACTIVE.chmod(0o755)
     ACTIVE.with_name(ACTIVE.name + ".artifact-sha256").write_text(artifact_sha + "\n", encoding="utf-8")
