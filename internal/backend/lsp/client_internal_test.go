@@ -173,7 +173,9 @@ func TestClientShutdownCleansUpAfterShutdownRequestFailure(t *testing.T) {
 
 func TestClientShutdownCleansUpAfterExitNotificationFailure(t *testing.T) {
 	reader := bytes.NewBuffer(lspFrame([]byte(`{"jsonrpc":"2.0","id":1,"result":null}`)))
-	writer := &failAfterWrite{failAt: 3}
+	// Transport.Write emits one write per message: the shutdown request is
+	// write 1 (succeeds), the exit notification is write 2 (fails here).
+	writer := &failAfterWrite{failAt: 2}
 	client, stderrPath := newShutdownTestClient(t, NewTransport(reader, writer), longRunningCommand(t))
 	go client.readLoop()
 

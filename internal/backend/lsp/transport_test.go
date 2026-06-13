@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/shatterproof-ai/refute/internal/backend/lsp"
@@ -58,6 +59,53 @@ func TestTransport_ReadMultipleMessages(t *testing.T) {
 	}
 	if !bytes.Equal(got2, msg2) {
 		t.Errorf("message 2 mismatch\ngot:  %s\nwant: %s", got2, msg2)
+	}
+}
+
+func TestTransport_ConcurrentWrites(t *testing.T) {
+	// Many goroutines share one Transport and write distinct payloads
+	// concurrently. The underlying buffer is NOT internally synchronized, so
+	// the Transport itself must serialize writes and emit each frame
+	// atomically. On the pre-fix code (two unlocked writes per message) this
+	// races the buffer (caught by -race) and interleaves header/body framing,
+	// corrupting the stream so the payloads cannot be read back intact.
+	var buf bytes.Buffer
+	writer := lsp.NewTransport(nil, &buf)
+
+	const n = 64
+	payloads := make([][]byte, n)
+	for i := range payloads {
+		payloads[i] = fmt.Appendf(nil,
+			`{"jsonrpc":"2.0","id":%d,"pad":%q}`, i, strings.Repeat("x", i*53))
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := range payloads {
+		go func(p []byte) {
+			defer wg.Done()
+			if err := writer.Write(p); err != nil {
+				t.Errorf("Write failed: %v", err)
+			}
+		}(payloads[i])
+	}
+	wg.Wait()
+
+	// Read every frame back and confirm the multiset matches what was sent.
+	// Interleaved framing would surface as Read errors or mismatched payloads.
+	reader := lsp.NewTransport(&buf, nil)
+	got := make(map[string]int, n)
+	for i := range n {
+		msg, err := reader.Read()
+		if err != nil {
+			t.Fatalf("Read frame %d failed (stream corrupted): %v", i, err)
+		}
+		got[string(msg)]++
+	}
+	for _, p := range payloads {
+		if got[string(p)] != 1 {
+			t.Errorf("payload missing or corrupted (seen %d times): %s", got[string(p)], p)
+		}
 	}
 }
 
