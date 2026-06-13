@@ -161,7 +161,9 @@ Use the repo-managed `refute` tool for symbol-aware refactors:
 | Install mode | Run refactors with | Install or update with |
 | --- | --- | --- |
 | Go module tool dependency | `go tool refute` | `go get -tool github.com/shatterproof-ai/refute/cmd/refute@latest && go mod tidy` |
-| Project-local binary | `.agents/bin/refute` | `bash /path/to/refute/scripts/install-nightly.sh --project .` |
+| Shared registryless toolchain | `refute-tool run -- <command>` | `refute-tool sync` after updating `refute.lock.json` |
+| Project-local release archive | `.agents/bin/refute` | `bash /path/to/refute/scripts/install-nightly.sh --project . --archive /path/to/refute_vX.Y.Z_<platform>_<arch>.tar.gz` |
+| Project-local nightly | `.agents/bin/refute` | `bash /path/to/refute/scripts/install-nightly.sh --project .` |
 
 TRIGGER WHEN:
 
@@ -170,8 +172,7 @@ TRIGGER WHEN:
 - A textual search finds both real references and unrelated strings/comments.
 - You need a machine-readable preview before editing files.
 - The user asks for a rename, inline, extract-function, or extract-variable
-  refactor and the target language is supported by the selected `refute doctor`
-  command.
+  refactor and the target language is supported by the selected doctor command.
 
 SKIP:
 
@@ -179,10 +180,10 @@ SKIP:
   data.
 - The requested change intentionally renames only a string literal, CLI flag,
   environment variable, database column, GraphQL field, or API route.
-- The selected `refute doctor` command reports the required backend as missing and
+- The selected doctor command reports the required backend as missing and
   installing it is outside the task scope.
-- The refactor requires behavior not listed in the selected
-  `refute <command> --help`.
+- The refactor requires behavior not listed in the selected command's
+  `<operation> --help`.
 - The working tree already contains unrelated user edits that the preview would
   touch.
 
@@ -191,6 +192,8 @@ Before refactoring, run the selected doctor command:
 ```bash
 go tool refute doctor
 # or:
+refute-tool doctor
+# or:
 .agents/bin/refute doctor
 ```
 
@@ -198,6 +201,12 @@ Always preview first:
 
 ```bash
 go tool refute rename --dry-run --json \
+  --file <path.go> \
+  --line <line> \
+  --name <oldName> \
+  --new-name <newName>
+# or:
+refute-tool run -- rename --dry-run --json \
   --file <path.go> \
   --line <line> \
   --name <oldName> \
