@@ -108,6 +108,215 @@ func TestSyncRejectsChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestSyncRejectsMaliciousSHA256BeforeCachePathUse(t *testing.T) {
+	root := t.TempDir()
+	archive, _ := writeRefuteArchive(t, root, "#!/bin/sh\necho ok\n")
+	writeLockWithFilename(t, root, archive, "../outside", "refute_v9.9.9_linux_amd64.tar.gz")
+
+	_, err := Sync(context.Background(), SyncOptions{ProjectRoot: root, Platform: "linux", Arch: "amd64"})
+	if err == nil {
+		t.Fatal("Sync unexpectedly accepted malicious sha256")
+	}
+	if !strings.Contains(err.Error(), "invalid artifact sha256") {
+		t.Fatalf("error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ToolRoot)); !os.IsNotExist(err) {
+		t.Fatalf("tool root exists or stat failed unexpectedly: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "outside")); !os.IsNotExist(err) {
+		t.Fatalf("outside path exists or stat failed unexpectedly: %v", err)
+	}
+}
+
+func TestSyncRejectsMaliciousFilenameBeforeArchivePathUse(t *testing.T) {
+	root := t.TempDir()
+	archive, digest := writeRefuteArchive(t, root, "#!/bin/sh\necho ok\n")
+	writeLockWithFilename(t, root, archive, digest, "../artifact.tar.gz")
+
+	_, err := Sync(context.Background(), SyncOptions{ProjectRoot: root, Platform: "linux", Arch: "amd64"})
+	if err == nil {
+		t.Fatal("Sync unexpectedly accepted malicious filename")
+	}
+	if !strings.Contains(err.Error(), "unsafe artifact filename") {
+		t.Fatalf("error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ToolRoot)); !os.IsNotExist(err) {
+		t.Fatalf("tool root exists or stat failed unexpectedly: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "artifact.tar.gz")); !os.IsNotExist(err) {
+		t.Fatalf("escaped archive exists or stat failed unexpectedly: %v", err)
+	}
+}
+
+func TestSyncRejectsSymlinkedCacheRoot(t *testing.T) {
+	root := t.TempDir()
+	archive, digest := writeRefuteArchive(t, root, "#!/bin/sh\necho ok\n")
+	writeLock(t, root, archive, digest)
+	toolRoot := filepath.Join(root, ToolRoot)
+	outside := filepath.Join(root, "outside-cache")
+	if err := os.Mkdir(toolRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(toolRoot, "cache")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	_, err := Sync(context.Background(), SyncOptions{ProjectRoot: root, Platform: "linux", Arch: "amd64"})
+	if err == nil {
+		t.Fatal("Sync unexpectedly accepted symlinked cache root")
+	}
+	if !strings.Contains(err.Error(), "not a real directory") {
+		t.Fatalf("error = %v", err)
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("outside cache was written: %v", entries)
+	}
+	if _, err := os.Stat(filepath.Join(root, ActiveBinPath)); !os.IsNotExist(err) {
+		t.Fatalf("active binary exists or stat failed unexpectedly: %v", err)
+	}
+}
+
+func TestSyncRejectsSymlinkedBinRoot(t *testing.T) {
+	root := t.TempDir()
+	archive, digest := writeRefuteArchive(t, root, "#!/bin/sh\necho ok\n")
+	writeLock(t, root, archive, digest)
+	toolRoot := filepath.Join(root, ToolRoot)
+	outside := filepath.Join(root, "outside-bin")
+	if err := os.Mkdir(toolRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(toolRoot, "cache"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(toolRoot, "bin")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	_, err := Sync(context.Background(), SyncOptions{ProjectRoot: root, Platform: "linux", Arch: "amd64"})
+	if err == nil {
+		t.Fatal("Sync unexpectedly accepted symlinked bin root")
+	}
+	if !strings.Contains(err.Error(), "not a real directory") {
+		t.Fatalf("error = %v", err)
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("outside bin was written: %v", entries)
+	}
+}
+
+func TestSyncReplacesSymlinkedActiveFilesWithoutWritingOutsideBin(t *testing.T) {
+	root := t.TempDir()
+	archive, digest := writeRefuteArchive(t, root, "#!/bin/sh\necho ok\n")
+	writeLock(t, root, archive, digest)
+	binRoot := filepath.Join(root, ToolRoot, "bin")
+	cacheRoot := filepath.Join(root, ToolRoot, "cache")
+	outside := filepath.Join(root, "outside-bin")
+	if err := os.MkdirAll(cacheRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(binRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	links := map[string]string{
+		filepath.Join(binRoot, "refute"):                 filepath.Join(outside, "refute"),
+		filepath.Join(binRoot, "refute.artifact-sha256"): filepath.Join(outside, "artifact"),
+		filepath.Join(binRoot, "refute.binary-sha256"):   filepath.Join(outside, "binary"),
+	}
+	for link, target := range links {
+		if err := os.WriteFile(target, []byte("outside\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, link); err != nil {
+			t.Skipf("symlink unavailable: %v", err)
+		}
+	}
+
+	if _, err := Sync(context.Background(), SyncOptions{ProjectRoot: root, Platform: "linux", Arch: "amd64"}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	for link, target := range links {
+		info, err := os.Lstat(link)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			t.Fatalf("%s is still a symlink", link)
+		}
+		got, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != "outside\n" {
+			t.Fatalf("outside target %s was overwritten: %q", target, got)
+		}
+	}
+	active, err := os.ReadFile(filepath.Join(root, ActiveBinPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(active), "ok") {
+		t.Fatalf("active binary content = %q", active)
+	}
+}
+
+func TestSyncRejectsTraversalMemberWithoutWritingOutsideCache(t *testing.T) {
+	root := t.TempDir()
+	archive, digest := writeArchive(t, root, "../../../outside/refute", "#!/bin/sh\necho escaped\n")
+	writeLock(t, root, archive, digest)
+
+	_, err := Sync(context.Background(), SyncOptions{ProjectRoot: root, Platform: "linux", Arch: "amd64"})
+	if err == nil {
+		t.Fatal("Sync unexpectedly accepted traversal member")
+	}
+	if !strings.Contains(err.Error(), "unsafe refute member") {
+		t.Fatalf("error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "outside", "refute")); !os.IsNotExist(err) {
+		t.Fatalf("escaped file exists or stat failed unexpectedly: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ActiveBinPath)); !os.IsNotExist(err) {
+		t.Fatalf("active binary exists or stat failed unexpectedly: %v", err)
+	}
+}
+
+func TestSyncRejectsPlatformIndependentUnsafeTarMembers(t *testing.T) {
+	for _, name := range []string{"/tmp/refute", "C:/tmp/refute", `..\..\refute`} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			archive, digest := writeArchive(t, root, name, "#!/bin/sh\necho escaped\n")
+			writeLock(t, root, archive, digest)
+
+			_, err := Sync(context.Background(), SyncOptions{ProjectRoot: root, Platform: "linux", Arch: "amd64"})
+			if err == nil {
+				t.Fatal("Sync unexpectedly accepted unsafe tar member")
+			}
+			if !strings.Contains(err.Error(), "unsafe refute member") {
+				t.Fatalf("error = %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(root, ActiveBinPath)); !os.IsNotExist(err) {
+				t.Fatalf("active binary exists or stat failed unexpectedly: %v", err)
+			}
+		})
+	}
+}
+
 func TestSyncRejectsUnsupportedPlatform(t *testing.T) {
 	root := t.TempDir()
 	archive, digest := writeRefuteArchive(t, root, "#!/bin/sh\necho ok\n")
@@ -119,6 +328,10 @@ func TestSyncRejectsUnsupportedPlatform(t *testing.T) {
 }
 
 func writeLock(t *testing.T, root, archive, digest string) {
+	writeLockWithFilename(t, root, archive, digest, "refute_v9.9.9_linux_amd64.tar.gz")
+}
+
+func writeLockWithFilename(t *testing.T, root, archive, digest, filename string) {
 	t.Helper()
 	lock := fmt.Sprintf(`{
 		"version": "v9.9.9",
@@ -128,19 +341,23 @@ func writeLock(t *testing.T, root, archive, digest string) {
 			"architecture": "amd64",
 			"url": "file://%s",
 			"sha256": "%s",
-			"filename": "refute_v9.9.9_linux_amd64.tar.gz"
+			"filename": "%s"
 		}]
-	}`, filepath.ToSlash(filepath.Join(root, "manifest.json")), filepath.ToSlash(archive), digest)
+	}`, filepath.ToSlash(filepath.Join(root, "manifest.json")), filepath.ToSlash(archive), digest, filename)
 	writeFile(t, filepath.Join(root, LockfileName), lock)
 }
 
 func writeRefuteArchive(t *testing.T, root, script string) (string, string) {
+	return writeArchive(t, root, "refute", script)
+}
+
+func writeArchive(t *testing.T, root, name, script string) (string, string) {
 	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
 	body := []byte(script)
-	if err := tw.WriteHeader(&tar.Header{Name: "refute", Mode: 0o755, Size: int64(len(body))}); err != nil {
+	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(body))}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tw.Write(body); err != nil {

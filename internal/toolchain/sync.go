@@ -52,14 +52,36 @@ func Sync(ctx context.Context, opts SyncOptions) (SyncResult, error) {
 	if err != nil {
 		return SyncResult{}, err
 	}
+	if err := validateArtifactForSync(artifact); err != nil {
+		return SyncResult{}, err
+	}
+
+	toolRoot := filepath.Join(root, ToolRoot)
+	if err := ensureRealDirectory(toolRoot); err != nil {
+		return SyncResult{}, err
+	}
+	cacheRoot := filepath.Join(toolRoot, "cache")
+	if err := ensureRealDirectory(cacheRoot); err != nil {
+		return SyncResult{}, err
+	}
 
 	active := filepath.Join(root, ActiveBinPath)
+	activeDir := filepath.Dir(active)
+	if err := ensureRealDirectory(activeDir); err != nil {
+		return SyncResult{}, err
+	}
 	if activeMatches(active, artifact.SHA256) {
 		return SyncResult{Installed: false, Path: active, SHA256: artifact.SHA256}, nil
 	}
 
-	cacheDir := filepath.Join(root, ToolRoot, "cache", artifact.SHA256)
-	cachedBinary := filepath.Join(cacheDir, binaryName())
+	cacheDir, err := pathUnder(cacheRoot, artifact.SHA256)
+	if err != nil {
+		return SyncResult{}, err
+	}
+	cachedBinary, err := pathUnder(cacheDir, binaryName())
+	if err != nil {
+		return SyncResult{}, err
+	}
 	if !cacheMatches(cachedBinary, artifact.SHA256) {
 		if err := os.RemoveAll(cacheDir); err != nil {
 			return SyncResult{}, fmt.Errorf("clear cache %s: %w", cacheDir, err)
@@ -69,7 +91,10 @@ func Sync(ctx context.Context, opts SyncOptions) (SyncResult, error) {
 		}
 		archivePath := filepath.Join(cacheDir, "artifact")
 		if artifact.Filename != "" {
-			archivePath = filepath.Join(cacheDir, artifact.Filename)
+			archivePath, err = pathUnder(cacheDir, artifact.Filename)
+			if err != nil {
+				return SyncResult{}, err
+			}
 		}
 		if err := download(ctx, artifact.URL, archivePath); err != nil {
 			return SyncResult{}, err
@@ -82,32 +107,29 @@ func Sync(ctx context.Context, opts SyncOptions) (SyncResult, error) {
 		if err := extractRefuteBinary(archivePath, cachedBinary); err != nil {
 			return SyncResult{}, err
 		}
-		if err := os.WriteFile(cachedBinary+".artifact-sha256", []byte(artifact.SHA256+"\n"), 0o644); err != nil {
+		if err := writeFileAtomic(cachedBinary+".artifact-sha256", []byte(artifact.SHA256+"\n"), 0o644); err != nil {
 			return SyncResult{}, fmt.Errorf("write cache marker: %w", err)
 		}
 		binarySHA, err := fileDigest(cachedBinary)
 		if err != nil {
 			return SyncResult{}, fmt.Errorf("checksum cached binary: %w", err)
 		}
-		if err := os.WriteFile(cachedBinary+".binary-sha256", []byte(binarySHA+"\n"), 0o644); err != nil {
+		if err := writeFileAtomic(cachedBinary+".binary-sha256", []byte(binarySHA+"\n"), 0o644); err != nil {
 			return SyncResult{}, fmt.Errorf("write cache binary marker: %w", err)
 		}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(active), 0o755); err != nil {
-		return SyncResult{}, fmt.Errorf("create active bin dir: %w", err)
-	}
 	if err := copyFileAtomic(cachedBinary, active); err != nil {
 		return SyncResult{}, err
 	}
-	if err := os.WriteFile(active+".artifact-sha256", []byte(artifact.SHA256+"\n"), 0o644); err != nil {
+	if err := writeFileAtomic(active+".artifact-sha256", []byte(artifact.SHA256+"\n"), 0o644); err != nil {
 		return SyncResult{}, fmt.Errorf("write active marker: %w", err)
 	}
 	binarySHA, err := fileDigest(active)
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("checksum active binary: %w", err)
 	}
-	if err := os.WriteFile(active+".binary-sha256", []byte(binarySHA+"\n"), 0o644); err != nil {
+	if err := writeFileAtomic(active+".binary-sha256", []byte(binarySHA+"\n"), 0o644); err != nil {
 		return SyncResult{}, fmt.Errorf("write active binary marker: %w", err)
 	}
 	return SyncResult{Installed: true, Path: active, SHA256: artifact.SHA256}, nil
@@ -183,8 +205,11 @@ func extractRefuteBinary(archivePath, dest string) (err error) {
 		if header.Typeflag != tar.TypeReg {
 			continue
 		}
-		if filepath.Base(header.Name) != "refute" {
+		if tarMemberBase(header.Name) != "refute" {
 			continue
+		}
+		if !safeTarMemberName(header.Name) {
+			return fmt.Errorf("archive %s contains unsafe refute member %q", archivePath, header.Name)
 		}
 		out, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
 		if err != nil {
@@ -202,37 +227,148 @@ func extractRefuteBinary(archivePath, dest string) (err error) {
 	return fmt.Errorf("archive %s does not contain refute binary", archivePath)
 }
 
+func safeTarMemberName(name string) bool {
+	if name == "" || strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) || hasWindowsDrivePrefix(name) {
+		return false
+	}
+	for _, part := range tarMemberParts(name) {
+		if part == ".." {
+			return false
+		}
+	}
+	return true
+}
+
+func tarMemberBase(name string) string {
+	parts := tarMemberParts(name)
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
+func tarMemberParts(name string) []string {
+	return strings.FieldsFunc(name, func(r rune) bool {
+		return r == '/' || r == '\\'
+	})
+}
+
+func validateArtifactForSync(artifact Artifact) error {
+	if !validSHA256Hex(artifact.SHA256) {
+		return fmt.Errorf("invalid artifact sha256 %q", artifact.SHA256)
+	}
+	if artifact.Filename != "" && !safeLockFilename(artifact.Filename) {
+		return fmt.Errorf("unsafe artifact filename %q", artifact.Filename)
+	}
+	return nil
+}
+
+func validSHA256Hex(value string) bool {
+	if len(value) != sha256.Size*2 {
+		return false
+	}
+	for _, char := range value {
+		if !('0' <= char && char <= '9') && !('a' <= char && char <= 'f') && !('A' <= char && char <= 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+func safeLockFilename(name string) bool {
+	return name != "" &&
+		!strings.Contains(name, "/") &&
+		!strings.Contains(name, `\`) &&
+		!strings.Contains(name, "..") &&
+		!hasWindowsDrivePrefix(name)
+}
+
+func hasWindowsDrivePrefix(name string) bool {
+	return len(name) >= 2 && name[1] == ':' && (('A' <= name[0] && name[0] <= 'Z') || ('a' <= name[0] && name[0] <= 'z'))
+}
+
+func pathUnder(root string, child string) (string, error) {
+	if filepath.IsAbs(child) || hasWindowsDrivePrefix(child) {
+		return "", fmt.Errorf("path %s escapes %s", child, root)
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", root, err)
+	}
+	candidate := filepath.Join(root, child)
+	candidateAbs, err := filepath.Abs(candidate)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", candidate, err)
+	}
+	rel, err := filepath.Rel(rootAbs, candidateAbs)
+	if err != nil {
+		return "", fmt.Errorf("compare %s to %s: %w", candidateAbs, rootAbs, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("path %s escapes %s", candidate, root)
+	}
+	return candidateAbs, nil
+}
+
+func ensureRealDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.Mkdir(path, 0o755); err != nil {
+			return fmt.Errorf("create %s: %w", path, err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("%s is not a real directory", path)
+	}
+	return nil
+}
+
 func hasDigest(path, want string) bool {
 	got, err := fileDigest(path)
 	return err == nil && got == want
 }
 
 func activeMatches(path, artifactSHA string) bool {
-	if _, err := os.Stat(path); err != nil {
+	if !isRegularNonSymlink(path) {
 		return false
 	}
 	return markerMatches(path+".artifact-sha256", artifactSHA) && digestMarkerMatches(path, path+".binary-sha256")
 }
 
 func cacheMatches(path, artifactSHA string) bool {
-	if _, err := os.Stat(path); err != nil {
+	if !isRegularNonSymlink(path) {
 		return false
 	}
 	return markerMatches(path+".artifact-sha256", artifactSHA) && digestMarkerMatches(path, path+".binary-sha256")
 }
 
 func markerMatches(path, artifactSHA string) bool {
+	if !isRegularNonSymlink(path) {
+		return false
+	}
 	data, err := os.ReadFile(path)
 	return err == nil && strings.TrimSpace(string(data)) == artifactSHA
 }
 
 func digestMarkerMatches(path, markerPath string) bool {
+	if !isRegularNonSymlink(markerPath) {
+		return false
+	}
 	got, err := fileDigest(path)
 	if err != nil {
 		return false
 	}
 	data, err := os.ReadFile(markerPath)
 	return err == nil && strings.TrimSpace(string(data)) == got
+}
+
+func isRegularNonSymlink(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 func fileDigest(path string) (string, error) {
@@ -274,6 +410,30 @@ func copyFileAtomic(src, dest string) error {
 	}
 	if err := os.Rename(tmpPath, dest); err != nil {
 		return fmt.Errorf("install active binary: %w", err)
+	}
+	return nil
+}
+
+func writeFileAtomic(dest string, data []byte, mode os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(dest), ".refute-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temp file: %w", err)
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		tmp.Close()
+		return fmt.Errorf("chmod temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, dest); err != nil {
+		return fmt.Errorf("install file: %w", err)
 	}
 	return nil
 }

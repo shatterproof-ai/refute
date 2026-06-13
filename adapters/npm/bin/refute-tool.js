@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const zlib = require("zlib");
 const { spawnSync } = require("child_process");
 
 const ACTIVE = path.join(".refute", "bin", "refute");
@@ -29,27 +30,52 @@ function sync() {
     console.error(`unsupported platform ${platform()}/${process.arch} for refute ${lock.version}`);
     return 1;
   }
-  if (activeMatches(artifact.sha256)) {
+  const validationError = validateArtifact(artifact);
+  if (validationError) {
+    console.error(validationError);
+    return 1;
+  }
+  const artifactSha = artifact.sha256;
+  try {
+    ensureRealDirectory(".refute");
+    ensureRealDirectory(path.join(".refute", "cache"));
+    ensureRealDirectory(path.dirname(ACTIVE));
+  } catch (err) {
+    console.error(err.message);
+    return 1;
+  }
+  if (activeMatches(artifactSha)) {
     console.log(`${ACTIVE} is already current`);
     return 0;
   }
-  const cacheDir = path.join(".refute", "cache", artifact.sha256);
-  fs.rmSync(cacheDir, { recursive: true, force: true });
-  fs.mkdirSync(cacheDir, { recursive: true });
-  const archive = path.join(cacheDir, artifact.filename || "artifact.tar.gz");
-  if (!copyArtifact(artifact.url, archive)) return 1;
-  const got = sha256(archive);
-  if (got !== artifact.sha256) {
-    console.error(`checksum mismatch for ${artifact.url}: got ${got}, want ${artifact.sha256}`);
+  let cacheDir;
+  let archive;
+  let cachedBinary;
+  try {
+    cacheDir = pathUnder(path.join(".refute", "cache"), artifactSha);
+    archive = pathUnder(cacheDir, artifact.filename || "artifact.tar.gz");
+    cachedBinary = pathUnder(cacheDir, "refute");
+  } catch (err) {
+    console.error(err.message);
     return 1;
   }
-  const extract = spawnSync("tar", ["-xzf", archive, "-C", cacheDir, "refute"], { stdio: "inherit" });
-  if (extract.status !== 0) return extract.status || 1;
-  fs.mkdirSync(path.dirname(ACTIVE), { recursive: true });
-  fs.copyFileSync(path.join(cacheDir, "refute"), ACTIVE);
-  fs.chmodSync(ACTIVE, 0o755);
-  fs.writeFileSync(`${ACTIVE}.artifact-sha256`, `${artifact.sha256}\n`);
-  fs.writeFileSync(`${ACTIVE}.binary-sha256`, `${sha256(ACTIVE)}\n`);
+  fs.rmSync(cacheDir, { recursive: true, force: true });
+  fs.mkdirSync(cacheDir, { recursive: true });
+  if (!copyArtifact(artifact.url, archive)) return 1;
+  const got = sha256(archive);
+  if (got !== artifactSha) {
+    console.error(`checksum mismatch for ${artifact.url}: got ${got}, want ${artifactSha}`);
+    return 1;
+  }
+  try {
+    extractRefuteBinary(archive, cachedBinary);
+  } catch (err) {
+    console.error(err.message);
+    return 1;
+  }
+  installFileAtomic(cachedBinary, ACTIVE, 0o755);
+  writeFileAtomic(`${ACTIVE}.artifact-sha256`, `${artifactSha}\n`, 0o644);
+  writeFileAtomic(`${ACTIVE}.binary-sha256`, `${sha256(ACTIVE)}\n`, 0o644);
   console.log(`installed ${ACTIVE}`);
   return 0;
 }
@@ -102,13 +128,176 @@ function sha256(file) {
 }
 
 function markerMatches(file, digest) {
-  return fs.existsSync(file) && fs.readFileSync(file, "utf8").trim() === digest;
+  return isRegularNonSymlink(file) && fs.readFileSync(file, "utf8").trim() === digest;
 }
 
 function activeMatches(artifactDigest) {
-  return fs.existsSync(ACTIVE)
+  return isRegularNonSymlink(ACTIVE)
     && markerMatches(`${ACTIVE}.artifact-sha256`, artifactDigest)
     && markerMatches(`${ACTIVE}.binary-sha256`, sha256(ACTIVE));
+}
+
+function validateArtifact(artifact) {
+  if (!isSHA256Hex(artifact.sha256)) return `invalid artifact sha256 ${JSON.stringify(artifact.sha256)}`;
+  if (artifact.filename !== undefined && !safeLockFilename(artifact.filename)) {
+    return `unsafe artifact filename ${JSON.stringify(artifact.filename)}`;
+  }
+  return "";
+}
+
+function isSHA256Hex(value) {
+  return typeof value === "string" && /^[0-9a-fA-F]{64}$/.test(value);
+}
+
+function safeLockFilename(name) {
+  return typeof name === "string"
+    && name !== ""
+    && !hasWindowsDrivePrefix(name)
+    && !name.includes("/")
+    && !name.includes("\\")
+    && !name.includes("..");
+}
+
+function hasWindowsDrivePrefix(name) {
+  return /^[A-Za-z]:/.test(name);
+}
+
+function pathUnder(root, child) {
+  const rootPath = path.resolve(root);
+  const candidate = path.resolve(root, child);
+  const rel = path.relative(rootPath, candidate);
+  if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+    throw new Error(`path ${candidate} escapes ${rootPath}`);
+  }
+  return candidate;
+}
+
+function ensureRealDirectory(dir) {
+  try {
+    const info = fs.lstatSync(dir);
+    if (info.isSymbolicLink() || !info.isDirectory()) {
+      throw new Error(`${dir} is not a real directory`);
+    }
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+    fs.mkdirSync(dir);
+  }
+}
+
+function isRegularNonSymlink(file) {
+  try {
+    return fs.lstatSync(file).isFile();
+  } catch (err) {
+    if (err.code === "ENOENT") return false;
+    throw err;
+  }
+}
+
+function extractRefuteBinary(archive, dest) {
+  const tar = zlib.gunzipSync(fs.readFileSync(archive));
+  for (const entry of tarEntries(tar)) {
+    if (tarMemberBase(entry.name) !== "refute") continue;
+    if (!safeTarMemberName(entry.name)) {
+      throw new Error(`${archive} contains unsafe refute member ${JSON.stringify(entry.name)}`);
+    }
+    if (!isRegularTarType(entry.typeflag)) {
+      throw new Error(`${archive} refute member is not a regular file`);
+    }
+    writeBufferAtomic(dest, entry.body, 0o755);
+    return;
+  }
+  throw new Error(`${archive} does not contain refute`);
+}
+
+function tarEntries(tar) {
+  const entries = [];
+  for (let offset = 0; offset + 512 <= tar.length;) {
+    const header = tar.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const name = tarHeaderName(header);
+    const size = parseTarSize(header.subarray(124, 136));
+    const typeflag = header[156] === 0 ? "\0" : String.fromCharCode(header[156]);
+    const bodyStart = offset + 512;
+    const bodyEnd = bodyStart + size;
+    if (bodyEnd > tar.length) throw new Error("truncated tar archive");
+    entries.push({ name, typeflag, body: tar.subarray(bodyStart, bodyEnd) });
+    offset = bodyStart + Math.ceil(size / 512) * 512;
+  }
+  return entries;
+}
+
+function tarHeaderName(header) {
+  const name = tarString(header.subarray(0, 100));
+  const prefix = tarString(header.subarray(345, 500));
+  return prefix ? `${prefix}/${name}` : name;
+}
+
+function tarString(bytes) {
+  const end = bytes.indexOf(0);
+  return bytes.subarray(0, end === -1 ? bytes.length : end).toString("utf8");
+}
+
+function parseTarSize(bytes) {
+  const value = tarString(bytes).trim();
+  if (value === "") return 0;
+  const size = Number.parseInt(value, 8);
+  if (!Number.isFinite(size) || size < 0) throw new Error(`invalid tar member size ${JSON.stringify(value)}`);
+  return size;
+}
+
+function isRegularTarType(typeflag) {
+  return typeflag === "0" || typeflag === "\0";
+}
+
+function safeTarMemberName(name) {
+  if (!name || name.startsWith("/") || name.startsWith("\\") || hasWindowsDrivePrefix(name)) return false;
+  return !tarMemberParts(name).includes("..");
+}
+
+function tarMemberBase(name) {
+  const parts = tarMemberParts(name);
+  return parts.length === 0 ? "" : parts[parts.length - 1];
+}
+
+function tarMemberParts(name) {
+  return name.split(/[\\/]+/).filter(Boolean);
+}
+
+function installFileAtomic(src, dest, mode) {
+  const tmp = tempPath(dest);
+  try {
+    fs.copyFileSync(src, tmp);
+    fs.chmodSync(tmp, mode);
+    fs.renameSync(tmp, dest);
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+}
+
+function writeBufferAtomic(dest, data, mode) {
+  const tmp = tempPath(dest);
+  try {
+    fs.writeFileSync(tmp, data, { mode, flag: "wx" });
+    fs.renameSync(tmp, dest);
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+}
+
+function writeFileAtomic(dest, data, mode) {
+  const tmp = tempPath(dest);
+  try {
+    fs.writeFileSync(tmp, data, { mode, flag: "wx" });
+    fs.renameSync(tmp, dest);
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+}
+
+function tempPath(dest) {
+  const name = path.basename(dest);
+  const suffix = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return path.join(path.dirname(dest), `.${name}-${suffix}`);
 }
 
 function platform() {
