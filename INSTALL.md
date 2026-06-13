@@ -150,25 +150,18 @@ Check it with:
 
 ## Agent instructions
 
-For Go-module consumers, add this to the consuming project's `AGENTS.md`.
-For project-local binary installs, keep the same policy text and substitute
-`.agents/bin/refute` for `go tool refute` in the command examples.
+Add this to the consuming project's `AGENTS.md`, keeping the row that matches
+the project's install mode:
 
 ````md
 ## Refute
 
 Use the repo-managed `refute` tool for symbol-aware refactors:
 
-```bash
-go tool refute
-```
-
-Install or update it with:
-
-```bash
-go get -tool github.com/shatterproof-ai/refute/cmd/refute@latest
-go mod tidy
-```
+| Install mode | Run refactors with | Install or update with |
+| --- | --- | --- |
+| Go module tool dependency | `go tool refute` | `go get -tool github.com/shatterproof-ai/refute/cmd/refute@latest && go mod tidy` |
+| Project-local binary | `.agents/bin/refute` | `bash /path/to/refute/scripts/install-nightly.sh --project .` |
 
 TRIGGER WHEN:
 
@@ -177,7 +170,8 @@ TRIGGER WHEN:
 - A textual search finds both real references and unrelated strings/comments.
 - You need a machine-readable preview before editing files.
 - The user asks for a rename, inline, extract-function, or extract-variable
-  refactor and the target language is supported by `go tool refute doctor`.
+  refactor and the target language is supported by the selected `refute doctor`
+  command.
 
 SKIP:
 
@@ -185,23 +179,31 @@ SKIP:
   data.
 - The requested change intentionally renames only a string literal, CLI flag,
   environment variable, database column, GraphQL field, or API route.
-- `go tool refute doctor` reports the required backend as missing and
+- The selected `refute doctor` command reports the required backend as missing and
   installing it is outside the task scope.
-- The refactor requires behavior not listed in `go tool refute <command>
-  --help`.
+- The refactor requires behavior not listed in the selected
+  `refute <command> --help`.
 - The working tree already contains unrelated user edits that the preview would
   touch.
 
-Before refactoring:
+Before refactoring, run the selected doctor command:
 
 ```bash
 go tool refute doctor
+# or:
+.agents/bin/refute doctor
 ```
 
 Always preview first:
 
 ```bash
 go tool refute rename --dry-run --json \
+  --file <path.go> \
+  --line <line> \
+  --name <oldName> \
+  --new-name <newName>
+# or:
+.agents/bin/refute rename --dry-run --json \
   --file <path.go> \
   --line <line> \
   --name <oldName> \
@@ -214,6 +216,15 @@ then run the project's required verification gate.
 If the preview is empty, touches unexpected files, or reports an error, stop
 and use normal code-editing workflow instead of forcing the refactor.
 ````
+
+Local observability applies to every install mode; see README's
+[Local telemetry](README.md#local-telemetry) section for the canonical
+behavior. By default, `refute` writes invocation JSONL to
+`~/.local/share/refute/telemetry.jsonl`, compressed before/planned-after
+snapshots to `~/.local/share/refute/snapshots/`, and detected agent-session
+transcripts to `~/.local/share/refute/sessions/`. Use `--verbose` to echo the
+invocation summary into the current session. Set `REFUTE_TELEMETRY=0` to
+disable telemetry, or `REFUTE_TELEMETRY_SNAPSHOTS=0` to skip snapshots only.
 
 ## Global install
 
