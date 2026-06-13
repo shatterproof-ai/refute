@@ -7,8 +7,36 @@ const zlib = require("zlib");
 const { spawnSync } = require("child_process");
 
 function main() {
+  testRejectsUnsafeTarMembers();
+  testRejectsLinkTarMembers();
   testRejectsSymlinkedBinRoot();
   testReplacesSymlinkedActiveFiles();
+}
+
+function testRejectsUnsafeTarMembers() {
+  for (const name of ["/tmp/refute", "C:/tmp/refute", "..\\..\\refute", "\\\\server\\share\\refute"]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "refute-npm-unsafe-tar-"));
+    const archive = writeArchive(root, { name });
+    const digest = sha256(archive);
+    writeLock(root, archive, digest);
+
+    const result = runSync(root);
+    assert.notStrictEqual(result.status, 0, `sync unexpectedly accepted unsafe tar member ${name}`);
+    assert.strictEqual(fs.existsSync(path.join(root, ".refute", "bin", "refute")), false, "sync installed unsafe tar member");
+  }
+}
+
+function testRejectsLinkTarMembers() {
+  for (const typeflag of ["1", "2"]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "refute-npm-link-tar-"));
+    const archive = writeArchive(root, { typeflag, linkname: "outside-refute", body: Buffer.alloc(0) });
+    const digest = sha256(archive);
+    writeLock(root, archive, digest);
+
+    const result = runSync(root);
+    assert.notStrictEqual(result.status, 0, `sync unexpectedly accepted tar link member type ${typeflag}`);
+    assert.strictEqual(fs.existsSync(path.join(root, ".refute", "bin", "refute")), false, "sync installed link tar member");
+  }
 }
 
 function testRejectsSymlinkedBinRoot() {
@@ -26,10 +54,7 @@ function testRejectsSymlinkedBinRoot() {
     return;
   }
 
-  const result = spawnSync(process.execPath, [path.join(__dirname, "..", "bin", "refute-tool.js"), "sync"], {
-    cwd: root,
-    encoding: "utf8",
-  });
+  const result = runSync(root);
   assert.notStrictEqual(result.status, 0, "sync unexpectedly accepted symlinked .refute/bin");
   assert.deepStrictEqual(fs.readdirSync(outside), [], "sync wrote through symlinked .refute/bin");
 }
@@ -59,10 +84,7 @@ function testReplacesSymlinkedActiveFiles() {
     return;
   }
 
-  const result = spawnSync(process.execPath, [path.join(__dirname, "..", "bin", "refute-tool.js"), "sync"], {
-    cwd: root,
-    encoding: "utf8",
-  });
+  const result = runSync(root);
   assert.strictEqual(result.status, 0, result.stderr || result.stdout);
   for (const [link, target] of links) {
     assert.strictEqual(fs.lstatSync(link).isSymbolicLink(), false, `${link} is still a symlink`);
@@ -72,16 +94,28 @@ function testReplacesSymlinkedActiveFiles() {
   assert.strictEqual(fs.readFileSync(path.join(binRoot, "refute.artifact-sha256"), "utf8").trim(), digest);
 }
 
-function writeArchive(root) {
-  const body = Buffer.from("#!/bin/sh\necho synced\n");
-  const padding = Buffer.alloc((512 - (body.length % 512)) % 512, 0);
+function runSync(root) {
+  return spawnSync(process.execPath, [path.join(__dirname, "..", "bin", "refute-tool.js"), "sync"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+}
+
+function writeArchive(root, options = {}) {
+  const name = options.name || "refute";
+  const body = options.body === undefined ? Buffer.from("#!/bin/sh\necho synced\n") : Buffer.from(options.body);
+  const typeflag = options.typeflag || "0";
+  const linkname = options.linkname || "";
+  const bodyLength = typeflag === "0" ? body.length : 0;
+  const storedBody = body.subarray(0, bodyLength);
+  const padding = Buffer.alloc((512 - (storedBody.length % 512)) % 512, 0);
   const archive = path.join(root, "archive.tar.gz");
-  const tar = Buffer.concat([tarHeader("refute", body.length), body, padding, Buffer.alloc(1024, 0)]);
+  const tar = Buffer.concat([tarHeader(name, bodyLength, typeflag, linkname), storedBody, padding, Buffer.alloc(1024, 0)]);
   fs.writeFileSync(archive, zlib.gzipSync(tar));
   return archive;
 }
 
-function tarHeader(name, bodyLength) {
+function tarHeader(name, bodyLength, typeflag, linkname) {
   const header = Buffer.alloc(512, 0);
   header.write(name, 0, 100, "utf8");
   header.write("0000755\0", 100, 8, "ascii");
@@ -90,7 +124,8 @@ function tarHeader(name, bodyLength) {
   header.write(bodyLength.toString(8).padStart(11, "0") + "\0", 124, 12, "ascii");
   header.write(Math.floor(Date.now() / 1000).toString(8).padStart(11, "0") + "\0", 136, 12, "ascii");
   header.fill(" ", 148, 156);
-  header.write("0", 156, 1, "ascii");
+  header.write(typeflag, 156, 1, "ascii");
+  header.write(linkname, 157, 100, "utf8");
   header.write("ustar\0", 257, 6, "ascii");
   header.write("00", 263, 2, "ascii");
   let sum = 0;
