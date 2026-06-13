@@ -1,12 +1,20 @@
 package edit
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+// Crash-safety note: commits use a write-temp-then-rename strategy with a
+// per-file backup, but do not fsync the temp file or its parent directory
+// before renaming. A power loss or kernel crash mid-commit can therefore leave
+// a truncated file even though the rename appears atomic. This is an accepted
+// limitation for now; a durable-commit redesign is tracked separately and is
+// out of scope here.
 
 // ApplyResult holds statistics about a completed Apply operation.
 type ApplyResult struct {
@@ -199,33 +207,39 @@ func commitPendingFiles(pendingFiles []pendingFile) error {
 		p := &pendingFiles[i]
 		backupPath, err := reserveBackupPath(p.origPath)
 		if err != nil {
-			rollback(committed)
+			rbErr := rollback(committed)
 			cleanupPending(pendingFiles[i:])
-			return fmt.Errorf("reserve backup for %s: %w", p.origPath, err)
+			return errors.Join(fmt.Errorf("reserve backup for %s: %w", p.origPath, err), rbErr)
 		}
 		p.backupPath = backupPath
 
 		if err := os.Rename(p.origPath, p.backupPath); err != nil {
-			rollback(committed)
+			rbErr := rollback(committed)
 			cleanupPending(pendingFiles[i:])
-			return fmt.Errorf("backup %s -> %s: %w", p.origPath, p.backupPath, err)
+			return errors.Join(fmt.Errorf("backup %s -> %s: %w", p.origPath, p.backupPath, err), rbErr)
 		}
 		if err := os.Rename(p.tmpPath, p.origPath); err != nil {
 			if restoreErr := os.Rename(p.backupPath, p.origPath); restoreErr != nil {
 				err = fmt.Errorf("%w; restore %s -> %s: %w", err, p.backupPath, p.origPath, restoreErr)
 			}
-			rollback(committed)
+			rbErr := rollback(committed)
 			cleanupPending(pendingFiles[i:])
-			return fmt.Errorf("rename %s -> %s: %w", p.tmpPath, p.origPath, err)
+			return errors.Join(fmt.Errorf("rename %s -> %s: %w", p.tmpPath, p.origPath, err), rbErr)
 		}
 		p.tmpPath = ""
 		committed = append(committed, *p)
 	}
 
+	// All files committed: remove their backups. Surface (rather than
+	// silently discard) any leftover .refute.bak files so the user can clean
+	// them up.
+	var removeErrs []error
 	for _, p := range committed {
-		os.Remove(p.backupPath)
+		if err := os.Remove(p.backupPath); err != nil && !os.IsNotExist(err) {
+			removeErrs = append(removeErrs, fmt.Errorf("remove leftover backup %s: %w", p.backupPath, err))
+		}
 	}
-	return nil
+	return errors.Join(removeErrs...)
 }
 
 func writeTempFile(origPath string, content []byte, mode os.FileMode) (string, error) {
@@ -284,42 +298,70 @@ func cleanupPending(files []pendingFile) {
 	}
 }
 
-func rollback(files []pendingFile) {
+// rollback restores already-committed files from their backups, in reverse
+// order. If a restore fails the workspace is left inconsistent; rollback
+// returns a joined error naming each file it could not restore and the
+// leftover .refute.bak backup that remains, so callers can surface them
+// instead of silently leaving a corrupted workspace.
+func rollback(files []pendingFile) error {
+	var errs []error
 	for i := len(files) - 1; i >= 0; i-- {
 		p := files[i]
 		if p.backupPath == "" {
 			continue
 		}
 		_ = os.Remove(p.origPath)
-		_ = os.Rename(p.backupPath, p.origPath)
+		if err := os.Rename(p.backupPath, p.origPath); err != nil {
+			errs = append(errs, fmt.Errorf(
+				"rollback failed to restore %s from backup %s: %w; %s is left inconsistent and backup %s remains",
+				p.origPath, p.backupPath, err, p.origPath, p.backupPath))
+		}
 	}
+	return errors.Join(errs...)
 }
 
 // applyEdits applies a slice of TextEdits to content.
 // Edits are sorted in reverse order (end of file first) so that earlier
 // positions are not invalidated by applying later edits.
 func applyEdits(content []byte, edits []TextEdit) ([]byte, error) {
-	// Sort edits in reverse positional order.
-	sorted := make([]TextEdit, len(edits))
-	copy(sorted, edits)
-	sort.Slice(sorted, func(i, j int) bool {
-		a, b := sorted[i].Range.Start, sorted[j].Range.Start
+	// Sort edits in reverse positional order so applying a later edit cannot
+	// invalidate the offsets of an earlier one. Track the original array
+	// index and use a stable sort with an index tiebreak so that edits
+	// sharing a position (e.g. several zero-width inserts) apply
+	// deterministically. Under reverse application, a later array element
+	// inserted first ends up nearer the start, so to honor the LSP rule that
+	// same-position inserts appear in array order we break ties by original
+	// index descending.
+	type indexedEdit struct {
+		edit TextEdit
+		orig int
+	}
+	sorted := make([]indexedEdit, len(edits))
+	for i, e := range edits {
+		sorted[i] = indexedEdit{edit: e, orig: i}
+	}
+	sort.SliceStable(sorted, func(i, j int) bool {
+		a, b := sorted[i].edit.Range.Start, sorted[j].edit.Range.Start
 		if a.Line != b.Line {
 			return a.Line > b.Line
 		}
-		return a.Character > b.Character
+		if a.Character != b.Character {
+			return a.Character > b.Character
+		}
+		return sorted[i].orig > sorted[j].orig
 	})
 
 	for i := 0; i < len(sorted)-1; i++ {
-		later := sorted[i].Range
-		earlier := sorted[i+1].Range
+		later := sorted[i].edit.Range
+		earlier := sorted[i+1].edit.Range
 		if positionLess(later.Start, earlier.End) {
 			return nil, fmt.Errorf("overlapping edits: %+v and %+v", earlier, later)
 		}
 	}
 
 	result := content
-	for _, e := range sorted {
+	for _, ie := range sorted {
+		e := ie.edit
 		startOff := positionToOffset(result, e.Range.Start)
 		endOff := positionToOffset(result, e.Range.End)
 		if startOff < 0 || endOff < 0 || startOff > endOff || endOff > len(result) {
@@ -351,9 +393,16 @@ func positionToOffset(content []byte, pos Position) int {
 	offset := 0
 	for offset < len(content) {
 		if line == pos.Line {
-			// Advance by the character count within this line.
+			// Bound the in-line advance to this line. The line ends at the
+			// next '\n' (or EOF); Character may point at that terminating
+			// newline (offset+Character == lineEnd) but must not spill past
+			// it into a following line.
+			lineEnd := offset
+			for lineEnd < len(content) && content[lineEnd] != '\n' {
+				lineEnd++
+			}
 			target := offset + pos.Character
-			if target > len(content) {
+			if target > lineEnd {
 				return -1
 			}
 			return target
