@@ -47,7 +47,7 @@ go install github.com/shatterproof-ai/refute/cmd/refute@latest
 refute version
 ```
 
-`refute` builds with the toolchain pinned in `go.mod` (currently Go 1.26.3).
+`refute` builds with the toolchain pinned in `go.mod` (currently Go 1.26.4).
 See [`INSTALL.md`](INSTALL.md) for dependency-managed project installs,
 project-local release binaries, and nightlies intended for agent-driven
 repositories.
