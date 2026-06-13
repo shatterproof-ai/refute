@@ -1,10 +1,45 @@
 # Install refute
 
 `refute` can be installed globally, but consuming projects should prefer an
-install path that their normal dependency update workflow can see. Polyglot
-projects should use the shared registryless toolchain: one committed
+install path that their normal dependency update workflow can see. Projects
+that already use Go modules with Go 1.24 or newer should track `refute` as a
+Go tool dependency. Polyglot projects should use the shared registryless
+toolchain: one committed
 `refute.lock.json`, one uncommitted `.refute/bin/refute` binary, and thin
 package-manager shims that delegate to that binary.
+
+## Go module tool dependency
+
+For consuming projects that have a `go.mod` and Go 1.24 or newer, track
+`refute` as a Go tool dependency:
+
+```bash
+go get -tool github.com/shatterproof-ai/refute/cmd/refute@latest
+go tool refute version
+go tool refute doctor
+```
+
+This records `refute` in the consuming project's `go.mod`, so dependency
+automation can review, pin, and update it like other Go module dependencies.
+If no semver tag has been published yet, Go records a pseudo-version for the
+selected commit. Prefer semver tags for normal consumer updates, and use a
+specific tag or commit when the project needs reproducible changes:
+
+```bash
+go get -tool github.com/shatterproof-ai/refute/cmd/refute@vX.Y.Z
+go get -tool github.com/shatterproof-ai/refute/cmd/refute@<commit>
+```
+
+Update to the latest available module version with:
+
+```bash
+go get -tool github.com/shatterproof-ai/refute/cmd/refute@latest
+go mod tidy
+```
+
+This path builds from source using the consuming project's Go toolchain. Use a
+release archive instead when the project needs the exact binary metadata
+stamped by `scripts/release.sh`.
 
 ## Shared registryless toolchain
 
@@ -69,45 +104,12 @@ Cargo consumers can pin `adapters/cargo` by repository tag or commit and run
 repository and invoke the `ai.shatterproof:refute-tool` launcher. These
 adapters are shims; none bundles a private refute binary.
 
-## Go module tool dependency
-
-For consuming projects that have a `go.mod` and Go 1.24 or newer, track
-`refute` as a Go tool dependency:
-
-```bash
-go get -tool github.com/shatterproof-ai/refute/cmd/refute@latest
-go tool refute version
-go tool refute doctor
-```
-
-This records `refute` in the consuming project's `go.mod`, so dependency
-automation can review, pin, and update it like other Go module dependencies.
-If no semver tag has been published yet, Go records a pseudo-version for the
-selected commit. Prefer semver tags for normal consumer updates, and use a
-specific tag or commit when the project needs reproducible changes:
-
-```bash
-go get -tool github.com/shatterproof-ai/refute/cmd/refute@vX.Y.Z
-go get -tool github.com/shatterproof-ai/refute/cmd/refute@<commit>
-```
-
-Update to the latest available module version with:
-
-```bash
-go get -tool github.com/shatterproof-ai/refute/cmd/refute@latest
-go mod tidy
-```
-
-This path builds from source using the consuming project's Go toolchain. Use a
-release archive instead when the project needs the exact binary metadata
-stamped by `scripts/release.sh`.
-
 ## Project-local release archive install
 
-For single-language non-Go projects, or projects that want the exact released binary rather
-than a source build, install a semver release archive into the project-local
-tool directory. Download the archive through the project's normal automation,
-then install it with:
+For single-language non-Go projects, or projects that want the exact released
+binary rather than a source build, install a semver release archive into the
+project-local tool directory. Download the archive through the project's normal
+automation, then install it with:
 
 ```bash
 bash /path/to/refute/scripts/install-nightly.sh \
@@ -146,17 +148,11 @@ Check it with:
 .agents/bin/refute doctor
 ```
 
-For Kapow on this machine:
-
-```bash
-cd ~/project/kapow
-bash ~/project/refute/scripts/install-nightly.sh --project .
-.agents/bin/refute version
-```
-
 ## Agent instructions
 
-For Go-module consumers, add this to the consuming project's `AGENTS.md`:
+For Go-module consumers, add this to the consuming project's `AGENTS.md`.
+For project-local binary installs, keep the same policy text and substitute
+`.agents/bin/refute` for `go tool refute` in the command examples.
 
 ````md
 ## Refute
@@ -217,78 +213,6 @@ then run the project's required verification gate.
 
 If the preview is empty, touches unexpected files, or reports an error, stop
 and use normal code-editing workflow instead of forcing the refactor.
-````
-
-For consumers that use a project-local binary instead, add this to
-`AGENTS.md`:
-
-````md
-## Refute
-
-Use the project-local `refute` binary for symbol-aware refactors:
-
-```bash
-.agents/bin/refute
-```
-
-Install or update it with:
-
-```bash
-bash ~/project/refute/scripts/install-nightly.sh --project .
-```
-
-TRIGGER WHEN:
-
-- You are renaming a Go function, method, type, field, variable, or parameter.
-- The symbol appears in more than one file or package.
-- A textual search finds both real references and unrelated strings/comments.
-- You need a machine-readable preview before editing files.
-- The user asks for a rename, inline, extract-function, or extract-variable
-  refactor and the target language is supported by `refute doctor`.
-
-SKIP:
-
-- The edit is plain text, docs, comments, config, JSON, YAML, SQL, or generated
-  data.
-- The requested change intentionally renames only a string literal, CLI flag,
-  environment variable, database column, GraphQL field, or API route.
-- `refute doctor` reports the required backend as missing and installing it is
-  outside the task scope.
-- The refactor requires behavior not listed in `refute <command> --help`.
-- The working tree already contains unrelated user edits that the preview would
-  touch.
-
-Before refactoring:
-
-```bash
-.agents/bin/refute doctor
-```
-
-Always preview first:
-
-```bash
-.agents/bin/refute rename --dry-run --json \
-  --file <path.go> \
-  --line <line> \
-  --name <oldName> \
-  --new-name <newName>
-```
-
-If the preview is correct, apply with the same command without `--dry-run`,
-then run the project's required verification gate.
-
-If the preview is empty, touches unexpected files, or reports an error, stop
-and use normal code-editing workflow instead of forcing the refactor.
-
-Refute keeps local observability data outside the project tree:
-
-- invocation JSONL: `~/.local/share/refute/telemetry.jsonl`
-- compressed before/after snapshots: `~/.local/share/refute/snapshots/`
-- agent-session transcripts: `~/.local/share/refute/sessions/`
-
-Use `--verbose` when you want the agent transcript summary echoed into the
-current session. Set `REFUTE_TELEMETRY=0` to disable all telemetry, or
-`REFUTE_TELEMETRY_SNAPSHOTS=0` to skip snapshots only.
 ````
 
 ## Global install
