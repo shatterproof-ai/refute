@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import urllib.request
 from pathlib import Path
 from sysconfig import get_platform
@@ -91,10 +92,9 @@ def sync():
             return 1
         with source, extracted.open("wb") as output:
             shutil.copyfileobj(source, output)
-    shutil.copy2(extracted, ACTIVE)
-    ACTIVE.chmod(0o755)
-    ACTIVE.with_name(ACTIVE.name + ".artifact-sha256").write_text(artifact_sha + "\n", encoding="utf-8")
-    ACTIVE.with_name(ACTIVE.name + ".binary-sha256").write_text(sha256(ACTIVE) + "\n", encoding="utf-8")
+    atomic_copy2(extracted, ACTIVE, 0o755)
+    atomic_write_text(ACTIVE.with_name(ACTIVE.name + ".artifact-sha256"), artifact_sha + "\n")
+    atomic_write_text(ACTIVE.with_name(ACTIVE.name + ".binary-sha256"), sha256(ACTIVE) + "\n")
     print(f"installed {ACTIVE}")
     return 0
 
@@ -214,12 +214,48 @@ def sha256(path):
 
 
 def marker_matches(path, digest):
-    return path.exists() and path.read_text(encoding="utf-8").strip() == digest
+    return is_regular_non_symlink(path) and path.read_text(encoding="utf-8").strip() == digest
 
 
 def active_matches(artifact_digest):
     return (
-        ACTIVE.exists()
+        is_regular_non_symlink(ACTIVE)
         and marker_matches(ACTIVE.with_name(ACTIVE.name + ".artifact-sha256"), artifact_digest)
         and marker_matches(ACTIVE.with_name(ACTIVE.name + ".binary-sha256"), sha256(ACTIVE))
     )
+
+
+def is_regular_non_symlink(path):
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    return stat.S_ISREG(info.st_mode)
+
+
+def atomic_copy2(src, dest, mode):
+    handle, temp_name = tempfile.mkstemp(dir=dest.parent, prefix=f".{dest.name}-")
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(handle, "wb") as temp:
+            with src.open("rb") as source:
+                shutil.copyfileobj(source, temp)
+        shutil.copystat(src, temp_path)
+        temp_path.chmod(mode)
+        os.replace(temp_path, dest)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+
+def atomic_write_text(path, data):
+    encoded = data.encode("utf-8")
+    handle, temp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}-")
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(handle, "wb") as temp:
+            temp.write(encoded)
+        os.replace(temp_path, path)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise

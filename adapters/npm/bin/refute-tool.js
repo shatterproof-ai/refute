@@ -68,10 +68,9 @@ function sync() {
   }
   const extract = spawnSync("tar", ["-xzf", archive, "-C", cacheDir, "refute"], { stdio: "inherit" });
   if (extract.status !== 0) return extract.status || 1;
-  fs.copyFileSync(cachedBinary, ACTIVE);
-  fs.chmodSync(ACTIVE, 0o755);
-  fs.writeFileSync(`${ACTIVE}.artifact-sha256`, `${artifactSha}\n`);
-  fs.writeFileSync(`${ACTIVE}.binary-sha256`, `${sha256(ACTIVE)}\n`);
+  installFileAtomic(cachedBinary, ACTIVE, 0o755);
+  writeFileAtomic(`${ACTIVE}.artifact-sha256`, `${artifactSha}\n`, 0o644);
+  writeFileAtomic(`${ACTIVE}.binary-sha256`, `${sha256(ACTIVE)}\n`, 0o644);
   console.log(`installed ${ACTIVE}`);
   return 0;
 }
@@ -124,11 +123,11 @@ function sha256(file) {
 }
 
 function markerMatches(file, digest) {
-  return fs.existsSync(file) && fs.readFileSync(file, "utf8").trim() === digest;
+  return isRegularNonSymlink(file) && fs.readFileSync(file, "utf8").trim() === digest;
 }
 
 function activeMatches(artifactDigest) {
-  return fs.existsSync(ACTIVE)
+  return isRegularNonSymlink(ACTIVE)
     && markerMatches(`${ACTIVE}.artifact-sha256`, artifactDigest)
     && markerMatches(`${ACTIVE}.binary-sha256`, sha256(ACTIVE));
 }
@@ -178,6 +177,42 @@ function ensureRealDirectory(dir) {
     if (err.code !== "ENOENT") throw err;
     fs.mkdirSync(dir);
   }
+}
+
+function isRegularNonSymlink(file) {
+  try {
+    return fs.lstatSync(file).isFile();
+  } catch (err) {
+    if (err.code === "ENOENT") return false;
+    throw err;
+  }
+}
+
+function installFileAtomic(src, dest, mode) {
+  const tmp = tempPath(dest);
+  try {
+    fs.copyFileSync(src, tmp);
+    fs.chmodSync(tmp, mode);
+    fs.renameSync(tmp, dest);
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+}
+
+function writeFileAtomic(dest, data, mode) {
+  const tmp = tempPath(dest);
+  try {
+    fs.writeFileSync(tmp, data, { mode, flag: "wx" });
+    fs.renameSync(tmp, dest);
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+}
+
+function tempPath(dest) {
+  const name = path.basename(dest);
+  const suffix = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return path.join(path.dirname(dest), `.${name}-${suffix}`);
 }
 
 function platform() {

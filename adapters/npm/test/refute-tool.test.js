@@ -7,6 +7,11 @@ const zlib = require("zlib");
 const { spawnSync } = require("child_process");
 
 function main() {
+  testRejectsSymlinkedBinRoot();
+  testReplacesSymlinkedActiveFiles();
+}
+
+function testRejectsSymlinkedBinRoot() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "refute-npm-bin-symlink-"));
   const archive = writeArchive(root);
   const digest = sha256(archive);
@@ -27,6 +32,44 @@ function main() {
   });
   assert.notStrictEqual(result.status, 0, "sync unexpectedly accepted symlinked .refute/bin");
   assert.deepStrictEqual(fs.readdirSync(outside), [], "sync wrote through symlinked .refute/bin");
+}
+
+function testReplacesSymlinkedActiveFiles() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "refute-npm-active-symlink-"));
+  const archive = writeArchive(root);
+  const digest = sha256(archive);
+  writeLock(root, archive, digest);
+  const binRoot = path.join(root, ".refute", "bin");
+  const outside = path.join(root, "outside-bin");
+  fs.mkdirSync(path.join(root, ".refute", "cache"), { recursive: true });
+  fs.mkdirSync(binRoot);
+  fs.mkdirSync(outside);
+  const links = new Map([
+    [path.join(binRoot, "refute"), path.join(outside, "refute")],
+    [path.join(binRoot, "refute.artifact-sha256"), path.join(outside, "artifact")],
+    [path.join(binRoot, "refute.binary-sha256"), path.join(outside, "binary")],
+  ]);
+  try {
+    for (const [link, target] of links) {
+      fs.writeFileSync(target, "outside\n");
+      fs.symlinkSync(target, link);
+    }
+  } catch (err) {
+    console.log(`symlinked active files test skipped: ${err.message}`);
+    return;
+  }
+
+  const result = spawnSync(process.execPath, [path.join(__dirname, "..", "bin", "refute-tool.js"), "sync"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  assert.strictEqual(result.status, 0, result.stderr || result.stdout);
+  for (const [link, target] of links) {
+    assert.strictEqual(fs.lstatSync(link).isSymbolicLink(), false, `${link} is still a symlink`);
+    assert.strictEqual(fs.readFileSync(target, "utf8"), "outside\n", `${target} was overwritten`);
+  }
+  assert.match(fs.readFileSync(path.join(binRoot, "refute"), "utf8"), /synced/);
+  assert.strictEqual(fs.readFileSync(path.join(binRoot, "refute.artifact-sha256"), "utf8").trim(), digest);
 }
 
 function writeArchive(root) {

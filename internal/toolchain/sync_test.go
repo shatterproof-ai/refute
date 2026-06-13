@@ -218,6 +218,64 @@ func TestSyncRejectsSymlinkedBinRoot(t *testing.T) {
 	}
 }
 
+func TestSyncReplacesSymlinkedActiveFilesWithoutWritingOutsideBin(t *testing.T) {
+	root := t.TempDir()
+	archive, digest := writeRefuteArchive(t, root, "#!/bin/sh\necho ok\n")
+	writeLock(t, root, archive, digest)
+	binRoot := filepath.Join(root, ToolRoot, "bin")
+	cacheRoot := filepath.Join(root, ToolRoot, "cache")
+	outside := filepath.Join(root, "outside-bin")
+	if err := os.MkdirAll(cacheRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(binRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	links := map[string]string{
+		filepath.Join(binRoot, "refute"):                 filepath.Join(outside, "refute"),
+		filepath.Join(binRoot, "refute.artifact-sha256"): filepath.Join(outside, "artifact"),
+		filepath.Join(binRoot, "refute.binary-sha256"):   filepath.Join(outside, "binary"),
+	}
+	for link, target := range links {
+		if err := os.WriteFile(target, []byte("outside\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, link); err != nil {
+			t.Skipf("symlink unavailable: %v", err)
+		}
+	}
+
+	if _, err := Sync(context.Background(), SyncOptions{ProjectRoot: root, Platform: "linux", Arch: "amd64"}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	for link, target := range links {
+		info, err := os.Lstat(link)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			t.Fatalf("%s is still a symlink", link)
+		}
+		got, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != "outside\n" {
+			t.Fatalf("outside target %s was overwritten: %q", target, got)
+		}
+	}
+	active, err := os.ReadFile(filepath.Join(root, ActiveBinPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(active), "ok") {
+		t.Fatalf("active binary content = %q", active)
+	}
+}
+
 func TestSyncRejectsTraversalMemberWithoutWritingOutsideCache(t *testing.T) {
 	root := t.TempDir()
 	archive, digest := writeArchive(t, root, "../../../outside/refute", "#!/bin/sh\necho escaped\n")

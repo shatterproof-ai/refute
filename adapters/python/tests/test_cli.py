@@ -98,6 +98,38 @@ class SyncTests(unittest.TestCase):
             self.assertTrue((tool_root / "bin").is_symlink())
             self.assertEqual(list(outside.iterdir()), [])
 
+    def test_sync_replaces_symlinked_active_files_without_writing_outside_bin(self):
+        if not hasattr(os, "symlink"):
+            self.skipTest("symlink unavailable")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive, digest = write_archive(root)
+            write_lock(root, archive, digest)
+            bin_root = root / ".refute" / "bin"
+            cache_root = root / ".refute" / "cache"
+            outside = root / "outside-bin"
+            cache_root.mkdir(parents=True)
+            bin_root.mkdir()
+            outside.mkdir()
+            targets = {
+                bin_root / "refute": outside / "refute",
+                bin_root / "refute.artifact-sha256": outside / "artifact",
+                bin_root / "refute.binary-sha256": outside / "binary",
+            }
+            for link, target in targets.items():
+                target.write_text("outside\n", encoding="utf-8")
+                os.symlink(target, link)
+
+            with chdir(root):
+                result = cli.sync()
+
+            self.assertEqual(result, 0)
+            for link, target in targets.items():
+                self.assertFalse(link.is_symlink(), link)
+                self.assertEqual(target.read_text(encoding="utf-8"), "outside\n")
+            self.assertIn("synced", (bin_root / "refute").read_text(encoding="utf-8"))
+            self.assertEqual((bin_root / "refute.artifact-sha256").read_text(encoding="utf-8").strip(), digest)
+
     def test_sync_rejects_traversal_member_without_writing_outside_cache(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
