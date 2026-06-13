@@ -52,14 +52,24 @@ func Sync(ctx context.Context, opts SyncOptions) (SyncResult, error) {
 	if err != nil {
 		return SyncResult{}, err
 	}
+	if err := validateArtifactForSync(artifact); err != nil {
+		return SyncResult{}, err
+	}
 
 	active := filepath.Join(root, ActiveBinPath)
 	if activeMatches(active, artifact.SHA256) {
 		return SyncResult{Installed: false, Path: active, SHA256: artifact.SHA256}, nil
 	}
 
-	cacheDir := filepath.Join(root, ToolRoot, "cache", artifact.SHA256)
-	cachedBinary := filepath.Join(cacheDir, binaryName())
+	cacheRoot := filepath.Join(root, ToolRoot, "cache")
+	cacheDir, err := pathUnder(cacheRoot, artifact.SHA256)
+	if err != nil {
+		return SyncResult{}, err
+	}
+	cachedBinary, err := pathUnder(cacheDir, binaryName())
+	if err != nil {
+		return SyncResult{}, err
+	}
 	if !cacheMatches(cachedBinary, artifact.SHA256) {
 		if err := os.RemoveAll(cacheDir); err != nil {
 			return SyncResult{}, fmt.Errorf("clear cache %s: %w", cacheDir, err)
@@ -69,7 +79,10 @@ func Sync(ctx context.Context, opts SyncOptions) (SyncResult, error) {
 		}
 		archivePath := filepath.Join(cacheDir, "artifact")
 		if artifact.Filename != "" {
-			archivePath = filepath.Join(cacheDir, artifact.Filename)
+			archivePath, err = pathUnder(cacheDir, artifact.Filename)
+			if err != nil {
+				return SyncResult{}, err
+			}
 		}
 		if err := download(ctx, artifact.URL, archivePath); err != nil {
 			return SyncResult{}, err
@@ -183,7 +196,7 @@ func extractRefuteBinary(archivePath, dest string) (err error) {
 		if header.Typeflag != tar.TypeReg {
 			continue
 		}
-		if filepath.Base(header.Name) != "refute" {
+		if tarMemberBase(header.Name) != "refute" {
 			continue
 		}
 		if !safeTarMemberName(header.Name) {
@@ -206,17 +219,86 @@ func extractRefuteBinary(archivePath, dest string) (err error) {
 }
 
 func safeTarMemberName(name string) bool {
-	if name == "" || filepath.IsAbs(name) {
+	if name == "" || strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) || hasWindowsDrivePrefix(name) {
 		return false
 	}
-	for _, part := range strings.FieldsFunc(name, func(r rune) bool {
-		return r == '/' || r == '\\'
-	}) {
+	for _, part := range tarMemberParts(name) {
 		if part == ".." {
 			return false
 		}
 	}
 	return true
+}
+
+func tarMemberBase(name string) string {
+	parts := tarMemberParts(name)
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
+func tarMemberParts(name string) []string {
+	return strings.FieldsFunc(name, func(r rune) bool {
+		return r == '/' || r == '\\'
+	})
+}
+
+func validateArtifactForSync(artifact Artifact) error {
+	if !validSHA256Hex(artifact.SHA256) {
+		return fmt.Errorf("invalid artifact sha256 %q", artifact.SHA256)
+	}
+	if artifact.Filename != "" && !safeLockFilename(artifact.Filename) {
+		return fmt.Errorf("unsafe artifact filename %q", artifact.Filename)
+	}
+	return nil
+}
+
+func validSHA256Hex(value string) bool {
+	if len(value) != sha256.Size*2 {
+		return false
+	}
+	for _, char := range value {
+		if !('0' <= char && char <= '9') && !('a' <= char && char <= 'f') && !('A' <= char && char <= 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+func safeLockFilename(name string) bool {
+	return name != "" &&
+		!strings.Contains(name, "/") &&
+		!strings.Contains(name, `\`) &&
+		!strings.Contains(name, "..") &&
+		!hasWindowsDrivePrefix(name)
+}
+
+func hasWindowsDrivePrefix(name string) bool {
+	return len(name) >= 2 && name[1] == ':' && (('A' <= name[0] && name[0] <= 'Z') || ('a' <= name[0] && name[0] <= 'z'))
+}
+
+func pathUnder(root string, child string) (string, error) {
+	if filepath.IsAbs(child) || hasWindowsDrivePrefix(child) {
+		return "", fmt.Errorf("path %s escapes %s", child, root)
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", root, err)
+	}
+	candidate := filepath.Join(root, child)
+	candidateAbs, err := filepath.Abs(candidate)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", candidate, err)
+	}
+	rel, err := filepath.Rel(rootAbs, candidateAbs)
+	if err != nil {
+		return "", fmt.Errorf("compare %s to %s: %w", candidateAbs, rootAbs, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("path %s escapes %s", candidate, root)
+	}
+	return candidateAbs, nil
 }
 
 func hasDigest(path, want string) bool {

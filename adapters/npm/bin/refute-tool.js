@@ -29,26 +29,41 @@ function sync() {
     console.error(`unsupported platform ${platform()}/${process.arch} for refute ${lock.version}`);
     return 1;
   }
-  if (activeMatches(artifact.sha256)) {
+  const validationError = validateArtifact(artifact);
+  if (validationError) {
+    console.error(validationError);
+    return 1;
+  }
+  const artifactSha = artifact.sha256;
+  if (activeMatches(artifactSha)) {
     console.log(`${ACTIVE} is already current`);
     return 0;
   }
-  const cacheDir = path.join(".refute", "cache", artifact.sha256);
+  let cacheDir;
+  let archive;
+  let cachedBinary;
+  try {
+    cacheDir = pathUnder(path.join(".refute", "cache"), artifactSha);
+    archive = pathUnder(cacheDir, artifact.filename || "artifact.tar.gz");
+    cachedBinary = pathUnder(cacheDir, "refute");
+  } catch (err) {
+    console.error(err.message);
+    return 1;
+  }
   fs.rmSync(cacheDir, { recursive: true, force: true });
   fs.mkdirSync(cacheDir, { recursive: true });
-  const archive = path.join(cacheDir, artifact.filename || "artifact.tar.gz");
   if (!copyArtifact(artifact.url, archive)) return 1;
   const got = sha256(archive);
-  if (got !== artifact.sha256) {
-    console.error(`checksum mismatch for ${artifact.url}: got ${got}, want ${artifact.sha256}`);
+  if (got !== artifactSha) {
+    console.error(`checksum mismatch for ${artifact.url}: got ${got}, want ${artifactSha}`);
     return 1;
   }
   const extract = spawnSync("tar", ["-xzf", archive, "-C", cacheDir, "refute"], { stdio: "inherit" });
   if (extract.status !== 0) return extract.status || 1;
   fs.mkdirSync(path.dirname(ACTIVE), { recursive: true });
-  fs.copyFileSync(path.join(cacheDir, "refute"), ACTIVE);
+  fs.copyFileSync(cachedBinary, ACTIVE);
   fs.chmodSync(ACTIVE, 0o755);
-  fs.writeFileSync(`${ACTIVE}.artifact-sha256`, `${artifact.sha256}\n`);
+  fs.writeFileSync(`${ACTIVE}.artifact-sha256`, `${artifactSha}\n`);
   fs.writeFileSync(`${ACTIVE}.binary-sha256`, `${sha256(ACTIVE)}\n`);
   console.log(`installed ${ACTIVE}`);
   return 0;
@@ -109,6 +124,41 @@ function activeMatches(artifactDigest) {
   return fs.existsSync(ACTIVE)
     && markerMatches(`${ACTIVE}.artifact-sha256`, artifactDigest)
     && markerMatches(`${ACTIVE}.binary-sha256`, sha256(ACTIVE));
+}
+
+function validateArtifact(artifact) {
+  if (!isSHA256Hex(artifact.sha256)) return `invalid artifact sha256 ${JSON.stringify(artifact.sha256)}`;
+  if (artifact.filename !== undefined && !safeLockFilename(artifact.filename)) {
+    return `unsafe artifact filename ${JSON.stringify(artifact.filename)}`;
+  }
+  return "";
+}
+
+function isSHA256Hex(value) {
+  return typeof value === "string" && /^[0-9a-fA-F]{64}$/.test(value);
+}
+
+function safeLockFilename(name) {
+  return typeof name === "string"
+    && name !== ""
+    && !hasWindowsDrivePrefix(name)
+    && !name.includes("/")
+    && !name.includes("\\")
+    && !name.includes("..");
+}
+
+function hasWindowsDrivePrefix(name) {
+  return /^[A-Za-z]:/.test(name);
+}
+
+function pathUnder(root, child) {
+  const rootPath = path.resolve(root);
+  const candidate = path.resolve(root, child);
+  const rel = path.relative(rootPath, candidate);
+  if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+    throw new Error(`path ${candidate} escapes ${rootPath}`);
+  }
+  return candidate;
 }
 
 function platform() {

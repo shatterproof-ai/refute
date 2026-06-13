@@ -10,6 +10,7 @@ from pathlib import Path
 from sysconfig import get_platform
 
 ACTIVE = Path(".refute/bin/refute")
+HEX_DIGEST_LENGTH = 64
 
 
 def main(argv=None):
@@ -44,17 +45,27 @@ def sync():
     if artifact is None:
         print(f"unsupported platform for refute {lock.get('version')}", file=sys.stderr)
         return 1
-    if active_matches(artifact["sha256"]):
+    validation_error = validate_artifact(artifact)
+    if validation_error is not None:
+        print(validation_error, file=sys.stderr)
+        return 1
+    artifact_sha = artifact["sha256"]
+    if active_matches(artifact_sha):
         print(f"{ACTIVE} is already current")
         return 0
-    cache_dir = Path(".refute/cache") / artifact["sha256"]
+    try:
+        cache_root = Path(".refute/cache")
+        cache_dir = path_under(cache_root, artifact_sha)
+        archive = path_under(cache_dir, artifact.get("filename") or "artifact.tar.gz")
+    except ValueError as err:
+        print(err, file=sys.stderr)
+        return 1
     shutil.rmtree(cache_dir, ignore_errors=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    archive = cache_dir / artifact.get("filename", "artifact.tar.gz")
     download(artifact["url"], archive)
     got = sha256(archive)
-    if got != artifact["sha256"]:
-        print(f"checksum mismatch for {artifact['url']}: got {got}, want {artifact['sha256']}", file=sys.stderr)
+    if got != artifact_sha:
+        print(f"checksum mismatch for {artifact['url']}: got {got}, want {artifact_sha}", file=sys.stderr)
         return 1
     with tarfile.open(archive, "r:gz") as tar:
         member = find_refute_member(tar)
@@ -74,7 +85,7 @@ def sync():
     ACTIVE.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(extracted, ACTIVE)
     ACTIVE.chmod(0o755)
-    ACTIVE.with_name(ACTIVE.name + ".artifact-sha256").write_text(artifact["sha256"] + "\n", encoding="utf-8")
+    ACTIVE.with_name(ACTIVE.name + ".artifact-sha256").write_text(artifact_sha + "\n", encoding="utf-8")
     ACTIVE.with_name(ACTIVE.name + ".binary-sha256").write_text(sha256(ACTIVE) + "\n", encoding="utf-8")
     print(f"installed {ACTIVE}")
     return 0
@@ -127,12 +138,53 @@ def download(url, dest):
 
 
 def find_refute_member(tar):
-    return next((item for item in tar.getmembers() if item.isfile() and Path(item.name).name == "refute"), None)
+    return next((item for item in tar.getmembers() if item.isfile() and tar_member_basename(item.name) == "refute"), None)
 
 
 def is_safe_archive_member(name):
-    path = Path(name)
-    return not path.is_absolute() and ".." not in path.parts
+    if not name or name.startswith(("/", "\\")) or has_drive_prefix(name):
+        return False
+    return ".." not in tar_member_parts(name)
+
+
+def tar_member_basename(name):
+    parts = tar_member_parts(name)
+    return parts[-1] if parts else ""
+
+
+def tar_member_parts(name):
+    return [part for part in name.replace("\\", "/").split("/") if part]
+
+
+def validate_artifact(artifact):
+    digest = artifact.get("sha256", "")
+    if not is_sha256_hex(digest):
+        return f"invalid artifact sha256 {digest!r}"
+    filename = artifact.get("filename")
+    if filename is not None and not is_safe_lock_filename(filename):
+        return f"unsafe artifact filename {filename!r}"
+    return None
+
+
+def is_sha256_hex(value):
+    return isinstance(value, str) and len(value) == HEX_DIGEST_LENGTH and all(char in "0123456789abcdefABCDEF" for char in value)
+
+
+def is_safe_lock_filename(name):
+    return isinstance(name, str) and name != "" and not has_drive_prefix(name) and "/" not in name and "\\" not in name and ".." not in name
+
+
+def has_drive_prefix(name):
+    return len(name) >= 2 and name[0].isalpha() and name[1] == ":"
+
+
+def path_under(root, child):
+    candidate = root / child
+    try:
+        candidate.resolve(strict=False).relative_to(root.resolve(strict=False))
+    except ValueError as err:
+        raise ValueError(f"path {candidate} escapes {root}") from err
+    return candidate
 
 
 def sha256(path):

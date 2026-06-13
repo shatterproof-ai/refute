@@ -30,38 +30,37 @@ def current_arch():
 
 
 class SyncTests(unittest.TestCase):
+    def test_sync_rejects_malicious_sha256_before_cache_path_use(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive, _ = write_archive(root)
+            write_lock(root, archive, "../outside")
+
+            with chdir(root):
+                result = cli.sync()
+
+            self.assertEqual(result, 1)
+            self.assertFalse((root / ".refute").exists())
+            self.assertFalse((root / "outside").exists())
+
+    def test_sync_rejects_malicious_filename_before_archive_path_use(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive, digest = write_archive(root)
+            write_lock(root, archive, digest, filename="../artifact.tar.gz")
+
+            with chdir(root):
+                result = cli.sync()
+
+            self.assertEqual(result, 1)
+            self.assertFalse((root / ".refute").exists())
+            self.assertFalse((root / "artifact.tar.gz").exists())
+
     def test_sync_rejects_traversal_member_without_writing_outside_cache(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            archive = root / "malicious.tar.gz"
-            body = b"#!/bin/sh\necho escaped\n"
-
-            buffer = io.BytesIO()
-            with gzip_tar(buffer) as tar:
-                info = tarfile.TarInfo("../../../outside/refute")
-                info.mode = 0o755
-                info.size = len(body)
-                tar.addfile(info, io.BytesIO(body))
-            archive.write_bytes(buffer.getvalue())
-            digest = hashlib.sha256(buffer.getvalue()).hexdigest()
-
-            (root / "refute.lock.json").write_text(
-                json.dumps(
-                    {
-                        "version": "v9.9.9",
-                        "artifacts": [
-                            {
-                                "platform": cli.python_platform(),
-                                "architecture": current_arch(),
-                                "url": archive.as_uri(),
-                                "sha256": digest,
-                                "filename": "artifact.tar.gz",
-                            }
-                        ],
-                    }
-                ),
-                encoding="utf-8",
-            )
+            archive, digest = write_archive(root, "../../../outside/refute")
+            write_lock(root, archive, digest)
 
             with chdir(root):
                 result = cli.sync()
@@ -70,11 +69,58 @@ class SyncTests(unittest.TestCase):
             self.assertFalse((root / "outside" / "refute").exists())
             self.assertFalse((root / ".refute" / "bin" / "refute").exists())
 
+    def test_sync_rejects_platform_independent_unsafe_tar_members(self):
+        for name in ["/tmp/refute", "C:/tmp/refute", r"..\..\refute"]:
+            with self.subTest(name=name):
+                with tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp)
+                    archive, digest = write_archive(root, name)
+                    write_lock(root, archive, digest)
+
+                    with chdir(root):
+                        result = cli.sync()
+
+                    self.assertEqual(result, 1)
+                    self.assertFalse((root / ".refute" / "bin" / "refute").exists())
+
 
 @contextlib.contextmanager
 def gzip_tar(buffer):
     with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
         yield tar
+
+
+def write_archive(root, name="refute"):
+    archive = root / "archive.tar.gz"
+    body = b"#!/bin/sh\necho synced\n"
+    buffer = io.BytesIO()
+    with gzip_tar(buffer) as tar:
+        info = tarfile.TarInfo(name)
+        info.mode = 0o755
+        info.size = len(body)
+        tar.addfile(info, io.BytesIO(body))
+    archive.write_bytes(buffer.getvalue())
+    return archive, hashlib.sha256(buffer.getvalue()).hexdigest()
+
+
+def write_lock(root, archive, digest, filename="artifact.tar.gz"):
+    (root / "refute.lock.json").write_text(
+        json.dumps(
+            {
+                "version": "v9.9.9",
+                "artifacts": [
+                    {
+                        "platform": cli.python_platform(),
+                        "architecture": current_arch(),
+                        "url": archive.as_uri(),
+                        "sha256": digest,
+                        "filename": filename,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 if __name__ == "__main__":
