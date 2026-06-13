@@ -1,4 +1,7 @@
-# Shatter project configuration for refute.
+# Shatter project defaults for refute.
+#
+# `make shatter` invokes `shatter scan --project-dir .`, which reads the
+# scan-specific settings from the root `shatter.config.json`.
 defaults:
   max_iterations: 250
   timeout: 120
