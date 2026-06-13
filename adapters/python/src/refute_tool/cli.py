@@ -1,5 +1,6 @@
 import json
 import os
+import stat
 import hashlib
 import shutil
 import subprocess
@@ -50,11 +51,18 @@ def sync():
         print(validation_error, file=sys.stderr)
         return 1
     artifact_sha = artifact["sha256"]
+    try:
+        tool_root = Path(".refute")
+        ensure_real_directory(tool_root)
+        cache_root = tool_root / "cache"
+        ensure_real_directory(cache_root)
+    except ValueError as err:
+        print(err, file=sys.stderr)
+        return 1
     if active_matches(artifact_sha):
         print(f"{ACTIVE} is already current")
         return 0
     try:
-        cache_root = Path(".refute/cache")
         cache_dir = path_under(cache_root, artifact_sha)
         archive = path_under(cache_dir, artifact.get("filename") or "artifact.tar.gz")
     except ValueError as err:
@@ -185,6 +193,16 @@ def path_under(root, child):
     except ValueError as err:
         raise ValueError(f"path {candidate} escapes {root}") from err
     return candidate
+
+
+def ensure_real_directory(path):
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        path.mkdir(mode=0o755)
+        return
+    if not path.is_dir() or stat.S_ISLNK(info.st_mode):
+        raise ValueError(f"{path} is not a real directory")
 
 
 def sha256(path):

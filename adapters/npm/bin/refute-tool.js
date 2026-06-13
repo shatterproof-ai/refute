@@ -35,6 +35,13 @@ function sync() {
     return 1;
   }
   const artifactSha = artifact.sha256;
+  try {
+    ensureRealDirectory(".refute");
+    ensureRealDirectory(path.join(".refute", "cache"));
+  } catch (err) {
+    console.error(err.message);
+    return 1;
+  }
   if (activeMatches(artifactSha)) {
     console.log(`${ACTIVE} is already current`);
     return 0;
@@ -159,6 +166,18 @@ function pathUnder(root, child) {
     throw new Error(`path ${candidate} escapes ${rootPath}`);
   }
   return candidate;
+}
+
+function ensureRealDirectory(dir) {
+  try {
+    const info = fs.lstatSync(dir);
+    if (info.isSymbolicLink() || !info.isDirectory()) {
+      throw new Error(`${dir} is not a real directory`);
+    }
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+    fs.mkdirSync(dir);
+  }
 }
 
 function platform() {

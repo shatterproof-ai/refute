@@ -148,6 +148,41 @@ func TestSyncRejectsMaliciousFilenameBeforeArchivePathUse(t *testing.T) {
 	}
 }
 
+func TestSyncRejectsSymlinkedCacheRoot(t *testing.T) {
+	root := t.TempDir()
+	archive, digest := writeRefuteArchive(t, root, "#!/bin/sh\necho ok\n")
+	writeLock(t, root, archive, digest)
+	toolRoot := filepath.Join(root, ToolRoot)
+	outside := filepath.Join(root, "outside-cache")
+	if err := os.Mkdir(toolRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(toolRoot, "cache")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	_, err := Sync(context.Background(), SyncOptions{ProjectRoot: root, Platform: "linux", Arch: "amd64"})
+	if err == nil {
+		t.Fatal("Sync unexpectedly accepted symlinked cache root")
+	}
+	if !strings.Contains(err.Error(), "not a real directory") {
+		t.Fatalf("error = %v", err)
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("outside cache was written: %v", entries)
+	}
+	if _, err := os.Stat(filepath.Join(root, ActiveBinPath)); !os.IsNotExist(err) {
+		t.Fatalf("active binary exists or stat failed unexpectedly: %v", err)
+	}
+}
+
 func TestSyncRejectsTraversalMemberWithoutWritingOutsideCache(t *testing.T) {
 	root := t.TempDir()
 	archive, digest := writeArchive(t, root, "../../../outside/refute", "#!/bin/sh\necho escaped\n")

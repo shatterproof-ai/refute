@@ -56,12 +56,20 @@ func Sync(ctx context.Context, opts SyncOptions) (SyncResult, error) {
 		return SyncResult{}, err
 	}
 
+	toolRoot := filepath.Join(root, ToolRoot)
+	if err := ensureRealDirectory(toolRoot); err != nil {
+		return SyncResult{}, err
+	}
+	cacheRoot := filepath.Join(toolRoot, "cache")
+	if err := ensureRealDirectory(cacheRoot); err != nil {
+		return SyncResult{}, err
+	}
+
 	active := filepath.Join(root, ActiveBinPath)
 	if activeMatches(active, artifact.SHA256) {
 		return SyncResult{Installed: false, Path: active, SHA256: artifact.SHA256}, nil
 	}
 
-	cacheRoot := filepath.Join(root, ToolRoot, "cache")
 	cacheDir, err := pathUnder(cacheRoot, artifact.SHA256)
 	if err != nil {
 		return SyncResult{}, err
@@ -299,6 +307,23 @@ func pathUnder(root string, child string) (string, error) {
 		return "", fmt.Errorf("path %s escapes %s", candidate, root)
 	}
 	return candidateAbs, nil
+}
+
+func ensureRealDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.Mkdir(path, 0o755); err != nil {
+			return fmt.Errorf("create %s: %w", path, err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("%s is not a real directory", path)
+	}
+	return nil
 }
 
 func hasDigest(path, want string) bool {

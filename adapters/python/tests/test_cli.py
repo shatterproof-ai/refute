@@ -56,6 +56,27 @@ class SyncTests(unittest.TestCase):
             self.assertFalse((root / ".refute").exists())
             self.assertFalse((root / "artifact.tar.gz").exists())
 
+    def test_sync_rejects_symlinked_cache_root(self):
+        if not hasattr(os, "symlink"):
+            self.skipTest("symlink unavailable")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive, digest = write_archive(root)
+            write_lock(root, archive, digest)
+            tool_root = root / ".refute"
+            outside = root / "outside-cache"
+            tool_root.mkdir()
+            outside.mkdir()
+            os.symlink(outside, tool_root / "cache")
+
+            with chdir(root):
+                result = cli.sync()
+
+            self.assertEqual(result, 1)
+            self.assertTrue((tool_root / "cache").is_symlink())
+            self.assertEqual(list(outside.iterdir()), [])
+            self.assertFalse((root / ".refute" / "bin" / "refute").exists())
+
     def test_sync_rejects_traversal_member_without_writing_outside_cache(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
