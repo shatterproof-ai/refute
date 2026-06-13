@@ -1,14 +1,19 @@
 name: Nightly Release
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
     branches:
       - main
+    types:
+      - completed
   schedule:
     - cron: "17 8 * * *"
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: write
 
 concurrency:
@@ -16,8 +21,52 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  gate:
+    name: Require successful CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ci_ok: ${{ steps.gate.outputs.ci_ok }}
+      target_sha: ${{ steps.gate.outputs.target_sha }}
+
+    steps:
+      - name: Resolve publish commit
+        id: gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
+            echo "target_sha=${WORKFLOW_RUN_HEAD_SHA}" >> "$GITHUB_OUTPUT"
+            if [[ "${WORKFLOW_RUN_CONCLUSION}" == "success" ]]; then
+              echo "ci_ok=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "ci_ok=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          target_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha')"
+          echo "target_sha=${target_sha}" >> "$GITHUB_OUTPUT"
+
+          success_count="$(
+            gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${target_sha}&status=success&per_page=1" \
+              --jq '.workflow_runs | map(select(.conclusion == "success")) | length'
+          )"
+          if (( success_count == 0 )); then
+            echo "ci_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::error::CI has not succeeded for ${target_sha}; refusing to publish nightly."
+            exit 1
+          fi
+
+          echo "ci_ok=true" >> "$GITHUB_OUTPUT"
+
   nightly:
     name: Build unofficial nightly
+    needs: gate
+    if: needs.gate.outputs.ci_ok == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -60,7 +109,7 @@ jobs:
         if: steps.cooldown.outputs.proceed == 'true'
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ needs.gate.outputs.target_sha }}
           fetch-depth: 0
 
       - name: Set up Go
