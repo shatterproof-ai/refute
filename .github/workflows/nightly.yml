@@ -36,14 +36,21 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
           WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_RUN_EVENT: ${{ github.event.workflow_run.event }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_RUN_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
           WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
             echo "target_sha=${WORKFLOW_RUN_HEAD_SHA}" >> "$GITHUB_OUTPUT"
-            if [[ "${WORKFLOW_RUN_CONCLUSION}" == "success" ]]; then
+            if [[ "${WORKFLOW_RUN_EVENT}" == "push" \
+              && "${WORKFLOW_RUN_HEAD_REPOSITORY}" == "${GITHUB_REPOSITORY}" \
+              && "${WORKFLOW_RUN_HEAD_BRANCH}" == "main" \
+              && "${WORKFLOW_RUN_CONCLUSION}" == "success" ]]; then
               echo "ci_ok=true" >> "$GITHUB_OUTPUT"
             else
               echo "ci_ok=false" >> "$GITHUB_OUTPUT"
+              echo "Ignoring CI workflow_run: event=${WORKFLOW_RUN_EVENT}, repository=${WORKFLOW_RUN_HEAD_REPOSITORY}, branch=${WORKFLOW_RUN_HEAD_BRANCH}, conclusion=${WORKFLOW_RUN_CONCLUSION}."
             fi
             exit 0
           fi
