@@ -130,7 +130,9 @@ func TestShatterTargetsExistInMakefile(t *testing.T) {
 	}
 	content := string(data)
 	for _, want := range []string{
-		"SHATTER_BIN ?= $(HOME)/project/shatter/target/release/shatter",
+		"BIN_DIR ?= bin",
+		"REFUTE_BIN ?= $(BIN_DIR)/refute",
+		"SHATTER_BIN ?= shatter",
 		"shatter:",
 		"$(SHATTER_BIN) scan",
 		"--project-dir .",
@@ -138,10 +140,11 @@ func TestShatterTargetsExistInMakefile(t *testing.T) {
 		"--all",
 		"--resume auto",
 		"--progress",
-		".PHONY: build shatter shatter-clean",
+		".PHONY: build test vet fmt shatter shatter-clean",
 		"shatter-clean",
 		"build:",
-		"go build -buildvcs=false ./cmd/refute",
+		"go build -buildvcs=false -o $(REFUTE_BIN) ./cmd/refute",
+		".shatter/seeds",
 		".shatter-cache",
 		"shatter-artifacts",
 		"shatter-report",
@@ -184,12 +187,24 @@ func TestShatterGeneratedArtifactsAreIgnored(t *testing.T) {
 	}
 	content := string(data)
 	for _, want := range []string{
+		"/bin/",
+		"/refute",
 		".shatter-cache/",
+		".shatter/seeds/",
 		"shatter-artifacts/",
 		"shatter-report/",
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf(".gitignore missing %q", want)
+		}
+	}
+	for _, stale := range []string{
+		".dolt/",
+		"*.db",
+		".beads-credential-key",
+	} {
+		if strings.Contains(content, stale) {
+			t.Errorf(".gitignore should not keep stale Beads/Dolt entry %q", stale)
 		}
 	}
 }
