@@ -36,6 +36,71 @@ func TestReplaceWholeIdent_respectsIdentifierBoundaries(t *testing.T) {
 }
 
 func TestRunCodeActionWaitsForIdleAfterDidOpen(t *testing.T) {
+	adapter, writer, filePath := newCodeActionIdleHarness(t)
+
+	adapter.client.progress.begin("rust-analyzer/startup")
+	errCh := make(chan error, 1)
+	go func() {
+		we, err := adapter.runCodeAction(symbolRangeFor(filePath), "", opExtractFunction)
+		if err == nil && len(we.FileEdits) == 0 {
+			err = fmt.Errorf("expected code-action edits")
+		}
+		errCh <- err
+	}()
+
+	select {
+	case <-writer.didOpenSent:
+	case <-time.After(time.Second):
+		t.Fatal("DidOpen was not sent")
+	}
+
+	select {
+	case <-writer.codeActionSent:
+		t.Fatal("code action was requested before analysis became idle")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	adapter.client.progress.end("rust-analyzer/startup")
+
+	select {
+	case <-writer.codeActionSent:
+	case <-time.After(time.Second):
+		t.Fatal("code action was not requested after analysis became idle")
+	}
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("runCodeAction: %v", err)
+	}
+}
+
+func TestRunCodeActionDoesNotDuplicatePrimedDidOpen(t *testing.T) {
+	adapter, writer, filePath := newCodeActionIdleHarness(t)
+	adapter.markOpen(filePath)
+
+	errCh := make(chan error, 1)
+	go func() {
+		we, err := adapter.runCodeAction(symbolRangeFor(filePath), "", opExtractFunction)
+		if err == nil && len(we.FileEdits) == 0 {
+			err = fmt.Errorf("expected code-action edits")
+		}
+		errCh <- err
+	}()
+
+	select {
+	case <-writer.didOpenSent:
+		t.Fatal("runCodeAction sent duplicate DidOpen for an already-open file")
+	case <-writer.codeActionSent:
+	case <-time.After(time.Second):
+		t.Fatal("code action was not requested")
+	}
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("runCodeAction: %v", err)
+	}
+}
+
+func newCodeActionIdleHarness(t *testing.T) (*Adapter, *codeActionIdleWriter, string) {
+	t.Helper()
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "main.rs")
 	if err := os.WriteFile(filePath, []byte("fn main() {\n    let x = 1 + 2;\n}\n"), 0o644); err != nil {
@@ -77,41 +142,7 @@ func TestRunCodeActionWaitsForIdleAfterDidOpen(t *testing.T) {
 		requestTimeout: time.Second,
 	}
 	writer.client = client
-	adapter := &Adapter{languageID: "rust", client: client}
-
-	client.progress.begin("rust-analyzer/startup")
-	errCh := make(chan error, 1)
-	go func() {
-		we, err := adapter.runCodeAction(symbolRangeFor(filePath), "", opExtractFunction)
-		if err == nil && len(we.FileEdits) == 0 {
-			err = fmt.Errorf("expected code-action edits")
-		}
-		errCh <- err
-	}()
-
-	select {
-	case <-writer.didOpenSent:
-	case <-time.After(time.Second):
-		t.Fatal("DidOpen was not sent")
-	}
-
-	select {
-	case <-writer.codeActionSent:
-		t.Fatal("code action was requested before analysis became idle")
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	client.progress.end("rust-analyzer/startup")
-
-	select {
-	case <-writer.codeActionSent:
-	case <-time.After(time.Second):
-		t.Fatal("code action was not requested after analysis became idle")
-	}
-
-	if err := <-errCh; err != nil {
-		t.Fatalf("runCodeAction: %v", err)
-	}
+	return &Adapter{languageID: "rust", client: client}, writer, filePath
 }
 
 func symbolRangeFor(filePath string) symbol.SourceRange {
