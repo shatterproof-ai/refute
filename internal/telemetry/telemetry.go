@@ -1,21 +1,10 @@
 package telemetry
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
-
-// Entry is one telemetry record written before a refute command executes.
-type Entry struct {
-	Ts     string            `json:"ts"`
-	Args   []string          `json:"args"`
-	Cwd    string            `json:"cwd"`
-	Caller string            `json:"caller,omitempty"`
-	Env    map[string]string `json:"env,omitempty"`
-}
 
 // callerRules maps env-var prefixes to caller names, checked in priority order.
 var callerRules = []struct {
@@ -42,25 +31,6 @@ var envAllowPrefixes = []string{
 
 // secretPatterns is used to redact keys that look like credentials.
 var secretPatterns = []string{"KEY", "SECRET", "TOKEN", "PASSWORD"}
-
-// Capture builds an Entry from the given args and cwd, reading caller identity
-// and the env snapshot from the current process environment.
-func Capture(args []string, cwd string) Entry {
-	return CaptureFrom(args, cwd, os.Environ())
-}
-
-// CaptureFrom is like Capture but uses the provided environ slice instead of
-// os.Environ(). Useful for tests.
-func CaptureFrom(args []string, cwd string, environ []string) Entry {
-	e := Entry{
-		Ts:   time.Now().UTC().Format(time.RFC3339),
-		Args: args,
-		Cwd:  cwd,
-	}
-	e.Caller = detectCaller(environ)
-	e.Env = filteredEnv(environ)
-	return e
-}
 
 func detectCaller(environ []string) string {
 	for _, rule := range callerRules {
@@ -111,26 +81,4 @@ func DefaultPath() string {
 		return ""
 	}
 	return filepath.Join(home, ".local", "share", "refute", "telemetry.jsonl")
-}
-
-// Append serializes e as a JSON line and appends it to path, creating parent
-// directories as needed. Errors are silently discarded — telemetry must never
-// disrupt normal CLI operation.
-func Append(path string, e Entry) {
-	if path == "" {
-		return
-	}
-	data, err := json.Marshal(e)
-	if err != nil {
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return
-	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	_, _ = f.Write(append(data, '\n'))
 }
