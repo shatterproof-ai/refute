@@ -3,6 +3,7 @@ package tsmorph_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shatterproof-ai/refute/internal/backend/tsmorph"
@@ -74,5 +75,22 @@ func TestAvailableAt_EmptyWorkspaceReturnsFalseWithoutRepoPaths(t *testing.T) {
 	}
 	if tsmorph.AvailableAt(dir, "") {
 		t.Error("AvailableAt should return false when workspace is empty and no explicit path given")
+	}
+}
+
+func TestInitializeMissingAdapterReportsReleaseInstallHint(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+
+	err := tsmorph.NewAdapter().Initialize(t.TempDir())
+	if err == nil {
+		t.Fatal("Initialize succeeded with node absent, want missing adapter error")
+	}
+
+	const wantHint = "npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz"
+	if !strings.Contains(err.Error(), wantHint) {
+		t.Fatalf("Initialize error = %q, want install hint %q", err, wantHint)
+	}
+	if strings.Contains(err.Error(), "npm install -g @shatterproof-ai/refute-ts-adapter") {
+		t.Fatalf("Initialize error still references nonexistent npm registry package: %q", err)
 	}
 }
