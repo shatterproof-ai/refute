@@ -95,19 +95,18 @@ func buildDoctorReport() DoctorReport {
 // probeTSMorphAdapter checks whether the ts-morph adapter npm package is
 // discoverable on the current machine (global install or repo-relative dev path).
 func probeTSMorphAdapter() DoctorBackendStatus {
-	const pkg = "@shatterproof-ai/refute-ts-adapter"
 	row := DoctorBackendStatus{
 		Language:    "typescript",
 		Backend:     "tsmorph",
 		Operations:  []string{"rename"},
-		InstallHint: "npm install -g " + pkg,
+		InstallHint: tsmorph.AdapterInstallHint(),
 		Caveats:     "Preferred adapter for TypeScript/JavaScript rename; falls back to language server when missing.",
 	}
 	if tsAdapterAvailableFn() {
 		row.Status = DoctorStatusOK
 	} else {
 		row.Status = DoctorStatusMissing
-		row.MissingDependency = pkg
+		row.MissingDependency = tsmorph.AdapterPackageName
 	}
 	return row
 }

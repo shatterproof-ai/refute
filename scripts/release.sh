@@ -32,7 +32,7 @@ commit="$(git rev-parse --short HEAD)"
 build_date="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 dist_dir="${DIST_DIR:-dist}"
 module="github.com/shatterproof-ai/refute/internal/cli"
-ldflags="-s -w -X ${module}.Version=${version} -X ${module}.Commit=${commit} -X ${module}.BuildDate=${build_date}"
+tsmorph_module="github.com/shatterproof-ai/refute/internal/backend/tsmorph"
 package_version="${version#v}"
 python_package_version="${package_version}"
 if [[ "${version}" == nightly-* ]]; then
@@ -44,6 +44,7 @@ if [[ "${version}" == nightly-* ]]; then
   package_version="0.0.0-nightly.${nightly_date}.${nightly_sha}.${nightly_run}"
   python_package_version="0.0.0.dev${nightly_date}+${nightly_sha}.${nightly_run}"
 fi
+ldflags="-s -w -X ${module}.Version=${version} -X ${module}.Commit=${commit} -X ${module}.BuildDate=${build_date} -X ${tsmorph_module}.ReleaseVersion=${version} -X ${tsmorph_module}.AdapterPackageVersion=${package_version}"
 
 case "${dist_dir}" in
   "" | "." | ".." | "../"* | "/" | "${root}" | "${root}/")
@@ -101,6 +102,19 @@ cp -R adapters/npm/. "${npm_staging}/"
 sed -i "s/\"version\": \"0.0.0-dev\"/\"version\": \"${package_version}\"/" "${npm_staging}/package.json"
 tar -C "${npm_staging}" -czf "${dist_dir}/refute-tool-npm-${package_version}.tgz" .
 rm -rf "${npm_staging}"
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "npm is required to build the TypeScript adapter package" >&2
+  exit 2
+fi
+
+ts_adapter_staging="${dist_dir}/ts-adapter-package"
+mkdir -p "${ts_adapter_staging}"
+cp -R adapters/tsmorph/. "${ts_adapter_staging}/"
+sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${package_version}\"/" "${ts_adapter_staging}/package.json"
+packed_adapter="$(npm pack "${ts_adapter_staging}" --pack-destination "${dist_dir}" --silent)"
+mv "${dist_dir}/${packed_adapter}" "${dist_dir}/refute-ts-adapter-${package_version}.tgz"
+rm -rf "${ts_adapter_staging}"
 
 python3 - "${python_package_version}" "${dist_dir}/refute_tool-${python_package_version}-py3-none-any.whl" <<'PY'
 import base64

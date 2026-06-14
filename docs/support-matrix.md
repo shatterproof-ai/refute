@@ -39,8 +39,8 @@ matrix this way:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Go | `.go` | `lsp/gopls` | `go install golang.org/x/tools/gopls@latest` | rename, extract-function, extract-variable, inline | unit + required integration (`internal/integration_test.go`) | supported | Primary v0.1 dogfood target. |
 | Rust | `.rs` | `lsp/rust-analyzer` | `rustup component add rust-analyzer` | rename, extract-function, extract-variable, inline | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI) | experimental | Tier-1 --symbol supports forms 1–7 (crate::module::Type::method, <Type as Trait>::method). Inline is single-call-site only. Experimental while dogfood confidence is still building. |
-| TypeScript | `.ts`, `.tsx` | `tsmorph` preferred; `lsp/typescript-language-server` fallback | `npm install -g @shatterproof-ai/refute-ts-adapter`; fallback: `npm install -g typescript-language-server typescript` | rename | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI with fixture dependencies installed) | experimental | The adapter is a separate dependency and is not bundled with `go install`; fallback is rename-only LSP coverage. Adapter packaging tracked in [issue #1](https://github.com/shatterproof-ai/refute/issues/1). The adapter discovers root and nested `tsconfig.json`/`jsconfig.json` files outside `node_modules`. |
-| JavaScript | `.js`, `.jsx` | `tsmorph` preferred; `lsp/typescript-language-server` fallback | `npm install -g @shatterproof-ai/refute-ts-adapter`; fallback: `npm install -g typescript-language-server typescript` | rename | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI with fixture dependencies installed) | experimental | Same adapter and fallback caveats as TypeScript; the adapter discovers root and nested `tsconfig.json`/`jsconfig.json` files outside `node_modules`. |
+| TypeScript | `.ts`, `.tsx` | `tsmorph` preferred; `lsp/typescript-language-server` fallback | `npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz`; fallback: `npm install -g typescript-language-server typescript` | rename | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI with fixture dependencies installed) | experimental | The adapter is a separate dependency distributed from GitHub Releases rather than the npm registry; fallback is rename-only LSP coverage. The adapter discovers root and nested `tsconfig.json`/`jsconfig.json` files outside `node_modules`. |
+| JavaScript | `.js`, `.jsx` | `tsmorph` preferred; `lsp/typescript-language-server` fallback | `npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz`; fallback: `npm install -g typescript-language-server typescript` | rename | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI with fixture dependencies installed) | experimental | Same adapter and fallback caveats as TypeScript; the adapter discovers root and nested `tsconfig.json`/`jsconfig.json` files outside `node_modules`. |
 | Python | `.py` | `lsp/pyright` | `npm install -g pyright` | rename | none | planned | Promote once fixture and integration coverage land. |
 | Java | `.java` | OpenRewrite | — | — | none | unsupported | Not claimed for v0.1. JAR packaging deferred. |
 | Kotlin | `.kt` | OpenRewrite | — | — | none | unsupported | Not claimed for v0.1. |
@@ -81,7 +81,7 @@ To move a language from **experimental** to **supported**:
 
 To move a language from **implemented but not packaged** to **experimental**:
 
-1. Solve adapter packaging (e.g., separate npm package per issue #1, or
+1. Solve adapter packaging (e.g., GitHub release tarball package, or
    `//go:embed` of a self-contained bundle).
 2. Update `refute doctor` so the install hint reflects the actual
    distribution path.
@@ -105,7 +105,7 @@ When `refute` cannot find a language server it prints an install hint. Sources:
 | Go | `go install golang.org/x/tools/gopls@latest` |
 | Rust | `rustup component add rust-analyzer` |
 | TypeScript | `npm install -g typescript-language-server typescript` |
-| TypeScript adapter | `npm install -g @shatterproof-ai/refute-ts-adapter` |
+| TypeScript adapter | `npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz` |
 | Python | `npm install -g pyright` |
 
 These hints mirror `refute doctor`. Code-side install-hint consolidation is

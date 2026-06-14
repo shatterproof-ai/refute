@@ -23,6 +23,7 @@ Outputs are written to `dist/`:
 | `refute_v0.1.0_darwin_arm64.tar.gz` | macOS arm64 binary |
 | `refute-manifest-v0.1.0.json` | Canonical lockfile source for platform artifact URLs and SHA-256 values |
 | `refute-tool-npm-0.1.0.tgz` | npm-family shim package |
+| `refute-ts-adapter-0.1.0.tgz` | TypeScript/JavaScript ts-morph adapter package |
 | `refute_tool-0.1.0-py3-none-any.whl` | pip/uv shim package |
 | `cargo-refute-0.1.0.tar.gz` | Cargo helper source package |
 | `refute-tool-maven-repository-0.1.0.tar.gz` | File-backed Maven repository bundle for Maven and Gradle |
@@ -74,6 +75,18 @@ checksums, and version metadata stamped by this release workflow.
 artifact by OS and architecture, and install the one active project binary at
 `.refute/bin/refute`. npm, Python, Cargo, Go, Maven, and Gradle adapters are
 thin shims over that path rather than separate refute owners.
+
+The TypeScript/JavaScript ts-morph adapter is packaged from
+`adapters/tsmorph/` with `npm pack` and attached to the same GitHub release as
+`refute-ts-adapter-<package-version>.tgz`. Consumers install it without the npm
+registry:
+
+```bash
+npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz
+```
+
+The npm package identity remains `@shatterproof-ai/refute-ts-adapter`, so the
+existing workspace and global `node_modules` discovery paths continue to work.
 
 ## Nightly Release
 
