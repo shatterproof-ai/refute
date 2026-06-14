@@ -59,3 +59,58 @@ func TestRenderDiff_NoEdits(t *testing.T) {
 		t.Errorf("expected empty string for no edits, got: %q", diff)
 	}
 }
+
+func TestRenderDiff_ordersFilesDeterministically(t *testing.T) {
+	dir := t.TempDir()
+	aPath := filepath.Join(dir, "a.go")
+	bPath := filepath.Join(dir, "b.go")
+	if err := os.WriteFile(aPath, []byte("package main\n\nvar a = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bPath, []byte("package main\n\nvar b = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	we := &edit.WorkspaceEdit{
+		FileEdits: []edit.FileEdit{
+			{
+				Path: bPath,
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 2, Character: 4},
+							End:   edit.Position{Line: 2, Character: 5},
+						},
+						NewText: "renamedB",
+					},
+				},
+			},
+			{
+				Path: aPath,
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 2, Character: 4},
+							End:   edit.Position{Line: 2, Character: 5},
+						},
+						NewText: "renamedA",
+					},
+				},
+			},
+		},
+	}
+
+	diff, err := edit.RenderDiff(we)
+	if err != nil {
+		t.Fatalf("RenderDiff failed: %v", err)
+	}
+
+	aIndex := strings.Index(diff, "--- "+aPath)
+	bIndex := strings.Index(diff, "--- "+bPath)
+	if aIndex < 0 || bIndex < 0 {
+		t.Fatalf("diff missing file headers for %q or %q:\n%s", aPath, bPath, diff)
+	}
+	if aIndex > bIndex {
+		t.Fatalf("diff files not sorted by path:\n%s", diff)
+	}
+}
