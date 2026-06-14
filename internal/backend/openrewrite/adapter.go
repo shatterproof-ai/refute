@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -34,8 +35,10 @@ type Adapter struct {
 	process       *exec.Cmd
 	stdin         io.WriteCloser
 	stdout        *json.Decoder
+	stderrMu      sync.Mutex
 	stderrFile    *os.File
 	stderrPath    string
+	shutdownOnce  sync.Once
 	// shutdownTimeout overrides defaultShutdownTimeout when non-zero (tests).
 	shutdownTimeout time.Duration
 	nextID          atomic.Int64
@@ -112,14 +115,16 @@ func (a *Adapter) Initialize(workspaceRoot string) error {
 // exit within a bounded timeout, and falls back to killing the process so a
 // hung JVM cannot block the CLI forever.
 func (a *Adapter) Shutdown() error {
-	if a.stdin != nil {
-		_ = a.stdin.Close()
-	}
 	var err error
-	if a.process != nil {
-		err = a.waitWithTimeout()
-	}
-	a.cleanupStderr()
+	a.shutdownOnce.Do(func() {
+		if a.stdin != nil {
+			_ = a.stdin.Close()
+		}
+		if a.process != nil {
+			err = a.waitWithTimeout()
+		}
+		a.cleanupStderr()
+	})
 	return err
 }
 
@@ -135,6 +140,14 @@ func (a *Adapter) waitWithTimeout() error {
 	go func() { done <- a.process.Wait() }()
 	select {
 	case err := <-done:
+		// The process exited on its own after stdin closed. A non-zero exit
+		// status (e.g. System.exit(1)) is reported as *exec.ExitError; that
+		// still means the JVM terminated, so treat it as a clean shutdown and
+		// only surface genuine wait failures (I/O errors, lost child, etc.).
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return nil
+		}
 		return err
 	case <-time.After(timeout):
 		if a.process.Process != nil {
@@ -157,7 +170,12 @@ func (a *Adapter) stderrSuffix() string {
 
 // readStderr reads the captured JVM stderr, bounded by maxJVMStderrBytes.
 func (a *Adapter) readStderr() string {
-	if a == nil || a.stderrPath == "" {
+	if a == nil {
+		return ""
+	}
+	a.stderrMu.Lock()
+	defer a.stderrMu.Unlock()
+	if a.stderrPath == "" {
 		return ""
 	}
 	if a.stderrFile != nil {
@@ -186,6 +204,8 @@ func (a *Adapter) readStderr() string {
 
 // cleanupStderr closes and removes the captured-stderr temp file.
 func (a *Adapter) cleanupStderr() {
+	a.stderrMu.Lock()
+	defer a.stderrMu.Unlock()
 	if a.stderrFile != nil {
 		a.stderrFile.Close()
 		a.stderrFile = nil

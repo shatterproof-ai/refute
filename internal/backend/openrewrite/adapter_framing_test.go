@@ -196,4 +196,36 @@ func TestShutdownCleanExit(t *testing.T) {
 	if err := a.Shutdown(); err != nil {
 		t.Fatalf("clean Shutdown returned error: %v", err)
 	}
+	// Shutdown must be idempotent (sync.Once): a second call is a no-op, not a
+	// double-close panic or spurious error.
+	if err := a.Shutdown(); err != nil {
+		t.Fatalf("second Shutdown returned error: %v", err)
+	}
+}
+
+// TestShutdownCleanExitNonZero verifies that a subprocess which exits with a
+// non-zero status after stdin EOF (e.g. System.exit(1)) is treated as a clean
+// shutdown — the process did exit, so Shutdown must not return the ExitError.
+func TestShutdownCleanExitNonZero(t *testing.T) {
+	shBin, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh not on PATH")
+	}
+	// Drain stdin, then exit non-zero once stdin closes.
+	cmd := exec.Command(shBin, "-c", "cat >/dev/null; exit 3")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatalf("stdin pipe: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start sh: %v", err)
+	}
+	a := &Adapter{
+		process:         cmd,
+		stdin:           stdin,
+		shutdownTimeout: 5 * time.Second,
+	}
+	if err := a.Shutdown(); err != nil {
+		t.Fatalf("non-zero clean Shutdown should be treated as success, got: %v", err)
+	}
 }
