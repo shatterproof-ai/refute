@@ -22,6 +22,12 @@ func (e *ExitCodeError) Error() string {
 	return e.Message
 }
 
+func (e *ExitCodeError) ExitCode() int { return e.Code }
+
+type exitCoder interface {
+	ExitCode() int
+}
+
 // NoEditsError is returned when a refactoring produced no changes. Exit 2 is
 // the refute convention for "nothing to do" (useful for scripting).
 func NoEditsError() error {
@@ -43,6 +49,8 @@ func (e *ErrLSPServerMissing) Error() string {
 	}
 	return fmt.Sprintf("LSP server %q for %s not found on PATH", e.Command, e.Language)
 }
+
+func (e *ErrLSPServerMissing) ExitCode() int { return 3 }
 
 // ErrSymbolNotFound is returned by the CLI Rust rename path when no symbol
 // matches the parsed --symbol query. Exit code 2 signals "no match found".
@@ -71,10 +79,9 @@ func (e *ErrSymbolNotFound) ExitCode() int { return 2 }
 
 // Run executes fn and maps any returned error to an exit code:
 //
-//	nil                  → 0
-//	*ExitCodeError       → e.Code (message printed to stderr only if non-empty)
-//	*ErrLSPServerMissing → 3 (message printed to stderr)
-//	anything else        → 1 (message printed to stderr)
+//	nil                   → 0
+//	interface{ExitCode()} → ExitCode() (message printed to stderr only if non-empty)
+//	anything else         → 1 (message printed to stderr)
 func Run(fn func() error) {
 	cwd, _ := os.Getwd()
 	rec := telemetry.Start(os.Args[1:], cwd, telemetry.Options{Verbose: argsContainVerbose(os.Args[1:])})
@@ -97,25 +104,32 @@ func exitDetails(err error) (int, string) {
 	if err == nil {
 		return 0, ""
 	}
-	var ec *ExitCodeError
+	var ec exitCoder
 	if errors.As(err, &ec) {
-		return ec.Code, ec.Message
-	}
-	var em *ErrLSPServerMissing
-	if errors.As(err, &em) {
-		return 3, em.Error()
+		return ec.ExitCode(), exitMessage(err, ec)
 	}
 	return 1, err.Error()
 }
 
-func defaultStatusForError(err error) string {
-	var ec *ExitCodeError
-	if errors.As(err, &ec) && ec.Code == 2 {
-		return edit.StatusNoOp
+func exitMessage(err error, ec exitCoder) string {
+	switch e := ec.(type) {
+	case *ExitCodeError:
+		return e.Message
+	case *ErrLSPServerMissing:
+		return e.Error()
+	default:
+		return err.Error()
 	}
+}
+
+func defaultStatusForError(err error) string {
 	var em *ErrLSPServerMissing
 	if errors.As(err, &em) {
 		return edit.StatusBackendMissing
+	}
+	var ec exitCoder
+	if errors.As(err, &ec) && ec.ExitCode() == 2 {
+		return edit.StatusNoOp
 	}
 	return "failed"
 }

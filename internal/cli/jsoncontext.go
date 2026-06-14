@@ -53,7 +53,7 @@ func statusForFlags() string {
 // emitJSONError writes a structured error envelope to stdout and returns an
 // ExitCodeError so Run() exits with a non-zero status without printing the
 // message twice. Intended for use only when flagJSON is set.
-func emitJSONError(ctx jsonContext, status, code, message, hint string) error {
+func emitJSONError(ctx jsonContext, status, code, message, hint string, exitCode ...int) error {
 	telemetrySetContext(ctx)
 	telemetrySetStatus(status)
 	telemetrySetError(code, message)
@@ -75,7 +75,32 @@ func emitJSONError(ctx jsonContext, status, code, message, hint string) error {
 		return fmt.Errorf("marshalling JSON error: %w", err)
 	}
 	fmt.Println(string(data))
-	return &ExitCodeError{Code: 1}
+	return &ExitCodeError{Code: jsonErrorExitCode(status, exitCode...)}
+}
+
+func jsonErrorExitCode(status string, exitCode ...int) int {
+	if len(exitCode) > 0 {
+		return exitCode[0]
+	}
+	switch status {
+	case edit.StatusNoOp:
+		return 2
+	case edit.StatusBackendMissing:
+		return 3
+	default:
+		return 1
+	}
+}
+
+func exitCodeForError(err error) int {
+	if err == nil {
+		return 0
+	}
+	var ec exitCoder
+	if errors.As(err, &ec) {
+		return ec.ExitCode()
+	}
+	return 1
 }
 
 func backendErrorStatus(err error) string {
@@ -93,15 +118,18 @@ func backendErrorStatus(err error) string {
 }
 
 func emitJSONOperationError(ctx jsonContext, err error) error {
-	var ec *ExitCodeError
+	var ec exitCoder
+	var symbolMissing *ErrSymbolNotFound
 	switch {
 	case errors.Is(err, backend.ErrUnsupported):
 		return emitJSONError(ctx, edit.StatusUnsupported, "unsupported-operation", err.Error(), "")
 	case errors.Is(err, backend.ErrSymbolNotFound):
-		return emitJSONError(ctx, edit.StatusInvalidPosition, "symbol-not-found", err.Error(), "")
-	case errors.As(err, &ec) && ec.Code == 2:
-		return emitJSONError(ctx, edit.StatusNoOp, "no-op", err.Error(), "")
+		return emitJSONError(ctx, edit.StatusInvalidPosition, "symbol-not-found", err.Error(), "", 2)
+	case errors.As(err, &symbolMissing):
+		return emitJSONError(ctx, edit.StatusInvalidPosition, "symbol-not-found", err.Error(), "", symbolMissing.ExitCode())
+	case errors.As(err, &ec) && ec.ExitCode() == 2:
+		return emitJSONError(ctx, edit.StatusNoOp, "no-op", err.Error(), "", ec.ExitCode())
 	default:
-		return emitJSONError(ctx, edit.StatusBackendFailed, "operation-failed", err.Error(), "")
+		return emitJSONError(ctx, edit.StatusBackendFailed, "operation-failed", err.Error(), "", exitCodeForError(err))
 	}
 }
