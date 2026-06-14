@@ -425,7 +425,10 @@ func (r *Recorder) Finish(info FinishInfo) {
 	}
 	// Best-effort retention: cap retained snapshots and rotate the append-only
 	// log so neither grows without bound. Failures must never affect the
-	// operation, so errors are ignored.
+	// operation, so errors are ignored. Finish must run after the current
+	// invocation's snapshot is fully materialized (i.e. after CaptureSnapshot
+	// and any MarkSnapshotApplied) so the sweep's byte accounting reflects the
+	// snapshot's final on-disk size and never prunes a partially written dir.
 	sweepSnapshots(r.snapshotRoot, MaxSnapshotInvocations, MaxSnapshotBytes)
 	rotateTelemetryLog(r.telemetryPath, MaxTelemetryLogBytes)
 }

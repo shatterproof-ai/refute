@@ -156,6 +156,24 @@ func TestSweepSnapshots_capsByBytes(t *testing.T) {
 	}
 }
 
+func TestSweepSnapshots_keepsNewestEvenWhenOverByteCap(t *testing.T) {
+	root := t.TempDir()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	// The newest directory alone exceeds maxBytes — it must still survive,
+	// since it represents the just-written current invocation at Finish.
+	newest := makeSnapshotDir(t, root, "newest", 500, base.Add(2*time.Hour))
+	older := makeSnapshotDir(t, root, "older", 10, base.Add(1*time.Hour))
+
+	sweepSnapshots(root, 0, 100)
+
+	if _, err := os.Stat(newest); err != nil {
+		t.Errorf("newest dir must never be pruned by the byte cap: %v", err)
+	}
+	if _, err := os.Stat(older); !os.IsNotExist(err) {
+		t.Errorf("older dir should be removed once budget is exhausted: stat err=%v", err)
+	}
+}
+
 func TestSweepSnapshots_missingRootIsNoop(t *testing.T) {
 	// Must not panic on a non-existent root.
 	sweepSnapshots(filepath.Join(t.TempDir(), "does-not-exist"), 10, 10)

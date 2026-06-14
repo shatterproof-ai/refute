@@ -64,7 +64,11 @@ func sweepSnapshots(root string, maxDirs int, maxBytes int64) {
 		switch {
 		case maxDirs > 0 && i >= maxDirs:
 			remove = true
-		case maxBytes > 0 && kept+d.size > maxBytes:
+		case maxBytes > 0 && i > 0 && kept+d.size > maxBytes:
+			// The byte cap never evicts index 0 (the newest directory, which is
+			// the just-written current invocation at Finish). Otherwise a single
+			// snapshot larger than maxBytes would be deleted while the end event
+			// still references its manifest path, leaving a dangling reference.
 			remove = true
 		}
 		if remove {
