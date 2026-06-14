@@ -17,9 +17,33 @@ import (
 
 var _ backend.RefactoringBackend = (*Adapter)(nil)
 
+const (
+	adapterPackageScope    = "@shatterproof-ai"
+	adapterPackageBaseName = "refute-ts-adapter"
+	AdapterPackageName     = adapterPackageScope + "/" + adapterPackageBaseName
+)
+
+var (
+	// ReleaseVersion and AdapterPackageVersion are stamped by scripts/release.sh.
+	ReleaseVersion        = "v0.1.0"
+	AdapterPackageVersion = "0.1.0"
+)
+
 type Adapter struct {
 	workspaceRoot string
 	adapterPath   string // explicit override; empty means auto-discover
+}
+
+func AdapterInstallHint() string {
+	return fmt.Sprintf("npm install -g %s", AdapterReleaseTarballURL())
+}
+
+func AdapterReleaseTarballURL() string {
+	return fmt.Sprintf("https://github.com/shatterproof-ai/refute/releases/download/%s/%s", ReleaseVersion, AdapterTarballName())
+}
+
+func AdapterTarballName() string {
+	return fmt.Sprintf("%s-%s.tgz", adapterPackageBaseName, AdapterPackageVersion)
 }
 
 func NewAdapter() *Adapter {
@@ -55,7 +79,7 @@ func AvailableAt(workspaceRoot, explicitPath string) bool {
 
 func (a *Adapter) Initialize(workspaceRoot string) error {
 	if !AvailableAt(workspaceRoot, a.adapterPath) {
-		return fmt.Errorf("ts-morph adapter not found; install with: npm install -g @shatterproof-ai/refute-ts-adapter")
+		return fmt.Errorf("ts-morph adapter not found; install with: %s", AdapterInstallHint())
 	}
 	absRoot, err := filepath.Abs(workspaceRoot)
 	if err != nil {
@@ -228,7 +252,7 @@ func (a *Adapter) run(req any, resp any) error {
 
 	p, ok := resolveAdapterPaths(a.workspaceRoot, a.adapterPath)
 	if !ok {
-		return fmt.Errorf("ts-morph adapter not found; install with: npm install -g @shatterproof-ai/refute-ts-adapter")
+		return fmt.Errorf("ts-morph adapter not found; install with: %s", AdapterInstallHint())
 	}
 	cmd := exec.Command("node", p.script)
 	cmd.Dir = a.workspaceRoot
@@ -302,7 +326,7 @@ func resolveAdapterPaths(workspaceRoot, explicitPath string) (paths, bool) {
 
 	// 2. Workspace node_modules/@shatterproof-ai/refute-ts-adapter.
 	if workspaceRoot != "" {
-		pkgDir := filepath.Join(workspaceRoot, "node_modules", "@shatterproof-ai", "refute-ts-adapter")
+		pkgDir := filepath.Join(workspaceRoot, "node_modules", adapterPackageScope, adapterPackageBaseName)
 		script := filepath.Join(pkgDir, "rename.cjs")
 		// Prefer bundled ts-morph; fall back to hoisted.
 		for _, modDir := range []string{
@@ -318,7 +342,7 @@ func resolveAdapterPaths(workspaceRoot, explicitPath string) (paths, bool) {
 
 	// 3. Global npm root.
 	if root := globalNpmRoot(); root != "" {
-		pkgDir := filepath.Join(root, "@shatterproof-ai", "refute-ts-adapter")
+		pkgDir := filepath.Join(root, adapterPackageScope, adapterPackageBaseName)
 		p := paths{
 			script:    filepath.Join(pkgDir, "rename.cjs"),
 			moduleDir: filepath.Join(pkgDir, "node_modules", "ts-morph"),

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -22,9 +23,12 @@ func TestDoctor_IncludesTSMorphAdapterEntry(t *testing.T) {
 		t.Fatal("doctor report missing entry with language=typescript backend=tsmorph")
 	}
 
-	const wantHint = "npm install -g @shatterproof-ai/refute-ts-adapter"
+	const wantHint = "npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz"
 	if found.InstallHint != wantHint {
 		t.Errorf("InstallHint = %q, want %q", found.InstallHint, wantHint)
+	}
+	if strings.Contains(found.InstallHint, "npm install -g @shatterproof-ai/refute-ts-adapter") {
+		t.Errorf("InstallHint still references nonexistent npm registry package: %q", found.InstallHint)
 	}
 }
 

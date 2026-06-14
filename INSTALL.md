@@ -89,6 +89,29 @@ registries:
 }
 ```
 
+The TypeScript/JavaScript ts-morph adapter is also distributed from GitHub
+Releases instead of the public npm registry. Install the adapter globally from
+the versioned release tarball:
+
+```bash
+npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz
+refute doctor
+```
+
+For unreleased source builds, clone the repository and install the adapter
+subdirectory directly:
+
+```bash
+git clone https://github.com/shatterproof-ai/refute.git
+cd refute
+npm install -g ./adapters/tsmorph
+```
+
+The installed package name is still
+`@shatterproof-ai/refute-ts-adapter`; only the distribution source is
+registryless. Pin release installs by the GitHub release tag and tarball name,
+for example `v0.1.0` with `refute-ts-adapter-0.1.0.tgz`.
+
 ```txt
 refute-tool @ https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute_tool-0.1.0-py3-none-any.whl
 ```

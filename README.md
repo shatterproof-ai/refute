@@ -62,7 +62,7 @@ Install the backend for the language(s) you plan to refactor:
 go install golang.org/x/tools/gopls@latest
 
 # TypeScript / JavaScript (experimental; preferred adapter when available)
-npm install -g @shatterproof-ai/refute-ts-adapter
+npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz
 
 # TypeScript / JavaScript fallback (rename-only LSP path)
 npm install -g typescript-language-server typescript
@@ -74,6 +74,9 @@ rustup component add rust-analyzer
 For TypeScript and JavaScript, `refute` prefers the ts-morph adapter when it is
 available in the workspace or configured explicitly, then falls back to
 `typescript-language-server` for rename-only LSP coverage.
+The adapter package name remains `@shatterproof-ai/refute-ts-adapter`, but the
+package is distributed as a versioned tarball attached to GitHub releases
+rather than through the public npm registry.
 
 Refactoring quality is bounded by the backing language server. Out-of-date
 backends produce out-of-date refactorings.
@@ -174,9 +177,9 @@ Run `refute <command> --help` for full flag documentation.
   between releases.
 - Python support is planned but not release-supported in v0.1.
 - Java and Kotlin support through OpenRewrite is not claimed for v0.1.
-- Some backends (notably ts-morph and OpenRewrite) currently ship as
-  repo-local adapter assets and will not work end-to-end from a bare
-  `go install` build until adapter packaging is resolved.
+- OpenRewrite currently ships as repo-local adapter assets and will not work
+  end-to-end from a bare `go install` build until adapter packaging is
+  resolved.
 - There is no daemon or MCP server in v0.1. Every invocation starts a fresh
   language server.
 

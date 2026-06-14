@@ -105,7 +105,7 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 					Language:    "typescript",
 					Backend:     "tsmorph",
 					Status:      DoctorStatusOK,
-					InstallHint: "npm install -g @shatterproof-ai/refute-ts-adapter",
+					InstallHint: "npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz",
 				},
 				{
 					Language:    "typescript",
@@ -158,7 +158,7 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 					Backend:           "tsmorph",
 					Status:            DoctorStatusMissing,
 					MissingDependency: "@shatterproof-ai/refute-ts-adapter",
-					InstallHint:       "npm install -g @shatterproof-ai/refute-ts-adapter",
+					InstallHint:       "npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz",
 				},
 				{
 					Language:          "typescript",
