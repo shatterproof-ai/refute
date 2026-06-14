@@ -18,7 +18,7 @@ func RenderDiff(we *WorkspaceEdit) (string, error) {
 
 	var parts []string
 
-	for _, fe := range we.FileEdits {
+	for _, fe := range orderedFileEdits(we.FileEdits) {
 		original, err := os.ReadFile(fe.Path)
 		if err != nil {
 			return "", fmt.Errorf("read %s: %w", fe.Path, err)

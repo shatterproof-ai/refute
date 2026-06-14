@@ -15,6 +15,37 @@ import (
 	"time"
 )
 
+func TestParseWorkspaceEditSortsChangesMapByFilePath(t *testing.T) {
+	dir := t.TempDir()
+	aPath := filepath.Join(dir, "a.go")
+	bPath := filepath.Join(dir, "b.go")
+	if err := os.WriteFile(aPath, []byte("package main\n\nvar A = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bPath, []byte("package main\n\nvar B = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	input := fmt.Sprintf(`{
+		"changes": {
+			%q: [{"range":{"start":{"line":2,"character":4},"end":{"line":2,"character":5}},"newText":"RenamedB"}],
+			%q: [{"range":{"start":{"line":2,"character":4},"end":{"line":2,"character":5}},"newText":"RenamedA"}]
+		}
+	}`, fileToURI(bPath), fileToURI(aPath))
+
+	fileEdits, err := parseWorkspaceEdit(json.RawMessage(input))
+	if err != nil {
+		t.Fatalf("parseWorkspaceEdit: %v", err)
+	}
+
+	if len(fileEdits) != 2 {
+		t.Fatalf("got %d file edits, want 2: %+v", len(fileEdits), fileEdits)
+	}
+	if fileEdits[0].Path != aPath || fileEdits[1].Path != bPath {
+		t.Fatalf("file edits not sorted by path: got [%q, %q], want [%q, %q]", fileEdits[0].Path, fileEdits[1].Path, aPath, bPath)
+	}
+}
+
 func TestParseWorkspaceEditRejectsEmptyURIInDocumentChanges(t *testing.T) {
 	cases := []struct {
 		name  string

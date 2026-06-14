@@ -110,6 +110,64 @@ func TestRenderJSON_SuccessGolden(t *testing.T) {
 	}
 }
 
+func TestRenderJSON_ordersFilesAndChangesDeterministically(t *testing.T) {
+	we := &edit.WorkspaceEdit{
+		FileEdits: []edit.FileEdit{
+			{
+				Path: "/tmp/b.go",
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 3, Character: 0},
+							End:   edit.Position{Line: 3, Character: 1},
+						},
+						NewText: "late",
+					},
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 1, Character: 0},
+							End:   edit.Position{Line: 1, Character: 1},
+						},
+						NewText: "early",
+					},
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 1, Character: 0},
+							End:   edit.Position{Line: 1, Character: 1},
+						},
+						NewText: "same-range",
+					},
+				},
+			},
+			{
+				Path: "/tmp/a.go",
+				Edits: []edit.TextEdit{
+					{
+						Range: edit.Range{
+							Start: edit.Position{Line: 0, Character: 0},
+							End:   edit.Position{Line: 0, Character: 1},
+						},
+						NewText: "first-file",
+					},
+				},
+			},
+		},
+	}
+
+	res := edit.RenderJSON(we, edit.StatusDryRun)
+	if len(res.Edits) != 2 {
+		t.Fatalf("got %d file edits, want 2", len(res.Edits))
+	}
+	if res.Edits[0].File != "/tmp/a.go" || res.Edits[1].File != "/tmp/b.go" {
+		t.Fatalf("files not sorted by path: %+v", res.Edits)
+	}
+
+	changes := res.Edits[1].Changes
+	if got := []string{changes[0].NewText, changes[1].NewText, changes[2].NewText}; got[0] != "early" || got[1] != "same-range" || got[2] != "late" {
+		t.Fatalf("changes not sorted by position with stable equal-range order: got %v", got)
+	}
+}
+
 func TestRenderJSON_nilAndEmpty(t *testing.T) {
 	if res := edit.RenderJSON(nil, "no-op"); res.FilesModified != 0 || len(res.Edits) != 0 {
 		t.Errorf("nil input should produce empty result, got %+v", res)

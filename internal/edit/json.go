@@ -80,7 +80,7 @@ func RenderJSON(we *WorkspaceEdit, status string) *JSONResult {
 	if we == nil {
 		return res
 	}
-	for _, fe := range we.FileEdits {
+	for _, fe := range orderedFileEdits(we.FileEdits) {
 		if len(fe.Edits) == 0 {
 			continue
 		}
