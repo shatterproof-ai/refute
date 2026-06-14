@@ -6,7 +6,7 @@ const { Project } = require("ts-morph");
 
 const configFileNames = new Set(["tsconfig.json", "jsconfig.json"]);
 const sourceFileExtensions = ["ts", "tsx", "js", "jsx"];
-const ignoredProjectDirs = new Set(["node_modules"]);
+const ignoredProjectDirs = new Set([".git", "node_modules"]);
 
 function readInput() {
   return new Promise((resolve, reject) => {
@@ -58,8 +58,9 @@ function globPath(...segments) {
 function createProject(workspaceRoot) {
   const configPaths = projectConfigPaths(workspaceRoot);
   if (configPaths.length > 0) {
-    const project = new Project();
-    for (const configPath of configPaths) {
+    const [primaryConfigPath, ...extraConfigPaths] = configPaths;
+    const project = new Project({ tsConfigFilePath: primaryConfigPath });
+    for (const configPath of extraConfigPaths) {
       project.addSourceFilesFromTsConfig(configPath);
     }
     return project;
