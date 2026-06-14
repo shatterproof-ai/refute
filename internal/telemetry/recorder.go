@@ -104,10 +104,11 @@ type Recorder struct {
 	agent        AgentInfo
 	env          map[string]string
 
-	ctx      OperationContext
-	project  ProjectInfo
-	error    *ErrorInfo
-	snapshot *SnapshotManifest
+	ctx             OperationContext
+	project         ProjectInfo
+	projectDetected bool
+	error           *ErrorInfo
+	snapshot        *SnapshotManifest
 
 	phaseOrder []string
 	phases     map[string]time.Duration
@@ -160,7 +161,7 @@ func Start(args []string, cwd string, opts Options) *Recorder {
 	if environ == nil {
 		environ = os.Environ()
 	}
-	if envValue(environ, envTelemetry) == "0" {
+	if isDisabledValue(envValue(environ, envTelemetry)) {
 		return &Recorder{}
 	}
 	now := opts.Now
@@ -187,7 +188,7 @@ func Start(args []string, cwd string, opts Options) *Recorder {
 	caller := detectCaller(environ)
 	r := &Recorder{
 		enabled:          telemetryPath != "",
-		snapshotsEnabled: envValue(environ, envTelemetrySnapshots) != "0",
+		snapshotsEnabled: !isDisabledValue(envValue(environ, envTelemetrySnapshots)),
 		verbose:          opts.Verbose,
 		stderr:           stderr,
 		now:              now,
@@ -201,12 +202,14 @@ func Start(args []string, cwd string, opts Options) *Recorder {
 		caller:           caller,
 		agent:            detectAgent(environ, caller),
 		env:              filteredEnv(environ),
-		project:          DetectProject("", cwd),
 		phases:           make(map[string]time.Duration),
 	}
 	if !r.enabled {
 		return r
 	}
+	// Project detection runs git subprocesses; defer it to Finish (see
+	// detectProjectLocked) so informational commands stay subprocess-free and
+	// the start event never blocks on a slow repository.
 	r.appendJSON(invocationStartEvent{
 		SchemaVersion: SchemaVersion,
 		Event:         EventInvocationStart,
@@ -218,7 +221,6 @@ func Start(args []string, cwd string, opts Options) *Recorder {
 		Caller:        caller,
 		Agent:         r.agent,
 		Env:           r.env,
-		Project:       r.project,
 	})
 	if r.verbose {
 		fmt.Fprintf(r.stderr, "refute start: %s\n", r.commandString())
@@ -249,7 +251,6 @@ func (r *Recorder) SetOperation(ctx OperationContext) {
 	}
 	if ctx.WorkspaceRoot != "" {
 		r.ctx.WorkspaceRoot = ctx.WorkspaceRoot
-		r.project = DetectProject(ctx.WorkspaceRoot, r.cwd)
 	}
 	if ctx.Status != "" {
 		r.ctx.Status = ctx.Status
@@ -369,7 +370,7 @@ func (r *Recorder) Finish(info FinishInfo) {
 
 	r.mu.Lock()
 	ctx := r.ctx
-	project := r.project
+	project := r.detectProjectLocked()
 	errInfo := info.Error
 	if errInfo == nil {
 		errInfo = r.error
@@ -422,6 +423,25 @@ func (r *Recorder) Finish(info FinishInfo) {
 	if r.verbose {
 		fmt.Fprint(r.stderr, summary)
 	}
+	// Best-effort retention: cap retained snapshots and rotate the append-only
+	// log so neither grows without bound. Failures must never affect the
+	// operation, so errors are ignored.
+	sweepSnapshots(r.snapshotRoot, MaxSnapshotInvocations, MaxSnapshotBytes)
+	rotateTelemetryLog(r.telemetryPath, MaxTelemetryLogBytes)
+}
+
+// detectProjectLocked lazily resolves project identity exactly once, caching the
+// result. Informational commands (version/help) skip detection entirely so they
+// spawn zero git subprocesses. Callers must hold r.mu.
+func (r *Recorder) detectProjectLocked() ProjectInfo {
+	if r.projectDetected {
+		return r.project
+	}
+	r.projectDetected = true
+	if !isInformationalArgs(r.args) {
+		r.project = DetectProject(r.ctx.WorkspaceRoot, r.cwd)
+	}
+	return r.project
 }
 
 func (r *Recorder) addPhase(name string, d time.Duration) {
@@ -529,6 +549,37 @@ func detectAgent(environ []string, caller string) AgentInfo {
 		ExecPath:   firstEnv(environ, "CLAUDE_CODE_EXECPATH", "CODEX_EXECPATH"),
 		Effort:     firstEnv(environ, "CLAUDE_EFFORT", "CODEX_EFFORT"),
 	}
+}
+
+// isDisabledValue reports whether an opt-out env value means "off". Both
+// REFUTE_TELEMETRY and REFUTE_TELEMETRY_SNAPSHOTS accept 0/false/off/no
+// (case-insensitive, surrounding whitespace ignored). Any other value, including
+// empty, leaves the feature enabled (telemetry and snapshots are default-on).
+func isDisabledValue(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "0", "false", "off", "no":
+		return true
+	default:
+		return false
+	}
+}
+
+// isInformationalArgs reports whether the invocation is a version/help query
+// that should not trigger project detection or its git subprocesses.
+func isInformationalArgs(args []string) bool {
+	for i, a := range args {
+		switch a {
+		case "--help", "-h", "--version":
+			return true
+		case "help", "version":
+			// Only treat these as informational when they are the subcommand,
+			// not when they appear as a flag value later in the args.
+			if i == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func envValue(environ []string, key string) string {

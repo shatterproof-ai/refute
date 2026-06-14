@@ -238,6 +238,131 @@ func TestRecorderSnapshotOptOutKeepsMetadata(t *testing.T) {
 	}
 }
 
+func TestRecorderTelemetryOptOutVariants(t *testing.T) {
+	for _, v := range []string{"0", "false", "off", "no", "FALSE", "Off", "NO", " no "} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "telemetry.jsonl")
+		rec := telemetry.Start([]string{"rename"}, dir, telemetry.Options{
+			TelemetryPath: path,
+			SnapshotRoot:  filepath.Join(dir, "snapshots"),
+			SessionRoot:   filepath.Join(dir, "sessions"),
+			Environ:       []string{"REFUTE_TELEMETRY=" + v},
+		})
+		rec.SetOperation(telemetry.OperationContext{Operation: "rename", WorkspaceRoot: dir})
+		rec.Finish(telemetry.FinishInfo{ExitCode: 0})
+		if rec.Enabled() {
+			t.Fatalf("REFUTE_TELEMETRY=%q should disable telemetry", v)
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("REFUTE_TELEMETRY=%q should disable telemetry; file exists", v)
+		}
+	}
+}
+
+func TestRecorderTelemetryStaysOnForNonDisableValues(t *testing.T) {
+	for _, v := range []string{"", "1", "true", "on", "yes"} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "telemetry.jsonl")
+		rec := telemetry.Start([]string{"rename"}, dir, telemetry.Options{
+			TelemetryPath: path,
+			SnapshotRoot:  filepath.Join(dir, "snapshots"),
+			SessionRoot:   filepath.Join(dir, "sessions"),
+			Environ:       []string{"REFUTE_TELEMETRY=" + v},
+		})
+		rec.Finish(telemetry.FinishInfo{ExitCode: 0})
+		if !rec.Enabled() {
+			t.Fatalf("REFUTE_TELEMETRY=%q should keep telemetry on", v)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("REFUTE_TELEMETRY=%q should keep telemetry on; file missing: %v", v, err)
+		}
+	}
+}
+
+func TestRecorderSnapshotOptOutVariants(t *testing.T) {
+	for _, v := range []string{"0", "false", "off", "no", "OFF", "No"} {
+		dir := t.TempDir()
+		workspace := filepath.Join(dir, "workspace")
+		if err := os.MkdirAll(workspace, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		source := filepath.Join(workspace, "main.go")
+		if err := os.WriteFile(source, []byte("package main\n\nfunc oldName() {}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		rec := telemetry.Start([]string{"rename"}, workspace, telemetry.Options{
+			TelemetryPath: filepath.Join(dir, "telemetry.jsonl"),
+			SnapshotRoot:  filepath.Join(dir, "snapshots"),
+			SessionRoot:   filepath.Join(dir, "sessions"),
+			Environ:       []string{"REFUTE_TELEMETRY_SNAPSHOTS=" + v},
+			Now:           fixedClock(time.Date(2026, 5, 13, 10, 0, 0, 0, time.UTC)),
+		})
+		rec.SetOperation(telemetry.OperationContext{Operation: "rename", WorkspaceRoot: workspace})
+		we := &edit.WorkspaceEdit{FileEdits: []edit.FileEdit{{
+			Path: source,
+			Edits: []edit.TextEdit{{
+				Range:   edit.Range{Start: edit.Position{Line: 2, Character: 5}, End: edit.Position{Line: 2, Character: 12}},
+				NewText: "newName",
+			}},
+		}}}
+		manifest, err := rec.CaptureSnapshot(we)
+		if err != nil {
+			t.Fatalf("CaptureSnapshot: %v", err)
+		}
+		if manifest != nil {
+			t.Fatalf("REFUTE_TELEMETRY_SNAPSHOTS=%q should disable snapshots; manifest=%+v", v, manifest)
+		}
+		rec.Finish(telemetry.FinishInfo{ExitCode: 0})
+	}
+}
+
+// TestInformationalCommandsSpawnNoGit verifies that version/--help invocations
+// run zero git subprocesses, using a PATH-shimmed git that records every call.
+func TestInformationalCommandsSpawnNoGit(t *testing.T) {
+	shimDir := t.TempDir()
+	marker := filepath.Join(shimDir, "git-calls")
+	shim := "#!/bin/sh\necho call >> \"" + marker + "\"\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(shimDir, "git"), []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	gitCalls := func() bool {
+		_, err := os.Stat(marker)
+		return err == nil
+	}
+
+	for _, args := range [][]string{{"version"}, {"--help"}, {"rename", "--help"}} {
+		_ = os.Remove(marker)
+		dir := t.TempDir()
+		rec := telemetry.Start(args, dir, telemetry.Options{
+			TelemetryPath: filepath.Join(dir, "telemetry.jsonl"),
+			SnapshotRoot:  filepath.Join(dir, "snapshots"),
+			SessionRoot:   filepath.Join(dir, "sessions"),
+			Environ:       []string{},
+		})
+		rec.Finish(telemetry.FinishInfo{ExitCode: 0})
+		if gitCalls() {
+			t.Fatalf("informational command %v spawned git subprocesses", args)
+		}
+	}
+
+	// Control: a real operation does invoke git (proving the shim is wired up).
+	_ = os.Remove(marker)
+	dir := t.TempDir()
+	rec := telemetry.Start([]string{"rename"}, dir, telemetry.Options{
+		TelemetryPath: filepath.Join(dir, "telemetry.jsonl"),
+		SnapshotRoot:  filepath.Join(dir, "snapshots"),
+		SessionRoot:   filepath.Join(dir, "sessions"),
+		Environ:       []string{},
+	})
+	rec.SetOperation(telemetry.OperationContext{Operation: "rename", WorkspaceRoot: dir})
+	rec.Finish(telemetry.FinishInfo{ExitCode: 0})
+	if !gitCalls() {
+		t.Fatal("control: rename invocation should have invoked the git shim")
+	}
+}
+
 func fixedClock(t time.Time) func() time.Time {
 	current := t
 	return func() time.Time {

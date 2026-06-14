@@ -1,11 +1,17 @@
 package telemetry
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// gitProbeTimeout bounds the best-effort `git status` dirtiness probe so a slow
+// or very large repository cannot add user-visible latency to an invocation.
+const gitProbeTimeout = 500 * time.Millisecond
 
 // ProjectInfo captures best-effort local project identity for audit records.
 type ProjectInfo struct {
@@ -51,8 +57,13 @@ func DetectProject(workspaceRoot, cwd string) ProjectInfo {
 		}
 		info.Branch = gitOutput(gitRoot, "branch", "--show-current")
 		info.Head = gitOutput(gitRoot, "rev-parse", "HEAD")
-		dirty := gitOutput(gitRoot, "status", "--porcelain") != ""
-		info.Dirty = &dirty
+		// The dirtiness probe can be the slowest git call on a large or busy
+		// repository, so bound it; on timeout we leave Dirty unset rather than
+		// guess.
+		if out, ok := gitOutputTimeout(gitRoot, gitProbeTimeout, "status", "--porcelain"); ok {
+			dirty := out != ""
+			info.Dirty = &dirty
+		}
 		if info.Module == "" {
 			info.Module = detectModule(gitRoot)
 		}
@@ -82,6 +93,21 @@ func gitOutput(dir string, args ...string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// gitOutputTimeout runs git with a deadline. The bool reports whether the
+// command completed successfully; on timeout or error it is false so callers
+// can distinguish "no output" from "did not run".
+func gitOutputTimeout(dir string, timeout time.Duration, args ...string) (string, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	allArgs := append([]string{"-C", dir}, args...)
+	cmd := exec.CommandContext(ctx, "git", allArgs...)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(string(out)), true
 }
 
 func detectModule(start string) string {

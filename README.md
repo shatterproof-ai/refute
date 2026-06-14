@@ -130,8 +130,30 @@ When an agent session ID is detected, `refute` appends a human-readable session
 transcript under `~/.local/share/refute/sessions/`. Passing `--verbose` prints
 the same invocation summary to stderr; normal output stays quiet.
 
-Set `REFUTE_TELEMETRY=0` to disable telemetry entirely, or
-`REFUTE_TELEMETRY_SNAPSHOTS=0` to keep metadata while skipping snapshots.
+### Telemetry retention & opt-out
+
+Snapshots are on by default. To opt out, set either variable to a disable value
+— `0`, `false`, `off`, or `no` (case-insensitive):
+
+- `REFUTE_TELEMETRY=0` disables telemetry entirely (no files written).
+- `REFUTE_TELEMETRY_SNAPSHOTS=0` keeps metadata but skips before/after snapshots.
+
+Retention is bounded automatically so telemetry never grows without limit. A
+best-effort sweep runs at the end of each invocation and never affects the
+refactoring result:
+
+- **Snapshots:** the newest `200` invocation directories are kept, capped at
+  `200 MiB` total — whichever limit is reached first. Older directories are
+  pruned.
+- **`telemetry.jsonl`:** rotated to `telemetry.jsonl.1` once it exceeds `50 MiB`
+  (one previous generation retained).
+
+These limits are the named constants `MaxSnapshotInvocations`,
+`MaxSnapshotBytes`, and `MaxTelemetryLogBytes` in `internal/telemetry`.
+
+Project identity (including the git dirtiness probe) is detected lazily only for
+real operations; informational commands such as `refute version` and
+`refute --help` spawn no git subprocesses.
 
 ## Operations
 
