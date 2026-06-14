@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf16"
@@ -27,6 +28,8 @@ type Adapter struct {
 	languageID   string
 	filePatterns []string
 	client       *Client
+	openedMu     sync.Mutex
+	openedFiles  map[string]struct{}
 }
 
 // NewAdapter creates an Adapter that will use the given ServerConfig and
@@ -82,7 +85,7 @@ func (a *Adapter) DidOpen(filePath string) error {
 	if a.client == nil {
 		return fmt.Errorf("adapter not initialized")
 	}
-	return a.client.DidOpen(filePath, a.languageID)
+	return a.didOpen(filePath)
 }
 
 // FindSymbol resolves a Tier 1 qualified name via workspace/symbol.
@@ -458,8 +461,16 @@ func (a *Adapter) runCodeAction(r symbol.SourceRange, name string, op rustAction
 	if a.client == nil {
 		return nil, fmt.Errorf("adapter not initialized")
 	}
-	if err := a.client.DidOpen(r.File, a.languageID); err != nil {
+	if err := a.didOpen(r.File); err != nil {
 		return nil, err
+	}
+	// Rust code actions depend on rust-analyzer's post-open analysis, which can
+	// still be in flight on cold starts even after workspace initialization.
+	const analysisTimeout = 30 * time.Second
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), analysisTimeout)
+	defer waitCancel()
+	if err := a.client.WaitForIdle(waitCtx); err != nil {
+		return nil, fmt.Errorf("waiting for analysis: %w", err)
 	}
 	startLine, startChar, endLine, endChar, err := rangeToLSP(r)
 	if err != nil {
@@ -472,9 +483,25 @@ func (a *Adapter) runCodeAction(r symbol.SourceRange, name string, op rustAction
 	case opInlineCallSite, opInlineAllCallers:
 		kinds = []string{"refactor.inline"}
 	}
-	actions, err := a.client.CodeActions(r.File, startLine, startChar, endLine, endChar, kinds)
-	if err != nil {
-		return nil, err
+	const (
+		codeActionMaxRetries = 5
+		codeActionRetryDelay = 750 * time.Millisecond
+	)
+	var actions []CodeAction
+	for attempt := 0; attempt < codeActionMaxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(codeActionRetryDelay)
+		}
+		actions, err = a.client.CodeActions(r.File, startLine, startChar, endLine, endChar, kinds)
+		if err == nil {
+			break
+		}
+		if !isLSPError(err, lspContentModified) {
+			return nil, err
+		}
+		if attempt == codeActionMaxRetries-1 {
+			return nil, fmt.Errorf("code action: server state did not settle after %d attempts: %w", codeActionMaxRetries, err)
+		}
 	}
 	chosen, err := a.matchAction(actions, op)
 	if err != nil {
@@ -706,8 +733,55 @@ func (a *Adapter) primeWorkspace(absRoot string) {
 	case "typescript", "typescriptreact", "javascript", "javascriptreact":
 		_ = PrimeWorkspace(a.client, absRoot, a.languageID)
 	case "rust":
-		_ = PrimeRustWorkspace(a.client, absRoot)
+		_ = PrimeRustWorkspace(recordingDidOpener{adapter: a}, absRoot)
 	}
+}
+
+func (a *Adapter) didOpen(filePath string) error {
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return fmt.Errorf("abs path: %w", err)
+	}
+	if a.isOpen(absPath) {
+		return nil
+	}
+	if err := a.client.DidOpen(absPath, a.languageID); err != nil {
+		return err
+	}
+	a.markOpen(absPath)
+	return nil
+}
+
+func (a *Adapter) isOpen(filePath string) bool {
+	a.openedMu.Lock()
+	defer a.openedMu.Unlock()
+	_, ok := a.openedFiles[filePath]
+	return ok
+}
+
+func (a *Adapter) markOpen(filePath string) {
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return
+	}
+	a.openedMu.Lock()
+	defer a.openedMu.Unlock()
+	if a.openedFiles == nil {
+		a.openedFiles = make(map[string]struct{})
+	}
+	a.openedFiles[absPath] = struct{}{}
+}
+
+type recordingDidOpener struct {
+	adapter *Adapter
+}
+
+func (o recordingDidOpener) DidOpen(path, languageID string) error {
+	if err := o.adapter.client.DidOpen(path, languageID); err != nil {
+		return err
+	}
+	o.adapter.markOpen(path)
+	return nil
 }
 
 // matchAction dispatches to the language-specific action-pattern matcher.
