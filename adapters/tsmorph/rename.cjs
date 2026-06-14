@@ -4,6 +4,10 @@ const fs = require("fs");
 const path = require("path");
 const { Project } = require("ts-morph");
 
+const configFileNames = new Set(["tsconfig.json", "jsconfig.json"]);
+const sourceFileExtensions = ["ts", "tsx", "js", "jsx"];
+const ignoredProjectDirs = new Set([".git", "node_modules"]);
+
 function readInput() {
   return new Promise((resolve, reject) => {
     let data = "";
@@ -22,30 +26,50 @@ function readInput() {
   });
 }
 
-function projectConfigPath(workspaceRoot) {
-  const tsconfig = path.join(workspaceRoot, "tsconfig.json");
-  if (fs.existsSync(tsconfig)) {
-    return tsconfig;
+function projectConfigPaths(workspaceRoot) {
+  const configs = [];
+  const stack = [workspaceRoot];
+
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((left, right) =>
+      left.name.localeCompare(right.name),
+    )) {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!ignoredProjectDirs.has(entry.name)) {
+          stack.push(entryPath);
+        }
+        continue;
+      }
+      if (entry.isFile() && configFileNames.has(entry.name)) {
+        configs.push(entryPath);
+      }
+    }
   }
-  const jsconfig = path.join(workspaceRoot, "jsconfig.json");
-  if (fs.existsSync(jsconfig)) {
-    return jsconfig;
-  }
-  return "";
+
+  return configs.sort();
+}
+
+function globPath(...segments) {
+  return path.join(...segments).replace(/\\/g, "/");
 }
 
 function createProject(workspaceRoot) {
-  const configPath = projectConfigPath(workspaceRoot);
-  if (configPath !== "") {
-    return new Project({ tsConfigFilePath: configPath });
+  const configPaths = projectConfigPaths(workspaceRoot);
+  if (configPaths.length > 0) {
+    const [primaryConfigPath, ...extraConfigPaths] = configPaths;
+    const project = new Project({ tsConfigFilePath: primaryConfigPath });
+    for (const configPath of extraConfigPaths) {
+      project.addSourceFilesFromTsConfig(configPath);
+    }
+    return project;
   }
 
   const project = new Project();
   project.addSourceFilesAtPaths([
-    path.join(workspaceRoot, "**/*.ts"),
-    path.join(workspaceRoot, "**/*.tsx"),
-    path.join(workspaceRoot, "**/*.js"),
-    path.join(workspaceRoot, "**/*.jsx"),
+    ...sourceFileExtensions.map(extension => globPath(workspaceRoot, `**/*.${extension}`)),
+    `!${globPath(workspaceRoot, "**/node_modules/**")}`,
   ]);
   return project;
 }
@@ -283,8 +307,7 @@ async function main() {
       process.stdout.write(JSON.stringify({ candidates }));
       return;
     }
-    case "rename":
-    default: {
+    case "rename": {
       const filePath = path.resolve(req.file);
       const sourceFile = project.getSourceFile(filePath);
       if (!sourceFile) {
@@ -315,6 +338,8 @@ async function main() {
       process.stdout.write(JSON.stringify({ fileEdits }));
       return;
     }
+    default:
+      throw new Error(`unsupported operation: ${String(req.operation)}`);
   }
 }
 

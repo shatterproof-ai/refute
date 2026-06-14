@@ -17,8 +17,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "ts-morph": "^28.0.0",
-    "typescript": "^6.0.3"
+    "ts-morph": "^28.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -27,6 +26,7 @@
     "@typescript-eslint/parser": "^8.59.3",
     "depcheck": "^1.4.7",
     "eslint": "^10.3.0",
-    "eslint-plugin-sonarjs": "^4.0.3"
+    "eslint-plugin-sonarjs": "^4.0.3",
+    "typescript": "^6.0.3"
   }
 }
