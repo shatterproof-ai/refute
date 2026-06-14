@@ -1,8 +1,8 @@
 package openrewrite
 
 import (
-	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/edit"
@@ -19,14 +20,25 @@ import (
 // jarCacheSubPath is the relative path where the adapter JAR is built by Maven.
 const jarCacheSubPath = "adapters/openrewrite/target/openrewrite-adapter.jar"
 
+// defaultShutdownTimeout bounds how long Shutdown waits for the JVM to exit
+// after stdin is closed before falling back to killing the process.
+const defaultShutdownTimeout = 5 * time.Second
+
+// maxJVMStderrBytes caps how much captured JVM stderr is folded into errors.
+const maxJVMStderrBytes = 64 * 1024
+
 // Adapter wraps the OpenRewrite JVM subprocess to implement backend.RefactoringBackend.
 type Adapter struct {
 	jarPath       string
 	workspaceRoot string
 	process       *exec.Cmd
 	stdin         io.WriteCloser
-	stdout        *bufio.Scanner
-	nextID        atomic.Int64
+	stdout        *json.Decoder
+	stderrFile    *os.File
+	stderrPath    string
+	// shutdownTimeout overrides defaultShutdownTimeout when non-zero (tests).
+	shutdownTimeout time.Duration
+	nextID          atomic.Int64
 }
 
 var _ backend.RefactoringBackend = (*Adapter)(nil)
@@ -57,37 +69,131 @@ func (a *Adapter) Initialize(workspaceRoot string) error {
 	}
 
 	cmd := exec.Command(java, "-jar", jar)
-	cmd.Stderr = nil
+
+	// Capture JVM stderr to a temp file so diagnostics (including the adapter's
+	// own parse errors) can be surfaced in errors instead of being discarded.
+	stderrFile, err := os.CreateTemp("", "refute-openrewrite-stderr-*")
+	if err != nil {
+		return fmt.Errorf("stderr temp file: %w", err)
+	}
+	stderrPath := stderrFile.Name()
+	cleanupStderr := func() {
+		stderrFile.Close()
+		os.Remove(stderrPath)
+	}
+	cmd.Stderr = stderrFile
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		cleanupStderr()
 		return fmt.Errorf("stdin pipe: %w", err)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		cleanupStderr()
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
+		cleanupStderr()
 		return fmt.Errorf("start JVM: %w", err)
 	}
 
 	a.process = cmd
 	a.stdin = stdin
-	a.stdout = bufio.NewScanner(stdout)
+	a.stdout = json.NewDecoder(stdout)
+	a.stderrFile = stderrFile
+	a.stderrPath = stderrPath
 
 	return nil
 }
 
-// Shutdown terminates the JVM subprocess.
+// Shutdown terminates the JVM subprocess. It closes stdin, waits for a clean
+// exit within a bounded timeout, and falls back to killing the process so a
+// hung JVM cannot block the CLI forever.
 func (a *Adapter) Shutdown() error {
 	if a.stdin != nil {
 		_ = a.stdin.Close()
 	}
+	var err error
 	if a.process != nil {
-		_ = a.process.Wait()
+		err = a.waitWithTimeout()
 	}
-	return nil
+	a.cleanupStderr()
+	return err
+}
+
+// waitWithTimeout waits for the subprocess to exit, killing it if it does not
+// exit within the shutdown timeout. It always reaps the process to avoid
+// leaking a zombie.
+func (a *Adapter) waitWithTimeout() error {
+	timeout := a.shutdownTimeout
+	if timeout <= 0 {
+		timeout = defaultShutdownTimeout
+	}
+	done := make(chan error, 1)
+	go func() { done <- a.process.Wait() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(timeout):
+		if a.process.Process != nil {
+			_ = a.process.Process.Kill()
+		}
+		<-done // reap the killed process
+		return fmt.Errorf("OpenRewrite subprocess did not exit within %s; killed", timeout)
+	}
+}
+
+// stderrSuffix returns a "; JVM stderr: ..." fragment for folding captured JVM
+// diagnostics into an error message, or "" when no stderr was captured.
+func (a *Adapter) stderrSuffix() string {
+	msg := a.readStderr()
+	if msg == "" {
+		return ""
+	}
+	return "; JVM stderr: " + msg
+}
+
+// readStderr reads the captured JVM stderr, bounded by maxJVMStderrBytes.
+func (a *Adapter) readStderr() string {
+	if a == nil || a.stderrPath == "" {
+		return ""
+	}
+	if a.stderrFile != nil {
+		_ = a.stderrFile.Sync()
+	}
+	f, err := os.Open(a.stderrPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(io.LimitReader(f, maxJVMStderrBytes+1))
+	if err != nil {
+		return ""
+	}
+	truncated := len(data) > maxJVMStderrBytes
+	if truncated {
+		data = data[:maxJVMStderrBytes]
+	}
+	msg := strings.TrimSpace(string(data))
+	if msg != "" && truncated {
+		msg += " ... [stderr truncated]"
+	}
+	return msg
+}
+
+// cleanupStderr closes and removes the captured-stderr temp file.
+func (a *Adapter) cleanupStderr() {
+	if a.stderrFile != nil {
+		a.stderrFile.Close()
+		a.stderrFile = nil
+	}
+	if a.stderrPath != "" {
+		os.Remove(a.stderrPath)
+		a.stderrPath = ""
+	}
 }
 
 // FindSymbol returns ErrUnsupported — OpenRewrite does not expose symbol search.
@@ -190,10 +296,9 @@ func (a *Adapter) callRename(params map[string]any) ([]edit.FileEdit, error) {
 		return nil, fmt.Errorf("write request: %w", err)
 	}
 
-	if !a.stdout.Scan() {
-		return nil, fmt.Errorf("no response from OpenRewrite subprocess")
-	}
-
+	// Decode one JSON response value. A json.Decoder streams arbitrarily large
+	// values, unlike a default bufio.Scanner whose 64 KiB token cap silently
+	// truncates responses that embed full file contents.
 	var resp struct {
 		Error *struct {
 			Code    int    `json:"code"`
@@ -204,8 +309,11 @@ func (a *Adapter) callRename(params map[string]any) ([]edit.FileEdit, error) {
 			NewContent string `json:"newContent"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal(a.stdout.Bytes(), &resp); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+	if err := a.stdout.Decode(&resp); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("no response from OpenRewrite subprocess%s", a.stderrSuffix())
+		}
+		return nil, fmt.Errorf("reading response from OpenRewrite subprocess: %w%s", err, a.stderrSuffix())
 	}
 	if resp.Error != nil {
 		return nil, fmt.Errorf("OpenRewrite error %d: %s", resp.Error.Code, resp.Error.Message)
