@@ -1,6 +1,8 @@
 # Current State
 
 This assessment reflects the repository state on `main` as of 2026-05-09.
+Review this file before each release candidate; update stale status claims or
+mark historical sections explicitly before tagging.
 
 ## Summary
 
@@ -16,7 +18,8 @@ Python rope adapter, and most higher-level refactorings remain planned work.
 The external LSP landscape still matters. LSP standardizes rename and code
 actions, but refactoring support varies sharply across languages. `refute`
 should keep treating LSP as a strong baseline with room for backend-specific
-escape hatches.
+escape hatches; see [`docs/lsp-landscape.md`](lsp-landscape.md) for the shared
+language-by-language research snapshot.
 
 ## Implemented
 
@@ -77,25 +80,9 @@ implemented operations.
 
 ### LSP State of the Art
 
-The [LSP specification](https://github.com/Microsoft/language-server-protocol/blob/gh-pages/_specifications/lsp/3.17/specification.md)
-standardizes `textDocument/rename`, `workspace/symbol`, `WorkspaceEdit`, and
-`textDocument/codeAction`, but it does not standardize a rich refactoring
-taxonomy. Code actions may return edits directly, require `codeAction/resolve`,
-or return commands that must be executed by the server. That means `refute` can
-normalize transport mechanics but still needs language-specific operation
-mapping and backend-specific escape hatches.
-
-| Language | Main LSP/refactoring substrate | State for `refute` |
-|---|---|---|
-| Go | [`gopls`](https://go.dev/gopls/features/transformation) | Strong baseline. `gopls` documents rename plus extract function/method/variable, extract declarations to a new file, inline call, and parameter movement actions. It also documents that extract is less rigorous than rename/inline in some cases, so `refute` should keep Go-specific tests around each claimed operation. |
-| TypeScript/JavaScript | TypeScript language service via [`typescript-language-server`](https://github.com/typescript-language-server/typescript-language-server) or direct ts-morph/tsserver APIs | Strong semantic engine, but many higher-level refactorings are exposed as TypeScript-specific refactor actions or workspace commands rather than simple generic LSP edits. `refute` should use the common rename/edit path where possible and keep a TypeScript-specific adapter for extract, move, organize imports, file rename, and interactive refactor arguments. |
-| Python | Pyright/Pylance/Basedpyright plus rope | This is the most important missing planning area. [`pyright`](https://github.com/microsoft/pyright) is an open-source type checker with language-server functionality, while [`Pylance`](https://github.com/microsoft/pylance-release/blob/main/FAQ.md) is a closed-source language server that adds refactoring code actions such as extract variable and extract method on top of Pyright. VS Code's [Python editing docs](https://code.visualstudio.com/docs/python/editing#_refactorings) list Pylance refactorings including extract variable, extract method, rename module, move symbol, and implement inherited abstract classes. [`basedpyright`](https://docs.basedpyright.com/latest/configuration/language-server-settings/) is an open-source alternative with language services and additional settings beyond Pyright. [`rope`](https://rope.readthedocs.io/en/latest/rope.html) directly supports Python refactorings such as rename, extract, inline, move, and change signature. For robust Python refactoring, `refute` should probably pair LSP rename/discovery with rope for semantic refactorings. |
-| Rust | [`rust-analyzer`](https://rust-analyzer.github.io/book/assists.html) | Good LSP foundation for rename, symbol discovery, assists, and code actions, but action names and availability are rust-analyzer-specific. Existing Rust rename fixtures are useful; extract/inline claims need direct rust-analyzer tests before being documented as supported. |
-| Java | [`eclipse.jdt.ls`](https://github.com/eclipse-jdtls/eclipse.jdt.ls) plus OpenRewrite | JDT LS is a mature Java LSP with code actions, quick fixes, source actions, and refactorings. OpenRewrite is still valuable for large recipe-driven transformations that exceed normal editor refactorings. `refute` should support both rather than forcing Java into one generic path. |
-| Kotlin | [`kotlin-lsp`](https://github.com/Kotlin/kotlin-lsp) and IntelliJ-derived tooling | Official Kotlin LSP exists but is explicitly pre-alpha/experimental. Kotlin support should be treated as exploratory unless a stable backend is pinned and tested. |
-| C/C++ | [`clangd`](https://clangd.llvm.org/features) | `clangd` has production LSP support and documented rename, but its own docs call out limitations around templates, macros, overridden methods, comments, and stale indexes. `refute` can likely support rename first, with careful refusal behavior for broader refactorings. |
-| C# | Roslyn-backed LSPs, C# Dev Kit/Roslyn, `csharp-ls` | Roslyn is a strong semantic foundation, but the LSP ecosystem is split between Microsoft tooling and community servers. Some integrations require non-standard extensions. Treat C# as a later backend-specific adapter, not a generic-LSP-only target. |
-| PHP/Ruby | Intelephense, Solargraph | These are useful LSPs for rename and code intelligence, but support and licensing differ. Intelephense gates rename/code actions behind premium licensing, while Solargraph supports rename and marks code actions as work in progress. These should be opportunistic later targets. |
+The shared LSP/refactoring research now lives in
+[`docs/lsp-landscape.md`](lsp-landscape.md). Keep that file in sync with
+backend expansion decisions instead of duplicating language tables here.
 
 ### Backend Selection
 
@@ -117,9 +104,10 @@ resolution via `workspace/symbol`-equivalent calls through tsserver. It checks
 for Node.js, the wrapper script, and installed `ts-morph` dependencies before
 claiming availability.
 
-The adapter is **implemented but not packaged** — it requires repo-local
-adapter assets and will not work from a bare `go install` build until adapter
-packaging is resolved.
+The adapter is a separate dependency and is not bundled into a bare
+`go install` build. The selector prefers it when the adapter package or
+repo-local development assets are available, then falls back to the TypeScript
+language server.
 
 ### OpenRewrite Adapter
 
@@ -216,10 +204,9 @@ installed.
   Pyright/Pylance/Basedpyright/rope responsibilities.
 - `MoveToFile` exists in the backend interface but returns unsupported in all
   current adapters.
-- Missing-backend errors (missing `gopls`, missing adapter runtime, unsupported
-  operation) are not yet typed or structured for JSON emission. Users and agents
-  cannot yet reliably distinguish "install this tool" from "operation not
-  supported" without parsing stderr.
+- Structured missing-backend and unsupported-operation docs/schema coverage
+  remains incomplete, even though typed CLI errors and JSON statuses now exist;
+  issue #69 tracks doctor/matrix vocabulary alignment.
 - The dated design spec says the Go adapter is a gopls CLI/LSP hybrid, but the
   present implementation routes Go through the generic LSP adapter.
 - The OpenRewrite adapter expects a JAR that cannot be built from the currently
@@ -234,7 +221,8 @@ installed.
 - Daemon process, socket protocol, backend lifecycle management, and backend
   pooling.
 - `list-symbols` CLI command backed by LSP `workspace/symbol`.
-- Structured missing-backend and unsupported-operation errors with JSON output.
+- Comprehensive golden coverage and schema documentation for structured error
+  JSON.
 - Backend-specific capability tests.
 - Python rope adapter.
 - ast-grep pattern rewrite adapter and CLI command.
@@ -258,10 +246,10 @@ installed.
 
 3. **Agent safety depends on better introspection.**
 
-   Agents need `list_symbols`, `list_backends`, dry-run JSON, clear
-   unsupported-operation errors, and stable MCP schemas before broad automated
-   use is safe. `refute doctor` helps; `list-symbols` and structured error JSON
-   are still missing.
+   Agents need `list_symbols`, `list_backends`, dry-run JSON, documented error
+   schemas, and stable MCP schemas before broad automated use is safe. `refute`
+   has started this with `doctor` and structured operation errors, but
+   `list-symbols`, complete schema docs, and MCP are still missing.
 
 4. **All-or-nothing editing is now safer but not fully proven.**
 
@@ -275,7 +263,6 @@ The CLI core is now honest, well-tested, and agent-readable for Go. The next
 highest-leverage work is:
 
 - finish golden tests for all JSON output shapes (`--json --dry-run` coverage);
-- add typed structured errors for missing backend, missing adapter runtime, and
-  unsupported operation;
+- expand golden tests and docs for structured error outputs;
 - add a `list-symbols` command backed by LSP `workspace/symbol`;
 - then build the MCP layer on top of those contracts.

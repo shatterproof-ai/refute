@@ -1,7 +1,7 @@
 # Rust Parity — Design Spec
 
 **Date:** 2026-04-22
-**Status:** Design approved; implementation plan pending.
+**Status:** Implemented; retained as historical design reference. Rust Tier-1 forms 1-7 and Go-parity code-action commands have shipped under the experimental Rust support level in `docs/support-matrix.md`.
 **Supersedes:** n/a. Extends the closed `rust-support` expedition (basic rename wiring) with code-action parity, Tier-1 qualified-name resolution, and hardening.
 **Prerequisite:** `docs/plans/2026-04-17-go-code-actions-tier1-v2.md` (the "Go tier-1 v2" plan) must land first. This spec assumes the infrastructure that plan introduces.
 
