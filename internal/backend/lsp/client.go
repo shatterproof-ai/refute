@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -535,6 +536,9 @@ func (c *Client) initialize(workspaceRoot string) error {
 	// refactor.extract actions with resolvable Data (and compute the edit on
 	// codeAction/resolve) instead of command-based actions that require
 	// workspace/executeCommand + server-initiated workspace/applyEdit.
+	// Do not advertise workspace.workspaceEdit.documentChanges yet: refute
+	// normalizes file edits by path for deterministic diff and JSON output,
+	// including when a server sends documentChanges without that capability.
 	capabilities := map[string]any{
 		"textDocument": map[string]any{
 			"codeAction": map[string]any{
@@ -934,6 +938,7 @@ func parseWorkspaceEdit(raw json.RawMessage) ([]edit.FileEdit, error) {
 				Edits: edits,
 			})
 		}
+		sortFileEditsByPath(fileEdits)
 		return fileEdits, nil
 	}
 
@@ -951,10 +956,17 @@ func parseWorkspaceEdit(raw json.RawMessage) ([]edit.FileEdit, error) {
 				Edits: edits,
 			})
 		}
+		sortFileEditsByPath(fileEdits)
 		return fileEdits, nil
 	}
 
 	return nil, nil
+}
+
+func sortFileEditsByPath(fileEdits []edit.FileEdit) {
+	sort.SliceStable(fileEdits, func(i, j int) bool {
+		return fileEdits[i].Path < fileEdits[j].Path
+	})
 }
 
 // fileToURI converts an absolute file path to a file:// URI.

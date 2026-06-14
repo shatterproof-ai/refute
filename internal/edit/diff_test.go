@@ -114,3 +114,32 @@ func TestRenderDiff_ordersFilesDeterministically(t *testing.T) {
 		t.Fatalf("diff files not sorted by path:\n%s", diff)
 	}
 }
+
+func TestRenderDiff_preservesEqualRangeInsertOrder(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "letters.txt")
+	if err := os.WriteFile(path, []byte("AB\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	pos := edit.Position{Line: 0, Character: 1}
+	we := &edit.WorkspaceEdit{
+		FileEdits: []edit.FileEdit{
+			{
+				Path: path,
+				Edits: []edit.TextEdit{
+					{Range: edit.Range{Start: pos, End: pos}, NewText: "X"},
+					{Range: edit.Range{Start: pos, End: pos}, NewText: "Y"},
+				},
+			},
+		},
+	}
+
+	diff, err := edit.RenderDiff(we)
+	if err != nil {
+		t.Fatalf("RenderDiff failed: %v", err)
+	}
+	if !strings.Contains(diff, "+AXYB") {
+		t.Fatalf("same-position inserts did not keep array order:\n%s", diff)
+	}
+}
