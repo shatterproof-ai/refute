@@ -19,14 +19,28 @@ in this repo, integration coverage exists in CI or the local test suite, and a
 user can install the required backend from a documented command. Anything
 short of all three is at most **experimental**.
 
+## Runtime status mapping
+
+`refute doctor` reports local backend readiness, so some labels describe the
+current host rather than release support. Interpret doctor statuses against the
+matrix this way:
+
+| Doctor status | Matrix meaning |
+| --- | --- |
+| `ok` | The dependency is present locally. The matrix status still controls whether the feature is supported or experimental. |
+| `missing` | The dependency is absent locally. This is not a support level; install the hinted backend and re-check the matrix row. |
+| `experimental` | The dependency is present for a matrix row that is still experimental. |
+| `planned` | The dependency may be present, but the language or operation remains planned until tests and docs promote it. |
+| `not-claimed` | The release boundary is explicit; this maps to **unsupported** in the matrix for v0.1. |
+
 ## Language matrix
 
 | Language | Extensions | Backend | Dependency install | Operations | Test coverage | Status | Caveats |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Go | `.go` | `lsp/gopls` | `go install golang.org/x/tools/gopls@latest` | rename, extract-function, extract-variable, inline | unit + required integration (`internal/integration_test.go`) | supported | Primary v0.1 dogfood target. |
 | Rust | `.rs` | `lsp/rust-analyzer` | `rustup component add rust-analyzer` | rename, extract-function, extract-variable, inline | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI) | experimental | Tier-1 --symbol supports forms 1–7 (crate::module::Type::method, <Type as Trait>::method). Inline is single-call-site only. Experimental while dogfood confidence is still building. |
-| TypeScript | `.ts`, `.tsx` | `lsp/typescript-language-server` | `npm install -g typescript-language-server typescript` | rename | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI with fixture dependencies installed) | experimental | ts-morph adapter is **implemented but not packaged**; tracked in [issue #1](https://github.com/shatterproof-ai/refute/issues/1). The adapter discovers root and nested `tsconfig.json`/`jsconfig.json` files outside `node_modules`. |
-| JavaScript | `.js`, `.jsx` | `lsp/typescript-language-server` | `npm install -g typescript-language-server typescript` | rename | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI with fixture dependencies installed) | experimental | Same packaging caveat as TypeScript; the adapter discovers root and nested `tsconfig.json`/`jsconfig.json` files outside `node_modules`. |
+| TypeScript | `.ts`, `.tsx` | `tsmorph` preferred; `lsp/typescript-language-server` fallback | `npm install -g @shatterproof-ai/refute-ts-adapter`; fallback: `npm install -g typescript-language-server typescript` | rename | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI with fixture dependencies installed) | experimental | The adapter is a separate dependency and is not bundled with `go install`; fallback is rename-only LSP coverage. Adapter packaging tracked in [issue #1](https://github.com/shatterproof-ai/refute/issues/1). The adapter discovers root and nested `tsconfig.json`/`jsconfig.json` files outside `node_modules`. |
+| JavaScript | `.js`, `.jsx` | `tsmorph` preferred; `lsp/typescript-language-server` fallback | `npm install -g @shatterproof-ai/refute-ts-adapter`; fallback: `npm install -g typescript-language-server typescript` | rename | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI with fixture dependencies installed) | experimental | Same adapter and fallback caveats as TypeScript; the adapter discovers root and nested `tsconfig.json`/`jsconfig.json` files outside `node_modules`. |
 | Python | `.py` | `lsp/pyright` | `npm install -g pyright` | rename | none | planned | Promote once fixture and integration coverage land. |
 | Java | `.java` | OpenRewrite | — | — | none | unsupported | Not claimed for v0.1. JAR packaging deferred. |
 | Kotlin | `.kt` | OpenRewrite | — | — | none | unsupported | Not claimed for v0.1. |
@@ -91,4 +105,8 @@ When `refute` cannot find a language server it prints an install hint. Sources:
 | Go | `go install golang.org/x/tools/gopls@latest` |
 | Rust | `rustup component add rust-analyzer` |
 | TypeScript | `npm install -g typescript-language-server typescript` |
-| Python | `pip install pyright` |
+| TypeScript adapter | `npm install -g @shatterproof-ai/refute-ts-adapter` |
+| Python | `npm install -g pyright` |
+
+These hints mirror `refute doctor`. Code-side install-hint consolidation is
+tracked separately in issue #69.

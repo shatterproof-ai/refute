@@ -19,9 +19,8 @@ Deliverables:
 
 - Publish `docs/support-matrix.md` with language, backend, operation, and test
   status.
-- Publish `docs/lsp-landscape.md` or expand the support matrix with current
-  LSP/refactoring substrates for Go, TypeScript/JavaScript, Python, Rust, Java,
-  Kotlin, C/C++, C#, PHP, and Ruby.
+- Maintain [`docs/lsp-landscape.md`](lsp-landscape.md) as the shared reference
+  for current LSP/refactoring substrates and backend-expansion posture.
 - Align `Capabilities()` with implemented adapter behavior.
 - Define a stable JSON result schema for dry-run, apply, no-op, ambiguity,
   unsupported operation, and backend failure.
@@ -111,20 +110,10 @@ Exit criteria:
 
 ## LSP Strategy Snapshot
 
-Before expanding backend coverage, treat each language according to the current
-state of its LSP/refactoring ecosystem:
-
-| Language | Roadmap posture |
-|---|---|
-| Go | Use `gopls` as the reference LSP-backed implementation. It has documented transformation support, but keep operation-level tests because extract and some code actions have known caveats. |
-| TypeScript/JavaScript | Do not rely on generic LSP alone. Keep ts-morph/tsserver-specific paths for refactors that require TypeScript-specific commands, refactor arguments, file rename, or import management. |
-| Python | Make this a dedicated track. Pyright is useful for open-source type analysis and LSP discovery, Pylance has richer closed-source refactoring code actions, Basedpyright is worth evaluating as an open-source language-server alternative, and rope is the strongest fit for deterministic library-driven refactorings. |
-| Rust | Use rust-analyzer for rename and assists, but pin action titles and edit shapes in tests before claiming extract or inline support. |
-| Java | Keep both JDT LS and OpenRewrite. JDT LS fits editor-like LSP operations; OpenRewrite fits recipe-driven, large-scale source transformations. |
-| Kotlin | Treat as experimental until official Kotlin LSP stabilizes and fixture tests can pin behavior. |
-| C/C++ | Start with clangd rename only, with documented macro/template/index limitations. |
-| C# | Choose a Roslyn-backed server story before implementation; expect non-standard extension points. |
-| PHP/Ruby | Later opportunistic targets. Document server licensing and capability limits before exposing support. |
+Before expanding backend coverage, use
+[`docs/lsp-landscape.md`](lsp-landscape.md) as the shared language-by-language
+strategy snapshot. This roadmap intentionally links to that source instead of
+duplicating its research tables.
 
 ## Phase 4: Expand Backend Coverage
 
@@ -135,31 +124,19 @@ Deliverables:
 - Define a per-language backend strategy before implementing more operations:
   common LSP where it is good enough, server-specific LSP extensions where
   needed, and dedicated adapters where the language ecosystem has better tools.
-- Finish TypeScript/JavaScript support through ts-morph, tsserver, and/or
-  typescript-language-server. Keep TypeScript-specific APIs available for
-  refactor arguments, file moves, import updates, and project-wide edits that
-  do not map cleanly to generic LSP.
-- Make Python a first-class track. Decide and document responsibilities across:
-  Pyright for open-source type analysis and LSP rename/discovery; Pylance as an
-  optional closed-source server with richer editor refactorings where usable;
-  Basedpyright as an open-source alternative to evaluate; and rope for semantic
-  Python refactorings such as rename, extract, inline, move, and change
-  signature.
+  Track those choices in [`docs/lsp-landscape.md`](lsp-landscape.md).
+- Finish TypeScript/JavaScript support through the TypeScript-specific adapter
+  path described in the LSP landscape.
+- Make Python a first-class track using the Pyright/Pylance/Basedpyright/rope
+  split described in the LSP landscape.
 - Build a Python fixture suite before claiming support. Cover module-level
   rename, class/function/method rename, local variable rename, extract method,
   extract variable, inline, import updates, and package/module moves.
 - Decide whether OpenRewrite support is in-process, subprocess JSON-RPC, or
   recipe-file driven; commit the Java adapter sources needed to build the JAR.
-- Keep Java support dual-track: JDT LS for editor-style LSP operations and
-  OpenRewrite for recipe-driven large-scale migrations.
-- Treat Kotlin as experimental until Kotlin LSP behavior is stable enough for
-  pinned integration tests.
-- Add C/C++ rename through clangd after documenting its macro/template/index
-  limitations.
-- Add C# only after choosing a Roslyn-backed server story and documenting any
-  non-standard extensions required.
-- Add PHP and Ruby opportunistically, with clear licensing and capability
-  notes for servers such as Intelephense and Solargraph.
+- Keep Java/Kotlin/C/C++/C#/PHP/Ruby expansion aligned with the posture in the
+  LSP landscape, including documented capability and licensing limits before
+  support claims.
 - Add ast-grep structural rewrite support as an explicit pattern operation, not
   as a hidden fallback for semantic refactorings.
 - Add backend-specific capability tests.

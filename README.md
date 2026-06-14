@@ -15,7 +15,7 @@ explicitly out of scope for this release.
 | --- | --- | --- |
 | Go | gopls (LSP) | Supported — the primary v0.1 target. |
 | Rust | rust-analyzer (LSP) | Experimental — covered in CI, still conditional for dogfood confidence. |
-| TypeScript / JavaScript | typescript-language-server (LSP) | Experimental — ts-morph adapter not packaged. |
+| TypeScript / JavaScript | ts-morph adapter preferred; typescript-language-server fallback | Experimental — rename only; ts-morph adapter is a separate dependency. |
 | Java / Kotlin | OpenRewrite | Not claimed for v0.1. |
 | Python | pyright (LSP) | Planned. |
 
@@ -61,12 +61,19 @@ Install the backend for the language(s) you plan to refactor:
 # Go (required for the supported path)
 go install golang.org/x/tools/gopls@latest
 
-# TypeScript / JavaScript (experimental)
+# TypeScript / JavaScript (experimental; preferred adapter when available)
+npm install -g @shatterproof-ai/refute-ts-adapter
+
+# TypeScript / JavaScript fallback (rename-only LSP path)
 npm install -g typescript-language-server typescript
 
 # Rust (conditional)
 rustup component add rust-analyzer
 ```
+
+For TypeScript and JavaScript, `refute` prefers the ts-morph adapter when it is
+available in the workspace or configured explicitly, then falls back to
+`typescript-language-server` for rename-only LSP coverage.
 
 Refactoring quality is bounded by the backing language server. Out-of-date
 backends produce out-of-date refactorings.
@@ -130,10 +137,10 @@ Set `REFUTE_TELEMETRY=0` to disable telemetry entirely, or
 
 | Command | Purpose |
 | --- | --- |
-| `refute rename` | Rename a symbol. Kind-specific variants: `rename-function`, `rename-class`, `rename-field`, `rename-variable`, `rename-parameter`, `rename-type`, `rename-method`. |
+| `refute rename` | Rename a symbol. Supports Tier-1 qualified-name lookup with `--symbol <qualified-name>` plus kind-specific variants: `rename-function`, `rename-class`, `rename-field`, `rename-variable`, `rename-parameter`, `rename-type`, `rename-method`. |
 | `refute extract-function` | Extract a selection into a new function. |
 | `refute extract-variable` | Extract a selection into a new variable. |
-| `refute inline` | Inline a variable or function call at the given position. |
+| `refute inline` | Inline a variable or function call at the given position. Rust also supports `--symbol <qualified-name>` with `--call-site <file>:<line>:<col>` for single-call-site inline. |
 | `refute doctor` | Report which language backends are installed and ready. Supports `--json`. |
 | `refute version` | Print version, commit, and build date. |
 
