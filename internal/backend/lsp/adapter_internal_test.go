@@ -3,6 +3,7 @@ package lsp
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -143,6 +144,82 @@ func newCodeActionIdleHarness(t *testing.T) (*Adapter, *codeActionIdleWriter, st
 	}
 	writer.client = client
 	return &Adapter{languageID: "rust", client: client}, writer, filePath
+}
+
+func TestRenameReturnsErrorWhenRetriesExhaustWithZeroEdits(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(filePath, []byte("package main\n\nfunc target() {}\n"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	writer := &emptyRenameWriter{}
+	client := &Client{
+		transport:      NewTransport(nil, writer),
+		pending:        make(map[int]chan jsonrpcResponse),
+		done:           make(chan struct{}),
+		progress:       newProgressTracker(),
+		requestTimeout: time.Second,
+	}
+	writer.client = client
+	adapter := &Adapter{
+		languageID:       "go",
+		client:           client,
+		renameMaxRetries: 3,
+		renameRetryDelay: time.Millisecond,
+	}
+
+	loc := symbol.Location{File: filePath, Line: 3, Column: 6}
+	we, err := adapter.Rename(loc, "renamed")
+	if err == nil {
+		t.Fatalf("expected non-nil error on retry exhaustion, got edit %+v", we)
+	}
+	if !errors.Is(err, ErrRenameNoEdits) {
+		t.Fatalf("expected ErrRenameNoEdits, got %v", err)
+	}
+	if writer.renameCalls != 3 {
+		t.Fatalf("expected rename to be retried 3 times, got %d", writer.renameCalls)
+	}
+}
+
+// emptyRenameWriter is a fake LSP server transport that acknowledges DidOpen and
+// always answers textDocument/rename with an empty workspace edit, simulating a
+// server stuck returning zero edits.
+type emptyRenameWriter struct {
+	client      *Client
+	renameCalls int
+}
+
+func (w *emptyRenameWriter) Write(frame []byte) (int, error) {
+	body, err := NewTransport(bytes.NewReader(frame), nil).Read()
+	if err != nil {
+		return 0, err
+	}
+	var req jsonrpcRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return 0, err
+	}
+	switch req.Method {
+	case "textDocument/didOpen":
+		// notification; nothing to answer
+	case "textDocument/rename":
+		if req.ID == nil {
+			return 0, fmt.Errorf("rename request missing id")
+		}
+		w.renameCalls++
+		w.client.mu.Lock()
+		ch := w.client.pending[*req.ID]
+		w.client.mu.Unlock()
+		if ch == nil {
+			return 0, fmt.Errorf("missing pending request for id %d", *req.ID)
+		}
+		ch <- jsonrpcResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result:  json.RawMessage(`{"changes":{}}`),
+		}
+	}
+	return len(frame), nil
 }
 
 func symbolRangeFor(filePath string) symbol.SourceRange {
