@@ -1,56 +1,30 @@
-<!-- headroom:rtk-instructions -->
-# RTK (Rust Token Killer) - Token-Optimized Commands
+# refute — Agent Instructions
 
-When running shell commands, **always prefix with `rtk`**. This reduces context
-usage by 60-90% with zero behavior change. If rtk has no filter for a command,
-it passes through unchanged — so it is always safe to use.
+`refute` is a symbol-aware, multi-language refactoring tool. It drives language
+servers (LSP) and language-specific rewrite tools behind a single CLI so that
+operations like rename are computed by real backends rather than text
+substitution. Go is the primary implementation language; Java, TypeScript,
+Rust, and Python backends are invoked as subprocess adapters.
 
-## Key Commands
-```bash
-# Git (59-80% savings)
-rtk git status          rtk git diff            rtk git log
-
-# Files & Search (60-75% savings)
-rtk ls <path>           rtk read <file>         rtk grep <pattern>
-rtk find <pattern>      rtk diff <file>
-
-# Test (90-99% savings) — shows failures only
-rtk pytest tests/       rtk cargo test          rtk test <cmd>
-
-# Build & Lint (80-90% savings) — shows errors only
-rtk tsc                 rtk lint                rtk cargo build
-rtk prettier --check    rtk mypy                rtk ruff check
-
-# Analysis (70-90% savings)
-rtk err <cmd>           rtk log <file>          rtk json <file>
-rtk summary <cmd>       rtk deps                rtk env
-
-# GitHub (26-87% savings)
-rtk gh pr view <n>      rtk gh run list         rtk gh issue list
-
-# Infrastructure (85% savings)
-rtk docker ps           rtk kubectl get         rtk docker logs <c>
-
-# Package managers (70-90% savings)
-rtk pip list            rtk pnpm install        rtk npm run <script>
-```
-
-## Rules
-- In command chains, prefix each segment: `rtk git add . && rtk git commit -m "msg"`
-- For debugging, use raw command without rtk prefix
-- `rtk proxy <cmd>` runs command without filtering but tracks usage
-<!-- /headroom:rtk-instructions -->
+> Run shell commands prefixed with `rtk` for token-efficient output (a
+> maintainer's local tool; it passes commands through unchanged, so skip the
+> prefix if `rtk` is unavailable).
 
 ## Repo Layout
 
 - `cmd/` — CLI entrypoints (`cmd/refute/`) and the lockfile-bootstrap shim
   (`cmd/refute-tool/`).
 - `internal/` — core packages: `backend/` (LSP and rewrite drivers), `cli/`,
-  `config/`, `edit/` (edit applier), `symbol/`, `telemetry/`, plus
-  cross-package integration tests.
-- `adapters/` — non-Go adapters invoked as subprocesses (`openrewrite/`,
-  `tsmorph/`).
-- `docs/` — design notes, plans, and reference material.
+  `config/`, `edit/` (edit applier), `symbol/`, `language/` (path-based
+  language detection), `buildgraph/` (build-graph guard tests), `toolchain/`
+  (lockfile + toolchain sync), `telemetry/`, plus cross-package integration
+  tests (`internal/integration_test.go` and friends).
+- `adapters/` — non-Go subprocess adapters. Rewrite backends: `openrewrite/`
+  (Java) and `tsmorph/` (TypeScript). Registryless packaging shims that
+  redistribute the `refute-tool` bootstrap: `cargo/`, `jvm/`, `npm/`,
+  `python/`.
+- `docs/` — design notes, plans (`docs/plans/`), and intent stories
+  (`docs/stories/`).
 - `scripts/` — repo automation and developer helpers.
 - `testdata/` — fixtures consumed by tests.
 
@@ -90,6 +64,13 @@ when a backend appears silent.
 - Add or expand fixtures under `testdata/` and integration coverage under
   `internal/integration_test.go` (build tag `integration`).
 
+## Agent Tooling Artifacts
+
+Tool configs and repo-local skills are tracked. Generated outputs (caches,
+seeds, reports, binaries) are gitignored in the same change that introduces the
+generator. State from abandoned tools is deleted — never renamed and left in
+the tree.
+
 ## Issue-Backed Work
 
 Every implementation or documentation change must be backed by a GitHub issue
@@ -104,10 +85,23 @@ be created or selected before repository files are edited.
 Tracker-only administration, such as creating or updating the issue itself, does
 not require a separate issue.
 
+## Issue Traceability
+
+Feature branches are named `<flow>/issue-<N>-<slug>`; the merge commit subject
+references `#<N>`. Work without an issue number in branch or merge subject is
+not landed.
+
 ## Landing Work
 
-Never use the pull request workflow. Always finish feature branches using the
-`bento:land-work` skill, which merges directly to main.
+Never use the pull request workflow for originating work. Always finish feature
+branches using the `bento:land-work` skill, which merges directly to main.
+
+## External Contributions
+
+Maintainer/agent-originated work lands via `bento:land-work` (no PRs). External
+contributions arrive as GitHub PRs; a maintainer reviews, then lands the commits
+via the normal flow. The "never use PRs" rule applies to originating work, not
+to receiving it. See `CONTRIBUTING.md` for the human-contributor entry point.
 
 ## Intent Stories
 
