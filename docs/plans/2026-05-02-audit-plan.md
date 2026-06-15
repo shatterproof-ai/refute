@@ -1,5 +1,11 @@
 # Refute Audit Plan — 2026-05-02
 
+> **Status:** executed — this one-off audit playbook was run on 2026-05-02;
+> findings are recorded in `docs/audits/2026-05-02-audit-report.md`. Historical
+> artifact; see [README.md](README.md) for status semantics.
+> **Landing:** 2026-05-02, audit record commit `9284e7e`.
+> **Disposition:** retained historical artifact.
+
 A one-off audit playbook tailored to the refute repository. Generated via
 `bento:generate-audit`. Run phases sequentially; capture findings under each
 phase, then consolidate into the action list at the end.

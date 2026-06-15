@@ -24,7 +24,8 @@ Rust, and Python backends are invoked as subprocess adapters.
   redistribute the `refute-tool` bootstrap: `cargo/`, `jvm/`, `npm/`,
   `python/`.
 - `docs/` — design notes, plans (`docs/plans/`), and intent stories
-  (`docs/stories/`).
+  (`docs/stories/`); start with `docs/README.md` for current contracts vs
+  historical artifacts.
 - `scripts/` — repo automation and developer helpers.
 - `testdata/` — fixtures consumed by tests.
 

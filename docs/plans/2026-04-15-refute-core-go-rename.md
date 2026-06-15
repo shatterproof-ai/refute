@@ -1,5 +1,11 @@
 # refute: Core Infrastructure + Go Rename — Implementation Plan
 
+> **Status:** executed — all 11 tasks complete (see companion `-log.md`); the
+> core CLI and Go rename foundation shipped. Historical artifact; see
+> [README.md](README.md) for status semantics.
+> **Landing:** 2026-04-15, final plan task commit `d675cec`.
+> **Disposition:** retained historical artifact.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build the core `refute` CLI that can rename Go symbols via gopls, proving the entire architecture end-to-end.

@@ -25,6 +25,8 @@ coverage, test coverage, and the promotion process. Run `refute doctor`
 to see the same data evaluated against your local environment.
 See [`docs/release.md`](docs/release.md) for repeatable v0.1 release commands
 and artifact naming.
+See [`docs/README.md`](docs/README.md) for the full documentation index,
+including current contracts and historical execution artifacts.
 
 A feature is "supported" only when it has documentation, integration
 coverage, and a known install path. Everything else is best-effort and may

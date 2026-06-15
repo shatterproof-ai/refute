@@ -1,5 +1,12 @@
 # Java End-to-End Test Coverage Plan
 
+> **Status:** executed — Java E2E coverage delivered under the
+> `java-language-support` expedition (task 07). Historical artifact; see
+> [README.md](README.md) for status semantics.
+> **Landing:** implementation landed under `java-language-support` task 07;
+> exact merge commit not recorded in this historical plan.
+> **Disposition:** retained historical artifact.
+
 Date: 2026-04-22
 Expedition: `java-language-support` (task 07, slug `java-e2e-tests`)
 Branch: `java-language-support-07-java-e2e-tests`
