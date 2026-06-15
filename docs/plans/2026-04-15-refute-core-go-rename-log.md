@@ -1,5 +1,10 @@
 # Implementation Log: Core Infrastructure + Go Rename
 
+> **Status:** executed — implementation log for the completed core + Go rename
+> plan. Historical artifact; see [README.md](README.md) for status semantics.
+> **Landing:** 2026-04-15, final plan task commit `d675cec`.
+> **Disposition:** retained historical artifact.
+
 **Plan:** `docs/plans/2026-04-15-refute-core-go-rename.md`
 **Spec:** `docs/specs/2026-04-15-refute-design.md`
 **Started:** 2026-04-15
