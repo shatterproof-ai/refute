@@ -30,7 +30,19 @@ type Adapter struct {
 	client       *Client
 	openedMu     sync.Mutex
 	openedFiles  map[string]struct{}
+
+	// renameMaxRetries and renameRetryDelay override the rename retry defaults
+	// when non-zero. They exist so tests can exercise retry exhaustion quickly
+	// without waiting on the production delay.
+	renameMaxRetries int
+	renameRetryDelay time.Duration
 }
+
+// ErrRenameNoEdits signals that the server kept returning zero edits for a
+// rename request until the retry budget was exhausted. A valid rename always
+// edits at least the declaration, so an empty result after retries is a
+// failure to complete the operation, not a genuine no-op.
+var ErrRenameNoEdits = errors.New("rename produced no edits after exhausting retries")
 
 // NewAdapter creates an Adapter that will use the given ServerConfig and
 // language ID. filePatterns is a list of glob patterns identifying source
@@ -235,14 +247,24 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 
 	// Retry on ContentModified: servers like rust-analyzer cancel rename
 	// requests when background salsa invalidation races with the request.
+	// Zero edits are likewise treated as transient (the server may still be
+	// indexing) and retried.
 	const (
-		renameMaxRetries = 10
-		renameRetryDelay = 750 * time.Millisecond
+		defaultRenameMaxRetries = 10
+		defaultRenameRetryDelay = 750 * time.Millisecond
 	)
+	maxRetries := defaultRenameMaxRetries
+	if a.renameMaxRetries > 0 {
+		maxRetries = a.renameMaxRetries
+	}
+	retryDelay := defaultRenameRetryDelay
+	if a.renameRetryDelay > 0 {
+		retryDelay = a.renameRetryDelay
+	}
 	var fileEdits []edit.FileEdit
-	for attempt := 0; attempt < renameMaxRetries; attempt++ {
+	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(renameRetryDelay)
+			time.Sleep(retryDelay)
 		}
 		var err error
 		fileEdits, err = a.client.Rename(loc.File, lspLine, lspCharacter, newName)
@@ -250,17 +272,22 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 			if len(fileEdits) > 0 {
 				break
 			}
-			if attempt == renameMaxRetries-1 {
-				break
-			}
 			continue
 		}
 		if !errors.Is(err, ErrContentModified) && !errors.Is(err, ErrRenamePositionUnavailable) {
 			return nil, fmt.Errorf("rename: %w", err)
 		}
-		if attempt == renameMaxRetries-1 {
-			return nil, fmt.Errorf("rename: server state did not settle after %d attempts: %w", renameMaxRetries, err)
+		if attempt == maxRetries-1 {
+			return nil, fmt.Errorf("rename: server state did not settle after %d attempts: %w", maxRetries, err)
 		}
+	}
+
+	// Exhausting the retry budget with zero edits is a silent-failure trap:
+	// returning an empty WorkspaceEdit with a nil error would let the caller
+	// report a successful no-op that changed nothing. Surface a distinct error
+	// instead so the CLI reports a failure status.
+	if len(fileEdits) == 0 {
+		return nil, fmt.Errorf("rename %q: %w", newName, ErrRenameNoEdits)
 	}
 
 	return &edit.WorkspaceEdit{FileEdits: fileEdits}, nil

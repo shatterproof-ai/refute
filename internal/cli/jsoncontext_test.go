@@ -3,11 +3,13 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/shatterproof-ai/refute/internal/backend/lsp"
 	"github.com/shatterproof-ai/refute/internal/edit"
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
@@ -96,6 +98,41 @@ func TestRunRename_JSONSymbolResolutionError(t *testing.T) {
 		t.Fatalf("status = %q, want %q", got.Status, edit.StatusInvalidPosition)
 	}
 	if got.Error == nil || got.Error.Code != "invalid-position" {
+		t.Fatalf("unexpected error object: %+v", got.Error)
+	}
+}
+
+func TestRenameNoEditsExhaustion_JSONIsFailureEnvelope(t *testing.T) {
+	ctx := jsonContext{
+		Operation:     "rename",
+		Language:      "go",
+		Backend:       "lsp",
+		WorkspaceRoot: "/workspace",
+	}
+
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = emitJSONOperationError(ctx, fmt.Errorf("rename failed: %w", lsp.ErrRenameNoEdits))
+	})
+	var ec *ExitCodeError
+	if !errors.As(runErr, &ec) || ec.Code != 1 {
+		t.Fatalf("expected JSON exit error 1, got %#v", runErr)
+	}
+
+	var got edit.JSONResult
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("unmarshal JSON envelope: %v\nraw:\n%s", err, out)
+	}
+	if got.Status == edit.StatusApplied || got.Status == edit.StatusDryRun {
+		t.Fatalf("rename retry exhaustion reported success status %q\nraw:\n%s", got.Status, out)
+	}
+	if got.Status != edit.StatusBackendFailed {
+		t.Fatalf("status = %q, want %q\nraw:\n%s", got.Status, edit.StatusBackendFailed, out)
+	}
+	if got.FilesModified != 0 || len(got.Edits) != 0 {
+		t.Fatalf("error envelope should not report edits: files=%d edits=%+v", got.FilesModified, got.Edits)
+	}
+	if got.Error == nil || got.Error.Code != "operation-failed" {
 		t.Fatalf("unexpected error object: %+v", got.Error)
 	}
 }
