@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -17,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/shatterproof-ai/refute/internal/backend/capture"
 	"github.com/shatterproof-ai/refute/internal/edit"
 )
 
@@ -58,7 +58,6 @@ var ErrRequestTimeout = fmt.Errorf("lsp request timed out")
 const lspContentModified = -32801
 const lspInvalidParams = -32602
 const defaultRequestTimeout = 30 * time.Second
-const maxServerStderrBytes = 64 * 1024
 
 // isLSPError reports whether err contains a jsonrpcError with the given code.
 func isLSPError(err error, code int) bool {
@@ -194,9 +193,7 @@ func (p *progressTracker) waitIdle(ctx context.Context) error {
 type Client struct {
 	transport      *Transport
 	process        *exec.Cmd
-	stderrMu       sync.Mutex
-	stderrFile     *os.File
-	stderrPath     string
+	stderr         *capture.Stderr
 	nextID         atomic.Int64
 	mu             sync.Mutex
 	pending        map[int]chan jsonrpcResponse
@@ -216,38 +213,32 @@ type serverCapabilities struct {
 // and completes the initialize/initialized handshake.
 func StartClient(command string, args []string, workspaceRoot string) (*Client, error) {
 	cmd := exec.Command(command, args...)
-	stderrFile, err := os.CreateTemp("", "refute-lsp-stderr-*")
+	stderr, err := capture.New("refute-lsp-stderr-*")
 	if err != nil {
 		return nil, fmt.Errorf("stderr temp file: %w", err)
-	}
-	stderrPath := stderrFile.Name()
-	cleanupStderr := func() {
-		stderrFile.Close()
-		os.Remove(stderrPath)
 	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		cleanupStderr()
+		stderr.Cleanup()
 		return nil, fmt.Errorf("stdin pipe: %w", err)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		cleanupStderr()
+		stderr.Cleanup()
 		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
-	cmd.Stderr = stderrFile
+	cmd.Stderr = stderr.File()
 
 	if err := cmd.Start(); err != nil {
-		cleanupStderr()
+		stderr.Cleanup()
 		return nil, fmt.Errorf("start %s: %w", command, err)
 	}
 
 	c := &Client{
 		transport:      NewTransport(stdout, stdin),
 		process:        cmd,
-		stderrFile:     stderrFile,
-		stderrPath:     stderrPath,
+		stderr:         stderr,
 		pending:        make(map[int]chan jsonrpcResponse),
 		done:           make(chan struct{}),
 		progress:       newProgressTracker(),
@@ -454,53 +445,14 @@ func (c *Client) serverStderr() string {
 	if c == nil {
 		return ""
 	}
-	c.stderrMu.Lock()
-	defer c.stderrMu.Unlock()
-	if c.stderrPath == "" {
-		return ""
-	}
-	if c.stderrFile != nil {
-		_ = c.stderrFile.Sync()
-	}
-	f, err := os.Open(c.stderrPath)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-
-	data, err := io.ReadAll(io.LimitReader(f, maxServerStderrBytes+1))
-	if err != nil {
-		return ""
-	}
-	truncated := len(data) > maxServerStderrBytes
-	if truncated {
-		data = data[:maxServerStderrBytes]
-	}
-	msg := strings.TrimSpace(string(data))
-	if msg == "" {
-		return ""
-	}
-	if truncated {
-		msg += " ... [stderr truncated]"
-	}
-	return msg
+	return c.stderr.Read(capture.DefaultMaxBytes)
 }
 
 func (c *Client) cleanupStderr() {
 	if c == nil {
 		return
 	}
-	c.stderrMu.Lock()
-	defer c.stderrMu.Unlock()
-	if c.stderrPath == "" {
-		return
-	}
-	if c.stderrFile != nil {
-		c.stderrFile.Close()
-		c.stderrFile = nil
-	}
-	os.Remove(c.stderrPath)
-	c.stderrPath = ""
+	c.stderr.Cleanup()
 }
 
 // notify sends a JSON-RPC notification (no ID, no response expected).

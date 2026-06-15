@@ -3,13 +3,29 @@ package openrewrite
 import (
 	"encoding/json"
 	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/shatterproof-ai/refute/internal/backend/capture"
 )
+
+const openRewriteStderrMessage = "java.lang.NoClassDefFoundError: kaboom"
+
+func newOpenRewriteStderrCapture(t *testing.T, content string) *capture.Stderr {
+	t.Helper()
+	stderr, err := capture.New("refute-openrewrite-test-stderr-*")
+	if err != nil {
+		t.Fatalf("create stderr capture: %v", err)
+	}
+	t.Cleanup(stderr.Cleanup)
+	if _, err := stderr.File().WriteString(content); err != nil {
+		t.Fatalf("write stderr: %v", err)
+	}
+	return stderr
+}
 
 // nopWriteCloser adapts an io.Writer to io.WriteCloser for tests that only need
 // to capture (or discard) the request written by callRename.
@@ -86,51 +102,21 @@ func TestCallRenameSubprocessError(t *testing.T) {
 // produces no response (EOF), captured JVM stderr is folded into the error
 // instead of being discarded.
 func TestCallRenameNoResponseIncludesStderr(t *testing.T) {
-	stderrFile, err := os.CreateTemp(t.TempDir(), "stderr-*")
-	if err != nil {
-		t.Fatalf("temp file: %v", err)
-	}
-	const diag = "java.lang.NoClassDefFoundError: kaboom"
-	if _, err := stderrFile.WriteString(diag); err != nil {
-		t.Fatalf("write stderr: %v", err)
-	}
-
 	a := &Adapter{
-		stdin:      nopWriteCloser{io.Discard},
-		stdout:     json.NewDecoder(strings.NewReader("")), // immediate EOF
-		stderrFile: stderrFile,
-		stderrPath: stderrFile.Name(),
+		stdin:  nopWriteCloser{io.Discard},
+		stdout: json.NewDecoder(strings.NewReader("")), // immediate EOF
+		stderr: newOpenRewriteStderrCapture(t, openRewriteStderrMessage),
 	}
 
-	_, err = a.callRename(map[string]any{})
+	_, err := a.callRename(map[string]any{})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 	if !strings.Contains(err.Error(), "no response") {
 		t.Errorf("error %q missing no-response context", err)
 	}
-	if !strings.Contains(err.Error(), diag) {
+	if !strings.Contains(err.Error(), openRewriteStderrMessage) {
 		t.Errorf("error %q does not include captured JVM stderr", err)
-	}
-}
-
-// TestReadStderrTruncates caps captured stderr at maxJVMStderrBytes.
-func TestReadStderrTruncates(t *testing.T) {
-	stderrFile, err := os.CreateTemp(t.TempDir(), "stderr-*")
-	if err != nil {
-		t.Fatalf("temp file: %v", err)
-	}
-	big := strings.Repeat("x", maxJVMStderrBytes+1024)
-	if _, err := stderrFile.WriteString(big); err != nil {
-		t.Fatalf("write stderr: %v", err)
-	}
-	a := &Adapter{stderrFile: stderrFile, stderrPath: stderrFile.Name()}
-	got := a.readStderr()
-	if !strings.HasSuffix(got, "[stderr truncated]") {
-		t.Errorf("expected truncation marker, got suffix %q", got[max(0, len(got)-40):])
-	}
-	if len(got) > maxJVMStderrBytes+len(" ... [stderr truncated]") {
-		t.Errorf("stderr not bounded: got %d bytes", len(got))
 	}
 }
 

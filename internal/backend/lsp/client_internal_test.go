@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/shatterproof-ai/refute/internal/backend/capture"
 )
 
 func TestParseWorkspaceEditSortsChangesMapByFilePath(t *testing.T) {
@@ -103,25 +105,20 @@ func TestClientRequestTimesOutWhenServerDoesNotRespond(t *testing.T) {
 }
 
 func TestClientRequestTimeoutIncludesServerStderr(t *testing.T) {
-	stderrFile, err := os.CreateTemp("", "refute-lsp-stderr-test-*")
+	stderr, err := capture.New("refute-lsp-stderr-test-*")
 	if err != nil {
-		t.Fatalf("create stderr temp file: %v", err)
+		t.Fatalf("create stderr capture: %v", err)
 	}
-	stderrPath := stderrFile.Name()
-	t.Cleanup(func() {
-		stderrFile.Close()
-		os.Remove(stderrPath)
-	})
+	t.Cleanup(stderr.Cleanup)
 	const stderrMessage = "panic: gopls exploded"
-	if _, err := stderrFile.WriteString(stderrMessage + "\n"); err != nil {
+	if _, err := stderr.File().WriteString(stderrMessage + "\n"); err != nil {
 		t.Fatalf("write stderr: %v", err)
 	}
 
 	client := &Client{
 		transport:      NewTransport(nil, io.Discard),
 		pending:        make(map[int]chan jsonrpcResponse),
-		stderrFile:     stderrFile,
-		stderrPath:     stderrPath,
+		stderr:         stderr,
 		requestTimeout: 10 * time.Millisecond,
 	}
 
@@ -235,14 +232,13 @@ func TestClientShutdownCleansUpAfterNormalShutdown(t *testing.T) {
 
 func newShutdownTestClient(t *testing.T, transport *Transport, cmd *exec.Cmd) (*Client, string) {
 	t.Helper()
-	stderrFile, err := os.CreateTemp("", "refute-lsp-shutdown-test-*")
+	stderr, err := capture.New("refute-lsp-shutdown-test-*")
 	if err != nil {
-		t.Fatalf("create stderr temp file: %v", err)
+		t.Fatalf("create stderr capture: %v", err)
 	}
-	stderrPath := stderrFile.Name()
+	stderrPath := stderr.File().Name()
 	t.Cleanup(func() {
-		stderrFile.Close()
-		os.Remove(stderrPath)
+		stderr.Cleanup()
 		if cmd.Process != nil && cmd.ProcessState == nil {
 			_ = cmd.Process.Kill()
 			_ = cmd.Wait()
@@ -252,8 +248,7 @@ func newShutdownTestClient(t *testing.T, transport *Transport, cmd *exec.Cmd) (*
 	return &Client{
 		transport:      transport,
 		process:        cmd,
-		stderrFile:     stderrFile,
-		stderrPath:     stderrPath,
+		stderr:         stderr,
 		pending:        make(map[int]chan jsonrpcResponse),
 		done:           make(chan struct{}),
 		requestTimeout: time.Second,
@@ -286,11 +281,11 @@ func requireShutdownCleanup(t *testing.T, client *Client, stderrPath string) {
 	if _, err := os.Stat(stderrPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected stderr temp file to be removed, stat error: %v", err)
 	}
-	if client.stderrFile != nil {
+	if client.stderr.File() != nil {
 		t.Fatal("expected stderr file handle to be cleared")
 	}
-	if client.stderrPath != "" {
-		t.Fatalf("expected stderr path to be cleared, got %q", client.stderrPath)
+	if got := client.stderr.Read(capture.DefaultMaxBytes); got != "" {
+		t.Fatalf("expected cleaned stderr capture to read empty, got %q", got)
 	}
 }
 
