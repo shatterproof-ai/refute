@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
+	"github.com/shatterproof-ai/refute/internal/backend/capture"
 	"github.com/shatterproof-ai/refute/internal/edit"
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
@@ -25,9 +26,6 @@ const jarCacheSubPath = "adapters/openrewrite/target/openrewrite-adapter.jar"
 // after stdin is closed before falling back to killing the process.
 const defaultShutdownTimeout = 5 * time.Second
 
-// maxJVMStderrBytes caps how much captured JVM stderr is folded into errors.
-const maxJVMStderrBytes = 64 * 1024
-
 // Adapter wraps the OpenRewrite JVM subprocess to implement backend.RefactoringBackend.
 type Adapter struct {
 	jarPath       string
@@ -35,9 +33,7 @@ type Adapter struct {
 	process       *exec.Cmd
 	stdin         io.WriteCloser
 	stdout        *json.Decoder
-	stderrMu      sync.Mutex
-	stderrFile    *os.File
-	stderrPath    string
+	stderr        *capture.Stderr
 	shutdownOnce  sync.Once
 	// shutdownTimeout overrides defaultShutdownTimeout when non-zero (tests).
 	shutdownTimeout time.Duration
@@ -75,38 +71,32 @@ func (a *Adapter) Initialize(workspaceRoot string) error {
 
 	// Capture JVM stderr to a temp file so diagnostics (including the adapter's
 	// own parse errors) can be surfaced in errors instead of being discarded.
-	stderrFile, err := os.CreateTemp("", "refute-openrewrite-stderr-*")
+	stderr, err := capture.New("refute-openrewrite-stderr-*")
 	if err != nil {
 		return fmt.Errorf("stderr temp file: %w", err)
 	}
-	stderrPath := stderrFile.Name()
-	cleanupStderr := func() {
-		stderrFile.Close()
-		os.Remove(stderrPath)
-	}
-	cmd.Stderr = stderrFile
+	cmd.Stderr = stderr.File()
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		cleanupStderr()
+		stderr.Cleanup()
 		return fmt.Errorf("stdin pipe: %w", err)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		cleanupStderr()
+		stderr.Cleanup()
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		cleanupStderr()
+		stderr.Cleanup()
 		return fmt.Errorf("start JVM: %w", err)
 	}
 
 	a.process = cmd
 	a.stdin = stdin
 	a.stdout = json.NewDecoder(stdout)
-	a.stderrFile = stderrFile
-	a.stderrPath = stderrPath
+	a.stderr = stderr
 
 	return nil
 }
@@ -161,59 +151,19 @@ func (a *Adapter) waitWithTimeout() error {
 // stderrSuffix returns a "; JVM stderr: ..." fragment for folding captured JVM
 // diagnostics into an error message, or "" when no stderr was captured.
 func (a *Adapter) stderrSuffix() string {
-	msg := a.readStderr()
+	if a == nil {
+		return ""
+	}
+	msg := a.stderr.Read(capture.DefaultMaxBytes)
 	if msg == "" {
 		return ""
 	}
 	return "; JVM stderr: " + msg
 }
 
-// readStderr reads the captured JVM stderr, bounded by maxJVMStderrBytes.
-func (a *Adapter) readStderr() string {
-	if a == nil {
-		return ""
-	}
-	a.stderrMu.Lock()
-	defer a.stderrMu.Unlock()
-	if a.stderrPath == "" {
-		return ""
-	}
-	if a.stderrFile != nil {
-		_ = a.stderrFile.Sync()
-	}
-	f, err := os.Open(a.stderrPath)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-
-	data, err := io.ReadAll(io.LimitReader(f, maxJVMStderrBytes+1))
-	if err != nil {
-		return ""
-	}
-	truncated := len(data) > maxJVMStderrBytes
-	if truncated {
-		data = data[:maxJVMStderrBytes]
-	}
-	msg := strings.TrimSpace(string(data))
-	if msg != "" && truncated {
-		msg += " ... [stderr truncated]"
-	}
-	return msg
-}
-
 // cleanupStderr closes and removes the captured-stderr temp file.
 func (a *Adapter) cleanupStderr() {
-	a.stderrMu.Lock()
-	defer a.stderrMu.Unlock()
-	if a.stderrFile != nil {
-		a.stderrFile.Close()
-		a.stderrFile = nil
-	}
-	if a.stderrPath != "" {
-		os.Remove(a.stderrPath)
-		a.stderrPath = ""
-	}
+	a.stderr.Cleanup()
 }
 
 // FindSymbol returns ErrUnsupported — OpenRewrite does not expose symbol search.
