@@ -5,6 +5,7 @@
 | Slug | Title | Status | Authority | Change Resistance |
 |------|-------|--------|-----------|-------------------|
 | [rename-symbol](rename-symbol.md) | Rename a symbol across the workspace | active | observed | medium |
+| [list-symbols](list-symbols.md) | Discover candidate symbols before refactoring | active | observed | medium |
 | [inline-symbol](inline-symbol.md) | Inline a symbol at its use site | active | observed | medium |
 | [extract-function](extract-function.md) | Extract a code selection into a function | active | observed | medium |
 | [extract-variable](extract-variable.md) | Extract a code selection into a variable | active | observed | medium |
