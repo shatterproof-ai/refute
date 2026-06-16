@@ -37,6 +37,10 @@ MCP server described in design documents are not part of v0.1.0.
 ### Safety And Reliability
 
 - Workspace edit application is rollback-safe when a later file write fails.
+- CLI and LSP positions convert losslessly between byte columns and UTF-16 code
+  units, covering ASCII, multi-byte Unicode, and emoji.
+- Tier-2 symbol resolution validates identifier boundaries, rejects partial
+  matches, and ignores names inside comments and string literals.
 - LSP request handling has per-request timeouts to avoid indefinite waits.
 - LSP server stderr is surfaced in startup and request failures.
 - LSP transport frames reject non-positive and oversized `Content-Length`

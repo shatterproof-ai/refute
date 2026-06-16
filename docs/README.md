@@ -26,7 +26,7 @@ unless a current tracker issue explicitly reactivates them.
 - [Inline Symbol Story](stories/inline-symbol.md) -- intent story for inline refactoring.
 - [Rename Symbol Story](stories/rename-symbol.md) -- intent story for rename refactoring.
 - [Plans Lifecycle](plans/README.md) -- required lifecycle status convention for plan files.
-- [Issue Backlog](issue-backlog.md) -- legacy backlog retained until migration work in issue #84.
+- [Issue Backlog](issue-backlog.md) -- tombstone; migrated into GitHub Issues (#84).
 
 ## Historical Artifacts
 
