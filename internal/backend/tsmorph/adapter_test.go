@@ -4,9 +4,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shatterproof-ai/refute/internal/backend/tsmorph"
+	"github.com/shatterproof-ai/refute/internal/edit"
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
@@ -39,6 +41,76 @@ func TestAdapterRename(t *testing.T) {
 	}
 	if len(we.FileEdits) < 2 {
 		t.Fatalf("expected edits across at least 2 files, got %d", len(we.FileEdits))
+	}
+}
+
+func TestAdapterRenameUsesByteColumnsAroundNonASCII(t *testing.T) {
+	requireTSMorph(t)
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "sample.ts")
+	line := `const label = "é𝄞"; export function greet() { return "hello"; }`
+	if err := os.WriteFile(file, []byte(line), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	adapter := tsmorph.NewAdapter()
+	if err := adapter.Initialize(dir); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+
+	we, err := adapter.Rename(symbol.Location{
+		File:   file,
+		Line:   1,
+		Column: strings.Index(line, "greet") + 1,
+		Name:   "greet",
+		Kind:   symbol.KindFunction,
+	}, "welcome")
+	if err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	if _, err := edit.ApplyWithin(we, dir); err != nil {
+		t.Fatalf("ApplyWithin: %v", err)
+	}
+	got, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("read renamed file: %v", err)
+	}
+	want := `const label = "é𝄞"; export function welcome() { return "hello"; }`
+	if string(got) != want {
+		t.Fatalf("renamed file mismatch:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+func TestAdapterFindSymbolReturnsByteColumnsAroundNonASCII(t *testing.T) {
+	requireTSMorph(t)
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "sample.ts")
+	line := `const label = "é𝄞"; export function greet() { return "hello"; }`
+	if err := os.WriteFile(file, []byte(line+"\n"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	adapter := tsmorph.NewAdapter()
+	if err := adapter.Initialize(dir); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+
+	locs, err := adapter.FindSymbol(symbol.Query{
+		QualifiedName: "sample:greet",
+		File:          file,
+		Kind:          symbol.KindFunction,
+	})
+	if err != nil {
+		t.Fatalf("FindSymbol: %v", err)
+	}
+	if len(locs) != 1 {
+		t.Fatalf("expected 1 location, got %d", len(locs))
+	}
+	wantColumn := strings.Index(line, "greet") + 1
+	if got := locs[0]; got.Column != wantColumn {
+		t.Fatalf("column = %d, want byte column %d", got.Column, wantColumn)
 	}
 }
 

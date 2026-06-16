@@ -28,6 +28,42 @@ func TestByteColumnToUTF16Character(t *testing.T) {
 	}
 }
 
+func TestUTF16CharacterToByteCharacter(t *testing.T) {
+	line := "a𝄞b"
+	tests := []struct {
+		name      string
+		character int
+		want      int
+	}{
+		{name: "start", character: 0, want: 0},
+		{name: "before surrogate pair", character: 1, want: 1},
+		{name: "after surrogate pair", character: 3, want: 5},
+		{name: "end", character: 4, want: 6},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := utf16CharacterToByteCharacter(line, tc.character)
+			if err != nil {
+				t.Fatalf("utf16CharacterToByteCharacter: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("byte character = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestUTF16CharacterToByteCharacterRejectsSurrogateSplit(t *testing.T) {
+	_, err := utf16CharacterToByteCharacter("a𝄞b", 2)
+	if err == nil {
+		t.Fatal("expected surrogate split error")
+	}
+	if !strings.Contains(err.Error(), "splits a UTF-16 surrogate pair") {
+		t.Fatalf("error = %q, want surrogate split message", err)
+	}
+}
+
 func TestReplaceWholeIdent_respectsIdentifierBoundaries(t *testing.T) {
 	got := replaceWholeIdent("newFunction()\nnewFunctionCall()\n_ = newFunction", "newFunction", "sum")
 	want := "sum()\nnewFunctionCall()\n_ = sum"
