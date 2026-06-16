@@ -7,6 +7,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/spf13/cobra v1.10.2
 	go.uber.org/goleak v1.3.0
+	pgregory.net/rapid v1.3.0
 )
 
 require (
@@ -15,5 +16,4 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	golang.org/x/sys v0.42.0 // indirect
-	pgregory.net/rapid v1.3.0 // indirect
 )
