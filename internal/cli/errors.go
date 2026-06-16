@@ -6,9 +6,15 @@ import (
 	"os"
 	"strings"
 
+	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/edit"
 	"github.com/shatterproof-ai/refute/internal/telemetry"
 )
+
+// backendMissingExitCode is the conventional process exit code for "a required
+// backend tool is absent" — shared by ErrLSPServerMissing and the adapter
+// runtime-missing path so scripts can branch on "install something" uniformly.
+const backendMissingExitCode = 3
 
 // ExitCodeError carries a requested process exit code alongside an optional
 // message. Commands return this instead of calling os.Exit so deferred
@@ -50,7 +56,41 @@ func (e *ErrLSPServerMissing) Error() string {
 	return fmt.Sprintf("LSP server %q for %s not found on PATH", e.Command, e.Language)
 }
 
-func (e *ErrLSPServerMissing) ExitCode() int { return 3 }
+func (e *ErrLSPServerMissing) ExitCode() int { return backendMissingExitCode }
+
+// ErrBackendInitFailure wraps an error returned by a backend's Initialize so
+// callers can distinguish "the backend failed to start" from a missing tool or
+// an unsupported operation. Cause is preserved and exposed via Unwrap, so a
+// wrapped typed error (such as backend.ErrAdapterRuntimeMissing or
+// ErrLSPServerMissing) still satisfies errors.As/errors.Is and its more specific
+// classification wins over the generic "backend crashed" mapping.
+type ErrBackendInitFailure struct {
+	Backend string
+	Cause   error
+}
+
+// NewBackendInitFailure wraps a backend Initialize error with the backend name.
+func NewBackendInitFailure(backendName string, cause error) *ErrBackendInitFailure {
+	return &ErrBackendInitFailure{Backend: backendName, Cause: cause}
+}
+
+func (e *ErrBackendInitFailure) Error() string {
+	if e.Backend != "" {
+		return fmt.Sprintf("backend %q failed to initialize: %v", e.Backend, e.Cause)
+	}
+	return fmt.Sprintf("backend failed to initialize: %v", e.Cause)
+}
+
+func (e *ErrBackendInitFailure) Unwrap() error { return e.Cause }
+
+// isBackendRuntimeMissing reports whether err (or anything it wraps) is a
+// missing-backend-tool error: a missing LSP server or a missing adapter
+// runtime. These all map to exit code 3 and status backend-missing.
+func isBackendRuntimeMissing(err error) bool {
+	var lsp *ErrLSPServerMissing
+	var rt *backend.ErrAdapterRuntimeMissing
+	return errors.As(err, &lsp) || errors.As(err, &rt)
+}
 
 // ErrSymbolNotFound is returned by the CLI Rust rename path when no symbol
 // matches the parsed --symbol query. Exit code 2 signals "no match found".
@@ -108,6 +148,11 @@ func exitDetails(err error) (int, string) {
 	if errors.As(err, &ec) {
 		return ec.ExitCode(), exitMessage(err, ec)
 	}
+	// A missing adapter runtime carries no ExitCode of its own (it originates in
+	// the backend layer), so map it here to the shared backend-missing code.
+	if isBackendRuntimeMissing(err) {
+		return backendMissingExitCode, err.Error()
+	}
 	return 1, err.Error()
 }
 
@@ -123,9 +168,12 @@ func exitMessage(err error, ec exitCoder) string {
 }
 
 func defaultStatusForError(err error) string {
-	var em *ErrLSPServerMissing
-	if errors.As(err, &em) {
+	if isBackendRuntimeMissing(err) {
 		return edit.StatusBackendMissing
+	}
+	var initFail *ErrBackendInitFailure
+	if errors.As(err, &initFail) {
+		return edit.StatusBackendFailed
 	}
 	var ec exitCoder
 	if errors.As(err, &ec) && ec.ExitCode() == 2 {
