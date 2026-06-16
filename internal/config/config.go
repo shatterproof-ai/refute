@@ -5,25 +5,19 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 )
 
 const (
-	defaultTimeout           = 30000
-	defaultDaemonIdleTimeout = 600000
-	projectConfigFilename    = "refute.config.json"
-	userConfigRelPath        = ".config/refute/config.json"
+	defaultTimeout        = 30000
+	projectConfigFilename = "refute.config.json"
+	userConfigRelPath     = ".config/refute/config.json"
 )
 
 // ServerConfig holds the command and arguments for a language server.
 type ServerConfig struct {
 	Command string   `json:"command"`
 	Args    []string `json:"args"`
-}
-
-// DaemonConfig holds settings for the refute daemon.
-type DaemonConfig struct {
-	AutoStart   bool `json:"autoStart"`
-	IdleTimeout int  `json:"idleTimeout"`
 }
 
 // TSMorphConfig holds optional overrides for the ts-morph adapter.
@@ -40,10 +34,12 @@ type ToolsConfig struct {
 }
 
 // Config is the resolved configuration for refute.
+//
+// Timeout is the per-request LSP timeout in milliseconds; it is wired into the
+// LSP client's request timeout via the backend selector.
 type Config struct {
 	Servers map[string]ServerConfig `json:"servers"`
 	Timeout int                     `json:"timeout"`
-	Daemon  DaemonConfig            `json:"daemon"`
 	Tools   ToolsConfig             `json:"tools"`
 }
 
@@ -84,10 +80,6 @@ func defaults() *Config {
 	return &Config{
 		Servers: make(map[string]ServerConfig),
 		Timeout: defaultTimeout,
-		Daemon: DaemonConfig{
-			AutoStart:   false,
-			IdleTimeout: defaultDaemonIdleTimeout,
-		},
 	}
 }
 
@@ -96,13 +88,7 @@ func defaults() *Config {
 type fileLayer struct {
 	Servers map[string]ServerConfig `json:"servers"`
 	Timeout *int                    `json:"timeout"`
-	Daemon  *daemonLayer            `json:"daemon"`
 	Tools   *toolsLayer             `json:"tools"`
-}
-
-type daemonLayer struct {
-	AutoStart   *bool `json:"autoStart"`
-	IdleTimeout *int  `json:"idleTimeout"`
 }
 
 type toolsLayer struct {
@@ -120,14 +106,6 @@ func mergeLayer(dst *Config, layer fileLayer) {
 	}
 	if layer.Timeout != nil {
 		dst.Timeout = *layer.Timeout
-	}
-	if layer.Daemon != nil {
-		if layer.Daemon.AutoStart != nil {
-			dst.Daemon.AutoStart = *layer.Daemon.AutoStart
-		}
-		if layer.Daemon.IdleTimeout != nil {
-			dst.Daemon.IdleTimeout = *layer.Daemon.IdleTimeout
-		}
 	}
 	if layer.Tools != nil && layer.Tools.TSMorph != nil {
 		if layer.Tools.TSMorph.Adapter != nil {
@@ -151,6 +129,16 @@ func loadFile(path string) (fileLayer, error) {
 		return layer, err
 	}
 	return layer, nil
+}
+
+// RequestTimeout returns the configured per-request LSP timeout as a Duration.
+// A non-positive Timeout yields 0, which callers treat as "use the built-in
+// default".
+func (c *Config) RequestTimeout() time.Duration {
+	if c == nil || c.Timeout <= 0 {
+		return 0
+	}
+	return time.Duration(c.Timeout) * time.Millisecond
 }
 
 // Server returns the ServerConfig for a language, falling back to the

@@ -2,18 +2,25 @@ package tsmorph
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/edit"
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
+
+// defaultRunTimeout bounds a single ts-morph adapter subprocess invocation so a
+// hung node process cannot block the CLI indefinitely.
+const defaultRunTimeout = 60 * time.Second
 
 var _ backend.RefactoringBackend = (*Adapter)(nil)
 
@@ -32,6 +39,22 @@ var (
 type Adapter struct {
 	workspaceRoot string
 	adapterPath   string // explicit override; empty means auto-discover
+	// ctx is the base context propagated from the CLI (cancelled on SIGINT).
+	// Nil means context.Background().
+	ctx context.Context
+}
+
+// SetContext sets the base context propagated to ts-morph subprocess runs so
+// that cancelling it (e.g. on SIGINT) aborts an in-flight run.
+func (a *Adapter) SetContext(ctx context.Context) {
+	a.ctx = ctx
+}
+
+func (a *Adapter) baseContext() context.Context {
+	if a.ctx != nil {
+		return a.ctx
+	}
+	return context.Background()
 }
 
 func AdapterInstallHint() string {
@@ -254,7 +277,10 @@ func (a *Adapter) run(req any, resp any) error {
 	if !ok {
 		return fmt.Errorf("ts-morph adapter not found; install with: %s", AdapterInstallHint())
 	}
-	cmd := exec.Command("node", p.script)
+	ctx, cancel := context.WithTimeout(a.baseContext(), defaultRunTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "node", p.script)
 	cmd.Dir = a.workspaceRoot
 	cmd.Stdin = bytes.NewReader(data)
 
@@ -264,6 +290,11 @@ func (a *Adapter) run(req any, resp any) error {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		if ctxErr := ctx.Err(); errors.Is(ctxErr, context.DeadlineExceeded) {
+			return fmt.Errorf("ts-morph operation timed out after %s", defaultRunTimeout)
+		} else if errors.Is(ctxErr, context.Canceled) {
+			return fmt.Errorf("ts-morph operation cancelled: %w", ctxErr)
+		}
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = strings.TrimSpace(stdout.String())

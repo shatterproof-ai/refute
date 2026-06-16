@@ -1,6 +1,7 @@
 package selector
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -47,13 +48,13 @@ func TestForFile_TypeScriptTSXPrefersTSMorphWhenAvailable(t *testing.T) {
 	oldAvailable := tsMorphAvailable
 	oldNew := newTSMorphBackend
 	tsMorphAvailable = func(_, _ string) bool { return true }
-	newTSMorphBackend = func(_ string) backend.RefactoringBackend { return fakeBackend{} }
+	newTSMorphBackend = func(_ context.Context, _ string) backend.RefactoringBackend { return fakeBackend{} }
 	t.Cleanup(func() {
 		tsMorphAvailable = oldAvailable
 		newTSMorphBackend = oldNew
 	})
 
-	sel, err := ForFile(cfg, dir, filepath.Join(dir, "src", "badge.tsx"))
+	sel, err := ForFile(context.Background(), cfg, dir, filepath.Join(dir, "src", "badge.tsx"))
 	if err != nil {
 		t.Fatalf("ForFile returned error: %v", err)
 	}
@@ -84,7 +85,7 @@ func TestForFile_JavaScriptJSXUsesBuiltinServer(t *testing.T) {
 		tsMorphAvailable = oldAvailable
 	})
 
-	sel, err := ForFile(cfg, "/nonexistent/workspace/root", "/tmp/screen.jsx")
+	sel, err := ForFile(context.Background(), cfg, "/nonexistent/workspace/root", "/tmp/screen.jsx")
 	if err != nil {
 		t.Fatalf("ForFile returned error: %v", err)
 	}
@@ -112,7 +113,7 @@ func TestForFile_UnknownExtensionReturnsNoServerConfigured(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	_, err = ForFile(cfg, "/nonexistent/workspace/root", "/tmp/file.unknown")
+	_, err = ForFile(context.Background(), cfg, "/nonexistent/workspace/root", "/tmp/file.unknown")
 	if err == nil {
 		t.Fatal("expected error for unknown extension")
 	}

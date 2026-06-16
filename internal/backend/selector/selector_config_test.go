@@ -1,6 +1,7 @@
 package selector
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -28,13 +29,13 @@ func TestForFile_TSMorphConfigAdapterPathThreaded(t *testing.T) {
 		gotExplicitPath = explicitPath
 		return true
 	}
-	newTSMorphBackend = func(_ string) backend.RefactoringBackend { return fakeBackend{} }
+	newTSMorphBackend = func(_ context.Context, _ string) backend.RefactoringBackend { return fakeBackend{} }
 	t.Cleanup(func() {
 		tsMorphAvailable = oldAvailable
 		newTSMorphBackend = oldNew
 	})
 
-	if _, err := ForFile(cfg, dir, filepath.Join(dir, "src", "app.ts")); err != nil {
+	if _, err := ForFile(context.Background(), cfg, dir, filepath.Join(dir, "src", "app.ts")); err != nil {
 		t.Fatalf("ForFile: %v", err)
 	}
 

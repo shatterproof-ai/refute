@@ -1,6 +1,7 @@
 package lsp_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,7 +51,7 @@ func TestClient_Initialize(t *testing.T) {
 	requireGopls(t)
 	dir := setupGoProject(t)
 
-	client, err := lsp.StartClient("gopls", []string{"serve"}, dir)
+	client, err := lsp.StartClient(context.Background(), "gopls", []string{"serve"}, dir, 0)
 	if err != nil {
 		t.Fatalf("StartClient: %v", err)
 	}
@@ -85,7 +86,7 @@ func main() {
 		t.Fatalf("write main.go: %v", err)
 	}
 
-	client, err := lsp.StartClient("gopls", []string{"serve"}, dir)
+	client, err := lsp.StartClient(context.Background(), "gopls", []string{"serve"}, dir, 0)
 	if err != nil {
 		t.Fatalf("StartClient: %v", err)
 	}
@@ -119,7 +120,7 @@ func TestClient_WorkspaceSymbol(t *testing.T) {
 	requireGopls(t)
 	dir := setupGoProject(t)
 
-	client, err := lsp.StartClient("gopls", []string{"serve"}, dir)
+	client, err := lsp.StartClient(context.Background(), "gopls", []string{"serve"}, dir, 0)
 	if err != nil {
 		t.Fatalf("StartClient: %v", err)
 	}
@@ -150,7 +151,7 @@ func TestClient_Rename(t *testing.T) {
 	requireGopls(t)
 	dir := setupGoProject(t)
 
-	client, err := lsp.StartClient("gopls", []string{"serve"}, dir)
+	client, err := lsp.StartClient(context.Background(), "gopls", []string{"serve"}, dir, 0)
 	if err != nil {
 		t.Fatalf("StartClient: %v", err)
 	}
