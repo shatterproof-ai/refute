@@ -82,6 +82,33 @@ test("findSymbol returns a matching function candidate", async t => {
   ]);
 });
 
+test("findSymbol reports UTF-16 columns for non-ASCII lines", async t => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "refute-tsmorph-"));
+  t.after(() => fs.rm(workspaceRoot, { force: true, recursive: true }));
+
+  const file = path.join(workspaceRoot, "sample.ts");
+  const line = 'const label = "é𝄞"; export function greet() { return "hello"; }';
+  await fs.writeFile(file, `${line}\n`);
+
+  const response = await runAdapter({
+    operation: "findSymbol",
+    workspaceRoot,
+    file,
+    qualifiedName: "sample:greet",
+    kind: "function",
+  });
+
+  assert.deepEqual(response.candidates, [
+    {
+      file,
+      line: 1,
+      column: line.indexOf("greet") + 1,
+      name: "greet",
+      kind: "function",
+    },
+  ]);
+});
+
 test("rename returns full-file edits for changed files", async t => {
   const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "refute-tsmorph-"));
   t.after(() => fs.rm(workspaceRoot, { force: true, recursive: true }));
@@ -106,6 +133,31 @@ test("rename returns full-file edits for changed files", async t => {
   assert.equal(
     response.fileEdits[0].edits[0].newText,
     "export function salute() {\n  return 'hello';\n}\n\nexport const message = salute();\n",
+  );
+});
+
+test("rename accepts UTF-16 columns on non-ASCII lines", async t => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "refute-tsmorph-"));
+  t.after(() => fs.rm(workspaceRoot, { force: true, recursive: true }));
+
+  const file = path.join(workspaceRoot, "sample.ts");
+  const line = 'const label = "é𝄞"; export function greet() { return "hello"; }';
+  await fs.writeFile(file, line);
+
+  const response = await runAdapter({
+    operation: "rename",
+    workspaceRoot,
+    file,
+    line: 1,
+    column: line.indexOf("greet") + 1,
+    newName: "welcome",
+  });
+
+  assert.equal(response.fileEdits.length, 1);
+  assert.equal(response.fileEdits[0].path, file);
+  assert.equal(
+    response.fileEdits[0].edits[0].newText,
+    'const label = "é𝄞"; export function welcome() { return "hello"; }',
   );
 });
 

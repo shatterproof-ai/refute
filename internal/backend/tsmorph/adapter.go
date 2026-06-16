@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/edit"
@@ -136,10 +138,14 @@ func (a *Adapter) FindSymbol(query symbol.Query) ([]symbol.Location, error) {
 
 	locs := make([]symbol.Location, 0, len(resp.Candidates))
 	for _, candidate := range resp.Candidates {
+		column, err := utf16ColumnToByteColumnInFile(candidate.File, candidate.Line, candidate.Column)
+		if err != nil {
+			return nil, err
+		}
 		locs = append(locs, symbol.Location{
 			File:   candidate.File,
 			Line:   candidate.Line,
-			Column: candidate.Column,
+			Column: column,
 			Name:   candidate.Name,
 			Kind:   parseKind(candidate.Kind),
 		})
@@ -160,12 +166,19 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 		return nil, fmt.Errorf("adapter not initialized")
 	}
 
+	// refute symbol locations use 1-indexed byte columns. rename.cjs receives
+	// columns as JavaScript string indices, i.e. 1-indexed UTF-16 code units.
+	column, err := byteColumnToUTF16ColumnInFile(loc.File, loc.Line, loc.Column)
+	if err != nil {
+		return nil, err
+	}
+
 	req := renameRequest{
 		Operation:     "rename",
 		WorkspaceRoot: a.workspaceRoot,
 		File:          loc.File,
 		Line:          loc.Line,
-		Column:        loc.Column,
+		Column:        column,
 		NewName:       newName,
 	}
 
@@ -178,10 +191,18 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 	for _, fe := range resp.FileEdits {
 		edits := make([]edit.TextEdit, 0, len(fe.Edits))
 		for _, e := range fe.Edits {
+			startCharacter, err := utf16CharacterToByteCharacterInFile(fe.Path, e.Range.Start.Line, e.Range.Start.Character)
+			if err != nil {
+				return nil, err
+			}
+			endCharacter, err := utf16CharacterToByteCharacterInFile(fe.Path, e.Range.End.Line, e.Range.End.Character)
+			if err != nil {
+				return nil, err
+			}
 			edits = append(edits, edit.TextEdit{
 				Range: edit.Range{
-					Start: edit.Position{Line: e.Range.Start.Line, Character: e.Range.Start.Character},
-					End:   edit.Position{Line: e.Range.End.Line, Character: e.Range.End.Character},
+					Start: edit.Position{Line: e.Range.Start.Line, Character: startCharacter},
+					End:   edit.Position{Line: e.Range.End.Line, Character: endCharacter},
 				},
 				NewText: e.NewText,
 			})
@@ -413,4 +434,82 @@ func globalNpmRoot() string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func byteColumnToUTF16ColumnInFile(filePath string, oneLine, byteColumn int) (int, error) {
+	line, err := readSourceLine(filePath, oneLine-1)
+	if err != nil {
+		return 0, err
+	}
+	return byteColumnToUTF16Column(line, byteColumn)
+}
+
+func utf16ColumnToByteColumnInFile(filePath string, oneLine, column int) (int, error) {
+	line, err := readSourceLine(filePath, oneLine-1)
+	if err != nil {
+		return 0, err
+	}
+	character, err := utf16CharacterToByteCharacter(line, column-1)
+	if err != nil {
+		return 0, err
+	}
+	return character + 1, nil
+}
+
+func utf16CharacterToByteCharacterInFile(filePath string, zeroLine, character int) (int, error) {
+	line, err := readSourceLine(filePath, zeroLine)
+	if err != nil {
+		return 0, err
+	}
+	return utf16CharacterToByteCharacter(line, character)
+}
+
+func readSourceLine(filePath string, zeroLine int) (string, error) {
+	if zeroLine < 0 {
+		return "", fmt.Errorf("line %d out of range", zeroLine+1)
+	}
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", filePath, err)
+	}
+	lines := strings.Split(string(content), "\n")
+	if zeroLine >= len(lines) {
+		return "", fmt.Errorf("line %d out of range (file has %d lines)", zeroLine+1, len(lines))
+	}
+	return strings.TrimSuffix(lines[zeroLine], "\r"), nil
+}
+
+func byteColumnToUTF16Column(line string, byteColumn int) (int, error) {
+	if byteColumn < 1 || byteColumn > len(line)+1 {
+		return 0, fmt.Errorf("column %d out of range", byteColumn)
+	}
+	byteOffset := byteColumn - 1
+	if !utf8.ValidString(line[:byteOffset]) {
+		return 0, fmt.Errorf("column %d splits a UTF-8 character", byteColumn)
+	}
+	character := 0
+	for _, r := range line[:byteOffset] {
+		character += utf16.RuneLen(r)
+	}
+	return character + 1, nil
+}
+
+func utf16CharacterToByteCharacter(line string, character int) (int, error) {
+	if character < 0 {
+		return 0, fmt.Errorf("character %d out of range", character)
+	}
+	units := 0
+	for byteOffset, r := range line {
+		if units == character {
+			return byteOffset, nil
+		}
+		units += utf16.RuneLen(r)
+		if units > character {
+			return 0, fmt.Errorf("character %d splits a UTF-16 surrogate pair", character)
+		}
+	}
+	if units == character {
+		return len(line), nil
+	}
+	return 0, fmt.Errorf("character %d out of range", character)
 }
