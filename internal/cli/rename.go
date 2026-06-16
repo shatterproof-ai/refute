@@ -520,7 +520,9 @@ func ambiguousError(ctx jsonContext, locs []symbol.Location) error {
 		}
 		data, _ := res.Marshal()
 		fmt.Println(string(data))
-		return &ExitCodeError{Code: 1}
+		// Mark the envelope as already written so routeOperationError does not
+		// emit a second one when this bubbles up through runRenameInner.
+		return &jsonEmitted{err: &ExitCodeError{Code: 1}}
 	}
 	msg := "Ambiguous — multiple candidates:\n"
 	for _, l := range locs {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
@@ -247,5 +248,44 @@ func TestApplyFailureAfterPreview_JSONEnvelope(t *testing.T) {
 	}
 	if got.Error == nil || got.Error.Code != "apply-failed" {
 		t.Errorf("error = %+v, want code apply-failed", got.Error)
+	}
+}
+
+// TestRouteOperationError_NoDoubleEnvelope verifies that an error whose
+// envelope was already written (here, a Tier 1 ambiguous rename) passes through
+// the shared wrapper without a second envelope being emitted. Two concatenated
+// JSON objects on stdout would make the output unparseable for consumers.
+func TestRouteOperationError_NoDoubleEnvelope(t *testing.T) {
+	resetOperationFlagsForTest(t)
+	flagJSON = true
+
+	ctx := jsonContext{Operation: "rename", Language: "rust", Backend: "lsp", WorkspaceRoot: "/workspace"}
+	ambiguous := &backend.ErrAmbiguous{Candidates: []symbol.Location{
+		{File: "/workspace/src/lib.rs", Line: 4, Column: 1, Name: "rename_me"},
+	}}
+
+	var runErr error
+	out := captureStdout(t, func() {
+		// Mirror the live path: runRenameInner returns the tier-1 handler's
+		// result, then runRename hands it to routeOperationError.
+		runErr = routeOperationError(ctx, handleTier1RenameError(ctx, ambiguous))
+	})
+
+	var ec *ExitCodeError
+	if !errors.As(runErr, &ec) || ec.Code != 1 {
+		t.Fatalf("expected exit code 1, got %#v", runErr)
+	}
+	// Exactly one JSON object must be present; a trailing second object would
+	// decode successfully and fail this guard.
+	dec := json.NewDecoder(strings.NewReader(out))
+	var first edit.JSONResult
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("decode first envelope: %v\nraw:\n%s", err, out)
+	}
+	if first.Status != edit.StatusAmbiguous {
+		t.Fatalf("status = %q, want %q", first.Status, edit.StatusAmbiguous)
+	}
+	if err := dec.Decode(new(edit.JSONResult)); err == nil {
+		t.Fatalf("expected exactly one envelope, found a second:\n%s", out)
 	}
 }
