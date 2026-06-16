@@ -32,9 +32,8 @@ func makeFakeAdapter(t *testing.T, dir string, hoistTsMorph bool) {
 }
 
 func TestAvailableAt_WorkspaceNodeModules(t *testing.T) {
-	if _, err := os.LookupEnv("PATH"); !err {
-		t.Skip("PATH not set")
-	}
+	requireNode(t)
+
 	dir := t.TempDir()
 	makeFakeAdapter(t, dir, false)
 	if !tsmorph.AvailableAt(dir, "") {
@@ -43,6 +42,8 @@ func TestAvailableAt_WorkspaceNodeModules(t *testing.T) {
 }
 
 func TestAvailableAt_WorkspaceNodeModulesHoistedTsMorph(t *testing.T) {
+	requireNode(t)
+
 	dir := t.TempDir()
 	makeFakeAdapter(t, dir, true)
 	if !tsmorph.AvailableAt(dir, "") {
@@ -51,6 +52,8 @@ func TestAvailableAt_WorkspaceNodeModulesHoistedTsMorph(t *testing.T) {
 }
 
 func TestAvailableAt_ExplicitAdapterPath(t *testing.T) {
+	requireNode(t)
+
 	dir := t.TempDir()
 	// Place the script directly in dir; ts-morph adjacent.
 	scriptPath := filepath.Join(dir, "rename.cjs")

@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   test:
@@ -125,6 +126,75 @@ jobs:
 
       - name: Build OpenRewrite adapter
         run: mvn -B verify --file adapters/openrewrite/pom.xml
+
+  tsmorph:
+    name: ts-morph adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect ts-morph changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            tsmorph:
+              - ".github/workflows/ci.yml"
+              - "adapters/tsmorph/**"
+              - "internal/backend/tsmorph/**"
+              - "testdata/fixtures/javascript/rename/**"
+              - "testdata/fixtures/typescript/rename/**"
+
+      - name: Set up Node
+        if: steps.changes.outputs.tsmorph == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            adapters/tsmorph/package-lock.json
+            testdata/fixtures/javascript/rename/package-lock.json
+            testdata/fixtures/typescript/rename/package-lock.json
+
+      - name: Set up Go
+        if: steps.changes.outputs.tsmorph == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install ts-morph adapter dependencies
+        if: steps.changes.outputs.tsmorph == 'true' || github.event_name == 'workflow_dispatch'
+        run: npm ci --prefix adapters/tsmorph
+
+      - name: Run ts-morph adapter typecheck
+        if: steps.changes.outputs.tsmorph == 'true' || github.event_name == 'workflow_dispatch'
+        run: npm run typecheck --prefix adapters/tsmorph
+
+      - name: Run ts-morph adapter lint
+        if: steps.changes.outputs.tsmorph == 'true' || github.event_name == 'workflow_dispatch'
+        run: npm run lint --prefix adapters/tsmorph
+
+      - name: Run ts-morph adapter tests
+        if: steps.changes.outputs.tsmorph == 'true' || github.event_name == 'workflow_dispatch'
+        run: npm test --prefix adapters/tsmorph
+
+      - name: Install TypeScript fixture dependencies
+        if: steps.changes.outputs.tsmorph == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          npm ci --prefix testdata/fixtures/typescript/rename
+          npm ci --prefix testdata/fixtures/javascript/rename
+
+      - name: Run Go ts-morph tests
+        if: steps.changes.outputs.tsmorph == 'true' || github.event_name == 'workflow_dispatch'
+        env:
+          TSMORPH_REQUIRED: "1"
+        run: go test ./internal/backend/tsmorph
 
   gitleaks:
     name: Gitleaks

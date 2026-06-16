@@ -2,6 +2,7 @@ package tsmorph_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -10,9 +11,7 @@ import (
 )
 
 func TestAdapterRename(t *testing.T) {
-	if !tsmorph.Available() {
-		t.Skip("ts-morph backend not installed")
-	}
+	requireTSMorph(t)
 
 	srcDir := filepath.Join("..", "..", "..", "testdata", "fixtures", "typescript", "rename")
 	dir := t.TempDir()
@@ -44,9 +43,7 @@ func TestAdapterRename(t *testing.T) {
 }
 
 func TestAdapterFindSymbolTypeScriptMethod(t *testing.T) {
-	if !tsmorph.Available() {
-		t.Skip("ts-morph backend not installed")
-	}
+	requireTSMorph(t)
 
 	srcDir := filepath.Join("..", "..", "..", "testdata", "fixtures", "typescript", "rename")
 	dir := t.TempDir()
@@ -75,9 +72,7 @@ func TestAdapterFindSymbolTypeScriptMethod(t *testing.T) {
 }
 
 func TestAdapterFindSymbolJavaScriptFunction(t *testing.T) {
-	if !tsmorph.Available() {
-		t.Skip("ts-morph backend not installed")
-	}
+	requireTSMorph(t)
 
 	srcDir := filepath.Join("..", "..", "..", "testdata", "fixtures", "javascript", "rename")
 	dir := t.TempDir()
@@ -144,4 +139,30 @@ func linkNodeModules(t *testing.T, fixtureDir string, workspaceDir string) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatalf("link node_modules: %v", err)
 	}
+}
+
+func requireTSMorph(t *testing.T) {
+	t.Helper()
+	if tsmorph.Available() {
+		return
+	}
+	if tsmorphRequired() {
+		t.Fatal("ts-morph backend not installed; TSMORPH_REQUIRED is set")
+	}
+	t.Skip("ts-morph backend not installed")
+}
+
+func requireNode(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("node"); err == nil {
+		return
+	} else if tsmorphRequired() {
+		t.Fatalf("node not installed; TSMORPH_REQUIRED is set: %v", err)
+	} else {
+		t.Skipf("node not installed: %v", err)
+	}
+}
+
+func tsmorphRequired() bool {
+	return os.Getenv("TSMORPH_REQUIRED") != ""
 }
