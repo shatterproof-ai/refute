@@ -24,6 +24,13 @@ import (
 // hung node process cannot block the CLI indefinitely.
 const defaultRunTimeout = 60 * time.Second
 
+// ProtocolVersion is the ts-morph adapter wire-contract version. Both the Go
+// driver and adapters/tsmorph/rename.cjs must agree on it; a mismatch is a hard
+// error rather than a best-effort execution (see
+// docs/specs/adapter-wire-contracts.md). Bump it whenever the request or
+// response shape changes incompatibly.
+const ProtocolVersion = 1
+
 var _ backend.RefactoringBackend = (*Adapter)(nil)
 
 const (
@@ -124,11 +131,12 @@ func (a *Adapter) FindSymbol(query symbol.Query) ([]symbol.Location, error) {
 	}
 
 	req := findSymbolRequest{
-		Operation:     "findSymbol",
-		WorkspaceRoot: a.workspaceRoot,
-		File:          query.File,
-		QualifiedName: query.QualifiedName,
-		Kind:          query.Kind.String(),
+		ProtocolVersion: ProtocolVersion,
+		Operation:       "findSymbol",
+		WorkspaceRoot:   a.workspaceRoot,
+		File:            query.File,
+		QualifiedName:   query.QualifiedName,
+		Kind:            query.Kind.String(),
 	}
 
 	var resp findSymbolResponse
@@ -174,12 +182,13 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 	}
 
 	req := renameRequest{
-		Operation:     "rename",
-		WorkspaceRoot: a.workspaceRoot,
-		File:          loc.File,
-		Line:          loc.Line,
-		Column:        column,
-		NewName:       newName,
+		ProtocolVersion: ProtocolVersion,
+		Operation:       "rename",
+		WorkspaceRoot:   a.workspaceRoot,
+		File:            loc.File,
+		Line:            loc.Line,
+		Column:          column,
+		NewName:         newName,
 	}
 
 	var resp renameResponse
@@ -238,12 +247,13 @@ func (a *Adapter) Capabilities() []backend.Capability {
 }
 
 type renameRequest struct {
-	Operation     string `json:"operation"`
-	WorkspaceRoot string `json:"workspaceRoot"`
-	File          string `json:"file"`
-	Line          int    `json:"line"`
-	Column        int    `json:"column"`
-	NewName       string `json:"newName"`
+	ProtocolVersion int    `json:"protocolVersion"`
+	Operation       string `json:"operation"`
+	WorkspaceRoot   string `json:"workspaceRoot"`
+	File            string `json:"file"`
+	Line            int    `json:"line"`
+	Column          int    `json:"column"`
+	NewName         string `json:"newName"`
 }
 
 type renameResponse struct {
@@ -266,11 +276,12 @@ type renameResponse struct {
 }
 
 type findSymbolRequest struct {
-	Operation     string `json:"operation"`
-	WorkspaceRoot string `json:"workspaceRoot"`
-	File          string `json:"file,omitempty"`
-	QualifiedName string `json:"qualifiedName"`
-	Kind          string `json:"kind,omitempty"`
+	ProtocolVersion int    `json:"protocolVersion"`
+	Operation       string `json:"operation"`
+	WorkspaceRoot   string `json:"workspaceRoot"`
+	File            string `json:"file,omitempty"`
+	QualifiedName   string `json:"qualifiedName"`
+	Kind            string `json:"kind,omitempty"`
 }
 
 type findSymbolResponse struct {
@@ -324,6 +335,20 @@ func (a *Adapter) run(req any, resp any) error {
 			msg = err.Error()
 		}
 		return fmt.Errorf("ts-morph operation failed: %s", msg)
+	}
+
+	// Enforce the wire contract: the adapter must echo a matching protocol
+	// version. A missing (0) or mismatched version means the driver and adapter
+	// have skewed, so fail loudly instead of trusting the payload.
+	var meta struct {
+		ProtocolVersion int `json:"protocolVersion"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &meta); err != nil {
+		return fmt.Errorf("parse ts-morph output: %w", err)
+	}
+	if meta.ProtocolVersion != ProtocolVersion {
+		return fmt.Errorf("ts-morph adapter protocol version mismatch: got %d, want %d; reinstall the adapter (%s)",
+			meta.ProtocolVersion, ProtocolVersion, AdapterInstallHint())
 	}
 
 	if err := json.Unmarshal(stdout.Bytes(), resp); err != nil {

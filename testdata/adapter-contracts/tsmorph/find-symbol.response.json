@@ -1,0 +1,12 @@
+{
+  "protocolVersion": 1,
+  "candidates": [
+    {
+      "file": "/workspace/greeter.ts",
+      "line": 1,
+      "column": 17,
+      "name": "greet",
+      "kind": "function"
+    }
+  ]
+}

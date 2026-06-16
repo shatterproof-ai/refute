@@ -22,6 +22,12 @@ import (
 // jarCacheSubPath is the relative path where the adapter JAR is built by Maven.
 const jarCacheSubPath = "adapters/openrewrite/target/openrewrite-adapter.jar"
 
+// ProtocolVersion is the OpenRewrite adapter wire-contract version. Both the Go
+// driver and the Java adapter (Main.java) must agree on it; a mismatch is a hard
+// error rather than a best-effort execution (see
+// docs/specs/adapter-wire-contracts.md). It travels in the JSON-RPC envelope.
+const ProtocolVersion = 1
+
 // defaultShutdownTimeout bounds how long Shutdown waits for the JVM to exit
 // after stdin is closed before falling back to killing the process.
 const defaultShutdownTimeout = 5 * time.Second
@@ -252,10 +258,11 @@ func (a *Adapter) buildRenameParams(loc symbol.Location, newName string) (map[st
 func (a *Adapter) callRename(params map[string]any) ([]edit.FileEdit, error) {
 	id := int(a.nextID.Add(1))
 	req := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"method":  "rename",
-		"params":  params,
+		"jsonrpc":         "2.0",
+		"protocolVersion": ProtocolVersion,
+		"id":              id,
+		"method":          "rename",
+		"params":          params,
 	}
 	reqBytes, err := json.Marshal(req)
 	if err != nil {
@@ -270,7 +277,8 @@ func (a *Adapter) callRename(params map[string]any) ([]edit.FileEdit, error) {
 	// values, unlike a default bufio.Scanner whose 64 KiB token cap silently
 	// truncates responses that embed full file contents.
 	var resp struct {
-		Error *struct {
+		ProtocolVersion int `json:"protocolVersion"`
+		Error           *struct {
 			Code    int    `json:"code"`
 			Message string `json:"message"`
 		} `json:"error"`
@@ -284,6 +292,14 @@ func (a *Adapter) callRename(params map[string]any) ([]edit.FileEdit, error) {
 			return nil, fmt.Errorf("no response from OpenRewrite subprocess%s", a.stderrSuffix())
 		}
 		return nil, fmt.Errorf("reading response from OpenRewrite subprocess: %w%s", err, a.stderrSuffix())
+	}
+	// Enforce the wire contract: the adapter must echo a matching protocol
+	// version. A missing (0) or mismatched version means driver/adapter skew, so
+	// fail loudly instead of trusting the payload. (Checked before resp.Error so
+	// a version-skew error response is reported as such.)
+	if resp.ProtocolVersion != ProtocolVersion {
+		return nil, fmt.Errorf("OpenRewrite adapter protocol version mismatch: got %d, want %d; rebuild the adapter JAR",
+			resp.ProtocolVersion, ProtocolVersion)
 	}
 	if resp.Error != nil {
 		return nil, fmt.Errorf("OpenRewrite error %d: %s", resp.Error.Code, resp.Error.Message)

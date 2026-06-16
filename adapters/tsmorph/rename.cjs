@@ -4,6 +4,11 @@ const fs = require("fs");
 const path = require("path");
 const { Project } = require("ts-morph");
 
+// PROTOCOL_VERSION is the ts-morph adapter wire-contract version. It must match
+// the Go driver's tsmorph.ProtocolVersion; a mismatched request is rejected
+// rather than executed. See docs/specs/adapter-wire-contracts.md.
+const PROTOCOL_VERSION = 1;
+
 const configFileNames = new Set(["tsconfig.json", "jsconfig.json"]);
 const sourceFileExtensions = ["ts", "tsx", "js", "jsx"];
 const ignoredProjectDirs = new Set([".git", "node_modules"]);
@@ -299,12 +304,17 @@ function fullFileEdit(beforeText, afterText, filePath) {
 
 async function main() {
   const req = await readInput();
+  if (req.protocolVersion !== PROTOCOL_VERSION) {
+    throw new Error(
+      `unsupported tsmorph protocol version: got ${String(req.protocolVersion)}, want ${PROTOCOL_VERSION}`
+    );
+  }
   const workspaceRoot = path.resolve(req.workspaceRoot);
   const project = createProject(workspaceRoot);
   switch (req.operation) {
     case "findSymbol": {
       const candidates = findSymbol(project, workspaceRoot, req);
-      process.stdout.write(JSON.stringify({ candidates }));
+      process.stdout.write(JSON.stringify({ protocolVersion: PROTOCOL_VERSION, candidates }));
       return;
     }
     case "rename": {
@@ -335,7 +345,7 @@ async function main() {
         }
       }
 
-      process.stdout.write(JSON.stringify({ fileEdits }));
+      process.stdout.write(JSON.stringify({ protocolVersion: PROTOCOL_VERSION, fileEdits }));
       return;
     }
     default:

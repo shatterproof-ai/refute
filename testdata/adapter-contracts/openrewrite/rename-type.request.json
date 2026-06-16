@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "protocolVersion": 1,
+  "id": 1,
+  "method": "rename",
+  "params": {
+    "workspaceRoot": "/workspace",
+    "newName": "HelloService",
+    "oldFullyQualifiedName": "com.example.Greeter"
+  }
+}

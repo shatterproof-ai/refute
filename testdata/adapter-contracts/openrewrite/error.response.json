@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "protocolVersion": 1,
+  "id": 1,
+  "error": {
+    "code": -32000,
+    "message": "params must include either 'methodPattern' or 'oldFullyQualifiedName'"
+  }
+}

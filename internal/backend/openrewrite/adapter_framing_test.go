@@ -46,8 +46,9 @@ func TestCallRenameLargeResponse(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "Greeter.java")
 
 	resp := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      1,
+		"jsonrpc":         "2.0",
+		"protocolVersion": ProtocolVersion,
+		"id":              1,
 		"result": []map[string]any{
 			{"path": targetPath, "newContent": bigContent},
 		},
@@ -84,7 +85,7 @@ func TestCallRenameLargeResponse(t *testing.T) {
 
 // TestCallRenameSubprocessError surfaces a structured OpenRewrite error.
 func TestCallRenameSubprocessError(t *testing.T) {
-	resp := `{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"boom"}}` + "\n"
+	resp := `{"jsonrpc":"2.0","protocolVersion":1,"id":1,"error":{"code":-32000,"message":"boom"}}` + "\n"
 	a := &Adapter{
 		stdin:  nopWriteCloser{io.Discard},
 		stdout: json.NewDecoder(strings.NewReader(resp)),
