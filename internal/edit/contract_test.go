@@ -368,6 +368,7 @@ func TestJSONResult_NewOptionalFieldsOmitted(t *testing.T) {
 		`"backend"`,
 		`"workspaceRoot"`,
 		`"edits"`,
+		`"fileOps"`,
 		`"newSymbol"`,
 		`"candidates"`,
 		`"warnings"`,
@@ -394,5 +395,37 @@ func TestSchemaVersion_StableConstant(t *testing.T) {
 	}
 	if strings.TrimSpace(v) != v {
 		t.Errorf("SchemaVersion has surrounding whitespace: %q", v)
+	}
+}
+
+// TestJSONResult_OldConsumerToleratesFileOps asserts that a consumer built
+// before the fileOps field existed — one whose struct has no FileOps member —
+// still decodes a fileOps-bearing envelope without error and reads the fields
+// it does know. fileOps is additive under schemaVersion "1".
+func TestJSONResult_OldConsumerToleratesFileOps(t *testing.T) {
+	envelope := `{
+		"schemaVersion": "1",
+		"status": "dry-run",
+		"filesModified": 2,
+		"edits": [{"file": "/ws/new.go", "changes": []}],
+		"fileOps": [{"op": "create", "file": "/ws/new.go"}]
+	}`
+
+	var old struct {
+		SchemaVersion string `json:"schemaVersion"`
+		Status        string `json:"status"`
+		FilesModified int    `json:"filesModified"`
+	}
+	if err := json.Unmarshal([]byte(envelope), &old); err != nil {
+		t.Fatalf("old consumer must tolerate fileOps field: %v", err)
+	}
+	if old.SchemaVersion != "1" {
+		t.Errorf("schemaVersion = %q, want 1", old.SchemaVersion)
+	}
+	if old.Status != "dry-run" {
+		t.Errorf("status = %q, want dry-run", old.Status)
+	}
+	if old.FilesModified != 2 {
+		t.Errorf("filesModified = %d, want 2", old.FilesModified)
 	}
 }

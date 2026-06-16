@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/shatterproof-ai/refute/internal/backend/capture"
+	"github.com/shatterproof-ai/refute/internal/edit"
 )
 
 func TestParseWorkspaceEditSortsChangesMapByFilePath(t *testing.T) {
@@ -35,10 +36,11 @@ func TestParseWorkspaceEditSortsChangesMapByFilePath(t *testing.T) {
 		}
 	}`, fileToURI(bPath), fileToURI(aPath))
 
-	fileEdits, err := parseWorkspaceEdit(json.RawMessage(input))
+	we, err := parseWorkspaceEdit(json.RawMessage(input))
 	if err != nil {
 		t.Fatalf("parseWorkspaceEdit: %v", err)
 	}
+	fileEdits := we.FileEdits
 
 	if len(fileEdits) != 2 {
 		t.Fatalf("got %d file edits, want 2: %+v", len(fileEdits), fileEdits)
@@ -70,6 +72,80 @@ func TestParseWorkspaceEditRejectsEmptyURIInDocumentChanges(t *testing.T) {
 				t.Fatal("expected error for documentChanges entry with empty or missing textDocument.uri, got nil")
 			}
 		})
+	}
+}
+
+func TestParseWorkspaceEditExtractToNewFileRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	orig := filepath.Join(dir, "orig.go")
+	newFile := filepath.Join(dir, "extracted.go")
+	if err := os.WriteFile(orig, []byte("package p\n\nfunc Keep() {}\nfunc Move() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Synthetic gopls "extract to new file": create the new file, insert the
+	// extracted content into it, and delete the moved function from the
+	// original.
+	raw := fmt.Sprintf(`{"documentChanges":[
+		{"kind":"create","uri":%q},
+		{"textDocument":{"uri":%q},"edits":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":0}},"newText":"package p\n\nfunc Move() {}\n"}]},
+		{"textDocument":{"uri":%q},"edits":[{"range":{"start":{"line":3,"character":0},"end":{"line":4,"character":0}},"newText":""}]}
+	]}`, fileToURI(newFile), fileToURI(newFile), fileToURI(orig))
+
+	we, err := parseWorkspaceEdit(json.RawMessage(raw))
+	if err != nil {
+		t.Fatalf("parseWorkspaceEdit: %v", err)
+	}
+	if len(we.FileOps) != 1 || we.FileOps[0].Kind != edit.FileOpCreate || we.FileOps[0].Path != newFile {
+		t.Fatalf("expected one create op for %s, got %+v", newFile, we.FileOps)
+	}
+	if len(we.FileEdits) != 2 {
+		t.Fatalf("expected 2 file edits, got %d: %+v", len(we.FileEdits), we.FileEdits)
+	}
+
+	if _, err := edit.ApplyWithin(we, dir); err != nil {
+		t.Fatalf("ApplyWithin: %v", err)
+	}
+
+	gotNew, err := os.ReadFile(newFile)
+	if err != nil {
+		t.Fatalf("read new file: %v", err)
+	}
+	if string(gotNew) != "package p\n\nfunc Move() {}\n" {
+		t.Fatalf("new file content = %q", gotNew)
+	}
+	gotOrig, err := os.ReadFile(orig)
+	if err != nil {
+		t.Fatalf("read orig: %v", err)
+	}
+	if string(gotOrig) != "package p\n\nfunc Keep() {}\n" {
+		t.Fatalf("orig content = %q", gotOrig)
+	}
+}
+
+func TestParseWorkspaceEditParsesRenameAndDeleteOps(t *testing.T) {
+	oldURI := fileToURI("/ws/old.go")
+	newURI := fileToURI("/ws/new.go")
+	goneURI := fileToURI("/ws/gone.go")
+	raw := fmt.Sprintf(`{"documentChanges":[
+		{"kind":"rename","oldUri":%q,"newUri":%q,"options":{"overwrite":true}},
+		{"kind":"delete","uri":%q,"options":{"ignoreIfNotExists":true}}
+	]}`, oldURI, newURI, goneURI)
+
+	we, err := parseWorkspaceEdit(json.RawMessage(raw))
+	if err != nil {
+		t.Fatalf("parseWorkspaceEdit: %v", err)
+	}
+	if len(we.FileOps) != 2 {
+		t.Fatalf("expected 2 file ops, got %+v", we.FileOps)
+	}
+	ren := we.FileOps[0]
+	if ren.Kind != edit.FileOpRename || ren.Path != "/ws/old.go" || ren.NewPath != "/ws/new.go" || !ren.Overwrite {
+		t.Fatalf("rename op = %+v", ren)
+	}
+	del := we.FileOps[1]
+	if del.Kind != edit.FileOpDelete || del.Path != "/ws/gone.go" || !del.IgnoreIfNotExists {
+		t.Fatalf("delete op = %+v", del)
 	}
 }
 

@@ -381,17 +381,20 @@ func (a *Adapter) extractImpl(r symbol.SourceRange, kind string) (*edit.Workspac
 }
 
 func (a *Adapter) resolveAction(action CodeAction) (*edit.WorkspaceEdit, error) {
-	var fileEdits []edit.FileEdit
+	var we *edit.WorkspaceEdit
 	var err error
 	if action.Edit != nil {
-		fileEdits, err = parseWorkspaceEdit(*action.Edit)
+		we, err = parseWorkspaceEdit(*action.Edit)
 	} else {
-		fileEdits, err = a.client.ResolveCodeActionEdit(action)
+		we, err = a.client.ResolveCodeActionEdit(action)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &edit.WorkspaceEdit{FileEdits: fileEdits}, nil
+	if we == nil {
+		we = &edit.WorkspaceEdit{}
+	}
+	return we, nil
 }
 
 func findExtractPlaceholder(we *edit.WorkspaceEdit, kind string) string {
