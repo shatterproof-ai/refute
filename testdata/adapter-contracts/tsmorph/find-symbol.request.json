@@ -1,0 +1,8 @@
+{
+  "protocolVersion": 1,
+  "operation": "findSymbol",
+  "workspaceRoot": "/workspace",
+  "file": "/workspace/greeter.ts",
+  "qualifiedName": "greeter:greet",
+  "kind": "function"
+}

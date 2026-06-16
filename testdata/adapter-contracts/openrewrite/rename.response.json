@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "protocolVersion": 1,
+  "id": 1,
+  "result": [
+    {
+      "path": "/workspace/src/main/java/com/example/Greeter.java",
+      "newContent": "package com.example;\n\npublic class Greeter {\n    public String hello(String name) {\n        return \"Hello, \" + name + \"!\";\n    }\n}\n"
+    }
+  ]
+}

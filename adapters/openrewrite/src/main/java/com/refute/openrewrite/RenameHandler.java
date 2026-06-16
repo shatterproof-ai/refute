@@ -43,6 +43,11 @@ public class RenameHandler {
         String workspaceRoot = requiredString(params, "workspaceRoot");
         String newName = requiredString(params, "newName");
 
+        // Validate the recipe params before walking the filesystem so a
+        // malformed request fails fast with a clear error rather than after an
+        // expensive (and possibly failing) workspace scan.
+        Recipe recipe = buildRecipe(params, newName);
+
         Path baseDir = Paths.get(workspaceRoot).toAbsolutePath();
         List<Path> javaFiles = collectJavaFiles(baseDir);
 
@@ -58,7 +63,6 @@ public class RenameHandler {
             sources = new ArrayList<>(stream.collect(Collectors.toList()));
         }
 
-        Recipe recipe = buildRecipe(params, newName);
         List<Result> results = recipe.run(new InMemoryLargeSourceSet(sources), ctx).getChangeset().getAllResults();
 
         return results.stream()

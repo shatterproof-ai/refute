@@ -1,0 +1,9 @@
+{
+  "protocolVersion": 1,
+  "operation": "rename",
+  "workspaceRoot": "/workspace",
+  "file": "/workspace/greeter.ts",
+  "line": 1,
+  "column": 17,
+  "newName": "welcome"
+}

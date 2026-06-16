@@ -7,7 +7,14 @@ const test = require("node:test");
 
 const adapterPath = path.join(__dirname, "rename.cjs");
 
+// Must match rename.cjs PROTOCOL_VERSION and the Go driver's
+// tsmorph.ProtocolVersion (docs/specs/adapter-wire-contracts.md).
+const PROTOCOL_VERSION = 1;
+
 async function runAdapter(request) {
+  // Default the protocol version so callers focus on operation fields; tests
+  // exercising version skew pass an explicit protocolVersion to override it.
+  const payload = { protocolVersion: PROTOCOL_VERSION, ...request };
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [adapterPath], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -32,7 +39,7 @@ async function runAdapter(request) {
       resolve(JSON.parse(stdout));
     });
 
-    child.stdin.end(JSON.stringify(request));
+    child.stdin.end(JSON.stringify(payload));
   });
 }
 
