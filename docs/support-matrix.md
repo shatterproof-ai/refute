@@ -33,6 +33,24 @@ matrix this way:
 | `planned` | The dependency may be present, but the language or operation remains planned until tests and docs promote it. |
 | `not-claimed` | The release boundary is explicit; this maps to **unsupported** in the matrix for v0.1. |
 
+## Backend versions
+
+`refute`'s determinism promise is conditional on running the same backend
+versions, so the version is captured wherever it is observable:
+
+- `refute doctor` probes each present backend for its version (`gopls version`,
+  `rust-analyzer --version`, etc.) and reports it as a `version` line in the
+  human output and a `version` field in each `--json` backend entry. Version
+  capture is best-effort: the field is omitted when the binary cannot report a
+  version.
+- Successful operations carry the resolved backend's version in the JSON
+  envelope's optional `backendVersion` field (`schemaVersion` is unchanged — the
+  field is additive) and in telemetry's `backendVersion` field.
+- CI pins `gopls` to a fixed tag (`GOPLS_VERSION` in `.github/workflows/ci.yml`)
+  so a gopls release cannot silently change refactoring behavior. The unit-test
+  lane sets `REFUTE_REQUIRE_GOPLS_INLINE=1` so a pinned gopls that drops the
+  inline assist fails CI instead of silently skipping the inline test.
+
 ## Language matrix
 
 | Language | Extensions | Backend | Dependency install | Operations | Test coverage | Status | Caveats |

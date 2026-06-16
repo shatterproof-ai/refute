@@ -2,6 +2,7 @@ package edit_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/shatterproof-ai/refute/internal/edit"
@@ -174,5 +175,38 @@ func TestRenderJSON_nilAndEmpty(t *testing.T) {
 	}
 	if res := edit.RenderJSON(&edit.WorkspaceEdit{}, "no-op"); res.FilesModified != 0 {
 		t.Errorf("empty WorkspaceEdit should produce 0 filesModified, got %d", res.FilesModified)
+	}
+}
+
+func TestJSONResult_BackendVersionRoundTripsAndOmitsWhenEmpty(t *testing.T) {
+	withVersion := edit.JSONResult{
+		SchemaVersion:  edit.SchemaVersion,
+		Status:         edit.StatusApplied,
+		BackendVersion: "gopls v1.2.3",
+	}
+	data, err := json.Marshal(withVersion)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got edit.JSONResult
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.BackendVersion != "gopls v1.2.3" {
+		t.Errorf("backendVersion = %q, want round-trip preserved", got.BackendVersion)
+	}
+
+	// schemaVersion stays "1": backendVersion is an additive optional field.
+	if edit.SchemaVersion != "1" {
+		t.Errorf("SchemaVersion = %q, want \"1\" (additive field must not bump it)", edit.SchemaVersion)
+	}
+
+	// Omitted when empty so existing consumers see an unchanged envelope.
+	bare, err := json.Marshal(edit.JSONResult{SchemaVersion: edit.SchemaVersion, Status: edit.StatusApplied})
+	if err != nil {
+		t.Fatalf("marshal bare: %v", err)
+	}
+	if strings.Contains(string(bare), "backendVersion") {
+		t.Errorf("empty backendVersion must be omitted, got: %s", bare)
 	}
 }

@@ -13,6 +13,11 @@ import (
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
+// requireGoplsInlineEnv, when set to a non-empty value, turns the gopls inline
+// capability check from a silent skip into a hard failure. CI sets it against
+// the pinned gopls so a version that drops inline support is caught.
+const requireGoplsInlineEnv = "REFUTE_REQUIRE_GOPLS_INLINE"
+
 func TestAdapter_Rename(t *testing.T) {
 	requireGopls(t)
 	dir := setupGoProject(t)
@@ -271,7 +276,14 @@ func main() {
 	we, err := adapter.InlineSymbol(loc)
 	if err != nil {
 		if errors.Is(err, backend.ErrUnsupported) {
-			t.Skip("inline not supported by this gopls version")
+			// Whether gopls offers the inline assist is version-dependent. CI
+			// pins gopls (see .github/workflows/ci.yml) and sets
+			// REFUTE_REQUIRE_GOPLS_INLINE so a pinned version that stops
+			// supporting inline fails loudly instead of silently skipping.
+			if os.Getenv(requireGoplsInlineEnv) != "" {
+				t.Fatalf("inline unsupported by gopls but %s is set: %v", requireGoplsInlineEnv, err)
+			}
+			t.Skipf("inline not supported by this gopls version; set %s to require it", requireGoplsInlineEnv)
 		}
 		t.Fatalf("InlineSymbol: %v", err)
 	}

@@ -27,9 +27,21 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # gopls is pinned so a gopls release cannot silently change refactoring
+      # behavior or flip runtime-gated test skips between CI runs (see issue
+      # #78). Bump procedure:
+      #   1. Pick a new tag from https://github.com/golang/tools/releases.
+      #   2. Update GOPLS_VERSION below.
+      #   3. Run the inline gate locally against it
+      #      (REFUTE_REQUIRE_GOPLS_INLINE=1 go test ./internal/backend/lsp/),
+      #      then the integration suite (go test -tags integration ./internal/),
+      #      and update any caveats in docs/support-matrix.md if behavior
+      #      changed.
       - name: Install supported Go integration backend
+        env:
+          GOPLS_VERSION: v0.22.0
         run: |
-          go install golang.org/x/tools/gopls@latest
+          go install "golang.org/x/tools/gopls@${GOPLS_VERSION}"
 
       - name: Install experimental integration backends and fixture dependencies
         continue-on-error: true
@@ -69,9 +81,16 @@ jobs:
         run: govulncheck ./...
 
       - name: Run unit tests
+        # REFUTE_REQUIRE_GOPLS_INLINE makes the gopls inline capability test
+        # fail rather than silently skip, so the pinned gopls is verified to
+        # still support inline (issue #78).
+        env:
+          REFUTE_REQUIRE_GOPLS_INLINE: "1"
         run: go test ./...
 
       - name: Run unit tests with race detector
+        env:
+          REFUTE_REQUIRE_GOPLS_INLINE: "1"
         run: go test -race -timeout 120s ./...
 
       - name: Run supported Go integration tests

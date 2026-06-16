@@ -18,10 +18,11 @@ func telemetrySetContext(ctx jsonContext) {
 		return
 	}
 	activeTelemetry.SetOperation(telemetry.OperationContext{
-		Operation:     ctx.Operation,
-		Language:      ctx.Language,
-		Backend:       ctx.Backend,
-		WorkspaceRoot: ctx.WorkspaceRoot,
+		Operation:      ctx.Operation,
+		Language:       ctx.Language,
+		Backend:        ctx.Backend,
+		BackendVersion: ctx.BackendVersion,
+		WorkspaceRoot:  ctx.WorkspaceRoot,
 	})
 }
 

@@ -22,6 +22,10 @@ type LanguageSupport struct {
 	// Binary is the language-server executable probed on PATH. Empty for
 	// unsupported rows, which are reported without a host probe.
 	Binary string
+	// VersionArgs are the arguments that make Binary print its version on
+	// stdout (e.g. {"version"} for gopls, {"--version"} for the others). Empty
+	// when no version probe is defined for the backend.
+	VersionArgs []string
 	// Level is the release-support tier (one of the Level* constants).
 	Level string
 	// InstallHint is the command a user runs to install the backend.
@@ -45,6 +49,7 @@ var SupportMatrix = []LanguageSupport{
 		Language:    "go",
 		Backend:     "lsp/gopls",
 		Binary:      "gopls",
+		VersionArgs: []string{"version"},
 		Level:       LevelSupported,
 		InstallHint: "go install golang.org/x/tools/gopls@latest",
 		Operations:  fullOperations,
@@ -54,6 +59,7 @@ var SupportMatrix = []LanguageSupport{
 		Language:    "typescript",
 		Backend:     "lsp/typescript-language-server",
 		Binary:      "typescript-language-server",
+		VersionArgs: []string{"--version"},
 		Level:       LevelExperimental,
 		InstallHint: "npm install -g typescript-language-server typescript",
 		Operations:  renameOnly,
@@ -63,6 +69,7 @@ var SupportMatrix = []LanguageSupport{
 		Language:    "javascript",
 		Backend:     "lsp/typescript-language-server",
 		Binary:      "typescript-language-server",
+		VersionArgs: []string{"--version"},
 		Level:       LevelExperimental,
 		InstallHint: "npm install -g typescript-language-server typescript",
 		Operations:  renameOnly,
@@ -72,6 +79,7 @@ var SupportMatrix = []LanguageSupport{
 		Language:    "rust",
 		Backend:     "lsp/rust-analyzer",
 		Binary:      "rust-analyzer",
+		VersionArgs: []string{"--version"},
 		Level:       LevelExperimental,
 		InstallHint: "rustup component add rust-analyzer",
 		Operations:  fullOperations,
@@ -81,6 +89,7 @@ var SupportMatrix = []LanguageSupport{
 		Language:    "python",
 		Backend:     "lsp/pyright",
 		Binary:      "pyright-langserver",
+		VersionArgs: []string{"--version"},
 		Level:       LevelPlanned,
 		InstallHint: "npm install -g pyright",
 		Operations:  renameOnly,

@@ -15,10 +15,11 @@ import (
 // metadata that get attached to every JSON envelope so consumers do not need
 // to scrape stderr to know what was attempted.
 type jsonContext struct {
-	Operation     string
-	Language      string
-	Backend       string
-	WorkspaceRoot string
+	Operation      string
+	Language       string
+	Backend        string
+	BackendVersion string
+	WorkspaceRoot  string
 }
 
 func contextFromSelection(operation string, sel *selector.Selection, workspaceRoot string) jsonContext {
@@ -26,6 +27,7 @@ func contextFromSelection(operation string, sel *selector.Selection, workspaceRo
 	if sel != nil {
 		ctx.Language = sel.Language
 		ctx.Backend = sel.BackendName
+		ctx.BackendVersion = backendVersionForSelection(sel)
 	}
 	return ctx
 }
@@ -58,12 +60,13 @@ func emitJSONError(ctx jsonContext, status, code, message, hint string, exitCode
 	telemetrySetStatus(status)
 	telemetrySetError(code, message)
 	res := &edit.JSONResult{
-		SchemaVersion: edit.SchemaVersion,
-		Status:        status,
-		Operation:     ctx.Operation,
-		Language:      ctx.Language,
-		Backend:       ctx.Backend,
-		WorkspaceRoot: ctx.WorkspaceRoot,
+		SchemaVersion:  edit.SchemaVersion,
+		Status:         status,
+		Operation:      ctx.Operation,
+		Language:       ctx.Language,
+		Backend:        ctx.Backend,
+		BackendVersion: ctx.BackendVersion,
+		WorkspaceRoot:  ctx.WorkspaceRoot,
 		Error: &edit.JSONError{
 			Code:    code,
 			Message: message,

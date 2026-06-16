@@ -243,6 +243,7 @@ func emitJSON(we *edit.WorkspaceEdit, ctx jsonContext, status string) error {
 	res.Operation = ctx.Operation
 	res.Language = ctx.Language
 	res.Backend = ctx.Backend
+	res.BackendVersion = ctx.BackendVersion
 	res.WorkspaceRoot = ctx.WorkspaceRoot
 	renderDone()
 	if !flagDryRun {
@@ -336,6 +337,7 @@ func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
 	selectDone()
 
 	adapter := lsp.NewAdapter(serverCfg, language, nil)
+	ctx.BackendVersion = backendVersionForLanguageServer(language, serverCfg.Command)
 	initDone := telemetryPhase("backend-initialization")
 	if err := adapter.Initialize(workspaceRoot); err != nil {
 		initDone()
@@ -488,12 +490,13 @@ func ambiguousError(ctx jsonContext, locs []symbol.Location) error {
 	telemetrySetError("ambiguous", "multiple candidates")
 	if flagJSON {
 		res := &edit.JSONResult{
-			SchemaVersion: edit.SchemaVersion,
-			Status:        edit.StatusAmbiguous,
-			Operation:     ctx.Operation,
-			Language:      ctx.Language,
-			Backend:       ctx.Backend,
-			WorkspaceRoot: ctx.WorkspaceRoot,
+			SchemaVersion:  edit.SchemaVersion,
+			Status:         edit.StatusAmbiguous,
+			Operation:      ctx.Operation,
+			Language:       ctx.Language,
+			Backend:        ctx.Backend,
+			BackendVersion: ctx.BackendVersion,
+			WorkspaceRoot:  ctx.WorkspaceRoot,
 		}
 		for _, l := range locs {
 			res.Candidates = append(res.Candidates, edit.JSONSymbolLoc{
