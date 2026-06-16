@@ -41,9 +41,9 @@ func TestNoNodeModulesInBuildGraph(t *testing.T) {
 
 	// Run in module mode, offline: the root module's packages all resolve
 	// from the module cache / local source, so no network access is needed.
-	cmd := exec.Command("go", "list", "./...")
+	cmd := exec.Command("go", "list", "-mod=readonly", "-buildvcs=false", "./...")
 	cmd.Dir = repoRoot(t)
-	cmd.Env = append(cmd.Environ(), "GOFLAGS=-mod=readonly", "GOPROXY=off")
+	cmd.Env = append(cmd.Environ(), "GOPROXY=off")
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
