@@ -70,7 +70,12 @@ func (a *Adapter) Initialize(workspaceRoot string) error {
 
 	java, err := exec.LookPath("java")
 	if err != nil {
-		return fmt.Errorf("java not found on PATH: %w", err)
+		return &backend.ErrAdapterRuntimeMissing{
+			Language:       "java",
+			AdapterName:    "openrewrite",
+			MissingRuntime: "Java runtime (java not found on PATH)",
+			InstallHint:    "install a JDK (Java 17+) and ensure `java` is on PATH",
+		}
 	}
 
 	cmd := exec.Command(java, "-jar", jar)
@@ -324,7 +329,11 @@ func (a *Adapter) resolveJar(workspaceRoot string) (string, error) {
 		if _, err := os.Stat(a.jarPath); err == nil {
 			return a.jarPath, nil
 		}
-		return "", fmt.Errorf("openrewrite JAR not found at %s", a.jarPath)
+		return "", &backend.ErrAdapterRuntimeMissing{
+			Language:       "java",
+			AdapterName:    "openrewrite",
+			MissingRuntime: fmt.Sprintf("OpenRewrite adapter JAR (not found at %s)", a.jarPath),
+		}
 	}
 
 	// Walk up from workspaceRoot to find the checkout root (where go.mod lives).
@@ -336,10 +345,12 @@ func (a *Adapter) resolveJar(workspaceRoot string) (string, error) {
 	if _, err := os.Stat(candidate); err == nil {
 		return candidate, nil
 	}
-	return "", fmt.Errorf(
-		"OpenRewrite adapter JAR not found at %s; build it with: mvn package -f %s/adapters/openrewrite/pom.xml -q",
-		candidate, checkoutRoot,
-	)
+	return "", &backend.ErrAdapterRuntimeMissing{
+		Language:       "java",
+		AdapterName:    "openrewrite",
+		MissingRuntime: fmt.Sprintf("OpenRewrite adapter JAR (not found at %s)", candidate),
+		InstallHint:    fmt.Sprintf("mvn package -f %s/adapters/openrewrite/pom.xml -q", checkoutRoot),
+	}
 }
 
 // findCheckoutRoot walks up from dir looking for go.mod (the refute checkout root).

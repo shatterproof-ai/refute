@@ -70,6 +70,18 @@ func AdapterInstallHint() string {
 	return fmt.Sprintf("npm install -g %s", AdapterReleaseTarballURL())
 }
 
+// runtimeMissingErr reports that the ts-morph adapter script or its bundled
+// ts-morph node modules could not be located. Distinct from a missing Node.js
+// runtime, which Initialize detects separately.
+func runtimeMissingErr() error {
+	return &backend.ErrAdapterRuntimeMissing{
+		Language:       "typescript",
+		AdapterName:    "ts-morph",
+		MissingRuntime: "ts-morph adapter and node dependencies not installed",
+		InstallHint:    AdapterInstallHint(),
+	}
+}
+
 func AdapterReleaseTarballURL() string {
 	return fmt.Sprintf("https://github.com/shatterproof-ai/refute/releases/download/%s/%s", ReleaseVersion, AdapterTarballName())
 }
@@ -110,8 +122,16 @@ func AvailableAt(workspaceRoot, explicitPath string) bool {
 }
 
 func (a *Adapter) Initialize(workspaceRoot string) error {
+	if _, err := exec.LookPath("node"); err != nil {
+		return &backend.ErrAdapterRuntimeMissing{
+			Language:       "typescript",
+			AdapterName:    "ts-morph",
+			MissingRuntime: "Node.js runtime (node not found on PATH)",
+			InstallHint:    "install Node.js, then: " + AdapterInstallHint(),
+		}
+	}
 	if !AvailableAt(workspaceRoot, a.adapterPath) {
-		return fmt.Errorf("ts-morph adapter not found; install with: %s", AdapterInstallHint())
+		return runtimeMissingErr()
 	}
 	absRoot, err := filepath.Abs(workspaceRoot)
 	if err != nil {
@@ -307,7 +327,7 @@ func (a *Adapter) run(req any, resp any) error {
 
 	p, ok := resolveAdapterPaths(a.workspaceRoot, a.adapterPath)
 	if !ok {
-		return fmt.Errorf("ts-morph adapter not found; install with: %s", AdapterInstallHint())
+		return runtimeMissingErr()
 	}
 	ctx, cancel := context.WithTimeout(a.baseContext(), defaultRunTimeout)
 	defer cancel()

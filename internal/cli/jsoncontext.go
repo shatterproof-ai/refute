@@ -107,8 +107,7 @@ func exitCodeForError(err error) int {
 }
 
 func backendErrorStatus(err error) string {
-	var missing *ErrLSPServerMissing
-	if errors.As(err, &missing) {
+	if isBackendRuntimeMissing(err) {
 		return edit.StatusBackendMissing
 	}
 	msg := err.Error()
@@ -118,6 +117,31 @@ func backendErrorStatus(err error) string {
 		return edit.StatusBackendMissing
 	}
 	return edit.StatusBackendFailed
+}
+
+// emitJSONBackendSetupError classifies a backend setup or initialization error
+// and emits the matching structured envelope. It distinguishes a missing
+// adapter runtime (install hint, exit 3) and a missing LSP server (exit 3) from
+// a generic backend initialization failure (exit 1). Errors that are none of
+// these fall back to backendErrorStatus heuristics.
+func emitJSONBackendSetupError(ctx jsonContext, err error) error {
+	var runtimeMissing *backend.ErrAdapterRuntimeMissing
+	if errors.As(err, &runtimeMissing) {
+		return emitJSONError(ctx, edit.StatusBackendMissing, "adapter-runtime-missing",
+			err.Error(), runtimeMissing.InstallHint, backendMissingExitCode)
+	}
+	var lspMissing *ErrLSPServerMissing
+	if errors.As(err, &lspMissing) {
+		return emitJSONError(ctx, edit.StatusBackendMissing, "backend-missing",
+			err.Error(), lspMissing.InstallHint, backendMissingExitCode)
+	}
+	var initFail *ErrBackendInitFailure
+	if errors.As(err, &initFail) {
+		return emitJSONError(ctx, edit.StatusBackendFailed, "backend-init-failed",
+			err.Error(), "Run `refute doctor` for backend setup details.")
+	}
+	return emitJSONError(ctx, backendErrorStatus(err), "backend-unavailable",
+		err.Error(), "Run `refute doctor` for backend setup details.")
 }
 
 func emitJSONOperationError(ctx jsonContext, err error) error {
