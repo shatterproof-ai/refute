@@ -11,7 +11,8 @@ import urllib.request
 from pathlib import Path
 from sysconfig import get_platform
 
-ACTIVE = Path(".refute/bin/refute")
+LOCKFILE = "refute.lock.json"
+ACTIVE_REL = Path(".refute/bin/refute")
 HEX_DIGEST_LENGTH = 64
 
 
@@ -21,25 +22,38 @@ def main(argv=None):
         print("usage: refute-tool <sync|run|doctor>")
         return 0
     command = argv[0]
+    root = project_root()
     if command == "sync":
-        return sync()
+        return sync(root)
     if command == "run":
         args = argv[2:] if len(argv) > 1 and argv[1] == "--" else argv[1:]
-        return run(args)
+        return run(root, args)
     if command == "doctor":
-        return doctor()
+        return doctor(root)
     print(f"unknown refute-tool command {command}", file=sys.stderr)
     return 2
 
 
 def refute():
-    raise SystemExit(run(sys.argv[1:]))
+    raise SystemExit(run(project_root(), sys.argv[1:]))
 
 
-def sync():
-    lock_path = Path("refute.lock.json")
-    if not lock_path.exists():
-        print("missing refute.lock.json", file=sys.stderr)
+def project_root():
+    """Walk up from the working directory to the directory containing the
+    lockfile so the shim resolves the same .refute/bin from any subdirectory.
+    Falls back to the working directory when no lockfile is found."""
+    directory = Path.cwd()
+    for candidate in (directory, *directory.parents):
+        if is_regular_non_symlink(candidate / LOCKFILE):
+            return candidate
+    return directory
+
+
+def sync(root):
+    lock_path = root / LOCKFILE
+    active = root / ACTIVE_REL
+    if not is_regular_non_symlink(lock_path):
+        print(f"missing {LOCKFILE}", file=sys.stderr)
         return 1
     with lock_path.open(encoding="utf-8") as file:
         lock = json.load(file)
@@ -53,16 +67,16 @@ def sync():
         return 1
     artifact_sha = artifact["sha256"]
     try:
-        tool_root = Path(".refute")
+        tool_root = root / ".refute"
         ensure_real_directory(tool_root)
         cache_root = tool_root / "cache"
         ensure_real_directory(cache_root)
-        ensure_real_directory(ACTIVE.parent)
+        ensure_real_directory(active.parent)
     except ValueError as err:
         print(err, file=sys.stderr)
         return 1
-    if active_matches(artifact_sha):
-        print(f"{ACTIVE} is already current")
+    if active_matches(active, artifact_sha):
+        print(f"{ACTIVE_REL} is already current")
         return 0
     try:
         cache_dir = path_under(cache_root, artifact_sha)
@@ -92,35 +106,41 @@ def sync():
             return 1
         with source, extracted.open("wb") as output:
             shutil.copyfileobj(source, output)
-    atomic_copy2(extracted, ACTIVE, 0o755)
-    atomic_write_text(ACTIVE.with_name(ACTIVE.name + ".artifact-sha256"), artifact_sha + "\n")
-    atomic_write_text(ACTIVE.with_name(ACTIVE.name + ".binary-sha256"), sha256(ACTIVE) + "\n")
-    print(f"installed {ACTIVE}")
+    atomic_copy2(extracted, active, 0o755)
+    atomic_write_text(active.with_name(active.name + ".artifact-sha256"), artifact_sha + "\n")
+    atomic_write_text(active.with_name(active.name + ".binary-sha256"), sha256(active) + "\n")
+    print(f"installed {ACTIVE_REL}")
     return 0
 
 
-def doctor():
-    print("lockfile: present" if Path("refute.lock.json").exists() else "lockfile: missing")
-    if not ACTIVE.exists():
-        print(f"binary: missing ({ACTIVE})")
+def doctor(root):
+    active = root / ACTIVE_REL
+    print("lockfile: present" if is_regular_non_symlink(root / LOCKFILE) else "lockfile: missing")
+    if not active.exists():
+        print(f"binary: missing ({ACTIVE_REL})")
         return 0
-    print(f"binary: present ({ACTIVE})")
-    return run(["doctor"])
+    print(f"binary: present ({ACTIVE_REL})")
+    return run(root, ["doctor"])
 
 
-def run(args):
+def run(root, args):
+    active = root / ACTIVE_REL
     try:
-        completed = subprocess.run([os.fspath(ACTIVE), *args], check=False)
+        completed = subprocess.run([os.fspath(active), *args], check=False)
     except FileNotFoundError:
-        print(f"{ACTIVE} is missing; run `refute-tool sync` first", file=sys.stderr)
-        return 1
-    return completed.returncode
+        print(f"{ACTIVE_REL} is missing; run `refute-tool sync` first", file=sys.stderr)
+        return 127
+    code = completed.returncode
+    # Propagate signal deaths as a non-zero status using the shell's 128+signal
+    # convention instead of the negative value subprocess returns.
+    if code < 0:
+        return 128 + (-code)
+    return code
 
 
 def select_artifact(lock):
     platform = python_platform()
-    machine = os.uname().machine.lower() if hasattr(os, "uname") else ""
-    arch = "amd64" if machine in {"x86_64", "amd64"} else "arm64" if machine in {"aarch64", "arm64"} else machine
+    arch = python_arch()
     for artifact in lock.get("artifacts", []):
         if artifact.get("platform") == platform and artifact.get("architecture") == arch:
             return artifact
@@ -136,6 +156,15 @@ def python_platform():
     if value.startswith("win"):
         return "windows"
     return value
+
+
+def python_arch():
+    machine = os.uname().machine.lower() if hasattr(os, "uname") else ""
+    if machine in {"x86_64", "amd64"}:
+        return "amd64"
+    if machine in {"aarch64", "arm64"}:
+        return "arm64"
+    return machine
 
 
 def download(url, dest):
@@ -199,7 +228,7 @@ def ensure_real_directory(path):
     try:
         info = path.lstat()
     except FileNotFoundError:
-        path.mkdir(mode=0o755)
+        path.mkdir(mode=0o755, parents=True)
         return
     if not path.is_dir() or stat.S_ISLNK(info.st_mode):
         raise ValueError(f"{path} is not a real directory")
@@ -217,11 +246,11 @@ def marker_matches(path, digest):
     return is_regular_non_symlink(path) and path.read_text(encoding="utf-8").strip() == digest
 
 
-def active_matches(artifact_digest):
+def active_matches(active, artifact_digest):
     return (
-        is_regular_non_symlink(ACTIVE)
-        and marker_matches(ACTIVE.with_name(ACTIVE.name + ".artifact-sha256"), artifact_digest)
-        and marker_matches(ACTIVE.with_name(ACTIVE.name + ".binary-sha256"), sha256(ACTIVE))
+        is_regular_non_symlink(active)
+        and marker_matches(active.with_name(active.name + ".artifact-sha256"), artifact_digest)
+        and marker_matches(active.with_name(active.name + ".binary-sha256"), sha256(active))
     )
 
 
@@ -259,3 +288,7 @@ def atomic_write_text(path, data):
     except Exception:
         temp_path.unlink(missing_ok=True)
         raise
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -3,9 +3,11 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const zlib = require("zlib");
+const os = require("os");
 const { spawnSync } = require("child_process");
 
-const ACTIVE = path.join(".refute", "bin", "refute");
+const LOCKFILE = "refute.lock.json";
+const ACTIVE_REL = path.join(".refute", "bin", "refute");
 
 function main(argv = process.argv.slice(2)) {
   const cmd = argv[0];
@@ -13,21 +15,39 @@ function main(argv = process.argv.slice(2)) {
     console.log("usage: refute-tool <sync|run|doctor>");
     return 0;
   }
-  if (cmd === "sync") return sync();
-  if (cmd === "doctor") return doctor();
+  const root = projectRoot();
+  if (cmd === "sync") return sync(root);
+  if (cmd === "doctor") return doctor(root);
   if (cmd === "run") {
     const args = argv[1] === "--" ? argv.slice(2) : argv.slice(1);
-    return run(args);
+    return run(root, args);
   }
   console.error(`unknown refute-tool command ${cmd}`);
   return 2;
 }
 
-function sync() {
-  const lock = readLock();
-  const artifact = lock.artifacts.find((item) => item.platform === platform() && arch(item.architecture) === process.arch);
+// projectRoot walks up from the working directory to the directory containing
+// the lockfile, so the shim resolves the same .refute/bin from any
+// subdirectory. Falls back to the working directory when no lockfile is found.
+function projectRoot() {
+  let dir = process.cwd();
+  for (;;) {
+    if (isRegularNonSymlink(path.join(dir, LOCKFILE))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return process.cwd();
+    dir = parent;
+  }
+}
+
+function sync(root) {
+  const lockPath = path.join(root, LOCKFILE);
+  const active = path.join(root, ACTIVE_REL);
+  const toolRoot = path.join(root, ".refute");
+  const cacheRoot = path.join(toolRoot, "cache");
+  const lock = readLock(lockPath);
+  const artifact = lock.artifacts.find((item) => item.platform === platform() && item.architecture === arch());
   if (!artifact) {
-    console.error(`unsupported platform ${platform()}/${process.arch} for refute ${lock.version}`);
+    console.error(`unsupported platform ${platform()}/${arch()} for refute ${lock.version}`);
     return 1;
   }
   const validationError = validateArtifact(artifact);
@@ -37,22 +57,22 @@ function sync() {
   }
   const artifactSha = artifact.sha256;
   try {
-    ensureRealDirectory(".refute");
-    ensureRealDirectory(path.join(".refute", "cache"));
-    ensureRealDirectory(path.dirname(ACTIVE));
+    ensureRealDirectory(toolRoot);
+    ensureRealDirectory(cacheRoot);
+    ensureRealDirectory(path.dirname(active));
   } catch (err) {
     console.error(err.message);
     return 1;
   }
-  if (activeMatches(artifactSha)) {
-    console.log(`${ACTIVE} is already current`);
+  if (activeMatches(active, artifactSha)) {
+    console.log(`${ACTIVE_REL} is already current`);
     return 0;
   }
   let cacheDir;
   let archive;
   let cachedBinary;
   try {
-    cacheDir = pathUnder(path.join(".refute", "cache"), artifactSha);
+    cacheDir = pathUnder(cacheRoot, artifactSha);
     archive = pathUnder(cacheDir, artifact.filename || "artifact.tar.gz");
     cachedBinary = pathUnder(cacheDir, "refute");
   } catch (err) {
@@ -73,34 +93,41 @@ function sync() {
     console.error(err.message);
     return 1;
   }
-  installFileAtomic(cachedBinary, ACTIVE, 0o755);
-  writeFileAtomic(`${ACTIVE}.artifact-sha256`, `${artifactSha}\n`, 0o644);
-  writeFileAtomic(`${ACTIVE}.binary-sha256`, `${sha256(ACTIVE)}\n`, 0o644);
-  console.log(`installed ${ACTIVE}`);
+  installFileAtomic(cachedBinary, active, 0o755);
+  writeFileAtomic(`${active}.artifact-sha256`, `${artifactSha}\n`, 0o644);
+  writeFileAtomic(`${active}.binary-sha256`, `${sha256(active)}\n`, 0o644);
+  console.log(`installed ${ACTIVE_REL}`);
   return 0;
 }
 
-function doctor() {
-  console.log(fs.existsSync("refute.lock.json") ? "lockfile: present" : "lockfile: missing");
-  if (!fs.existsSync(ACTIVE)) {
-    console.log(`binary: missing (${ACTIVE})`);
+function doctor(root) {
+  const active = path.join(root, ACTIVE_REL);
+  console.log(isRegularNonSymlink(path.join(root, LOCKFILE)) ? "lockfile: present" : "lockfile: missing");
+  if (!fs.existsSync(active)) {
+    console.log(`binary: missing (${ACTIVE_REL})`);
     return 0;
   }
-  console.log(`binary: present (${ACTIVE})`);
-  return run(["doctor"]);
+  console.log(`binary: present (${ACTIVE_REL})`);
+  return run(root, ["doctor"]);
 }
 
-function run(args) {
-  const child = spawnSync(path.resolve(ACTIVE), args, { stdio: "inherit" });
+function run(root, args) {
+  const active = path.join(root, ACTIVE_REL);
+  const child = spawnSync(active, args, { stdio: "inherit" });
   if (child.error) {
     console.error(child.error.message);
-    return 1;
+    return child.error.code === "ENOENT" ? 127 : 1;
   }
-  return child.status ?? 0;
+  // Propagate exit status, including signal deaths: a child killed by a signal
+  // has a null status and must not be reported as success (exit 0).
+  if (child.status === null) {
+    return 128 + (os.constants.signals[child.signal] || 1);
+  }
+  return child.status;
 }
 
-function readLock() {
-  return JSON.parse(fs.readFileSync("refute.lock.json", "utf8"));
+function readLock(lockPath) {
+  return JSON.parse(fs.readFileSync(lockPath, "utf8"));
 }
 
 function copyArtifact(rawUrl, dest) {
@@ -131,10 +158,10 @@ function markerMatches(file, digest) {
   return isRegularNonSymlink(file) && fs.readFileSync(file, "utf8").trim() === digest;
 }
 
-function activeMatches(artifactDigest) {
-  return isRegularNonSymlink(ACTIVE)
-    && markerMatches(`${ACTIVE}.artifact-sha256`, artifactDigest)
-    && markerMatches(`${ACTIVE}.binary-sha256`, sha256(ACTIVE));
+function activeMatches(active, artifactDigest) {
+  return isRegularNonSymlink(active)
+    && markerMatches(`${active}.artifact-sha256`, artifactDigest)
+    && markerMatches(`${active}.binary-sha256`, sha256(active));
 }
 
 function validateArtifact(artifact) {
@@ -180,7 +207,7 @@ function ensureRealDirectory(dir) {
     }
   } catch (err) {
     if (err.code !== "ENOENT") throw err;
-    fs.mkdirSync(dir);
+    fs.mkdirSync(dir, { recursive: true });
   }
 }
 
@@ -300,12 +327,26 @@ function tempPath(dest) {
   return path.join(path.dirname(dest), `.${name}-${suffix}`);
 }
 
+// platform maps Node's process.platform to the lockfile schema's platform
+// names. Windows is not a supported v0.1 target (see INSTALL.md), but the
+// mapping is kept consistent with the other shims and the Go runtime.
 function platform() {
-  return process.platform === "darwin" ? "darwin" : process.platform;
+  switch (process.platform) {
+    case "win32":
+      return "windows";
+    default:
+      return process.platform;
+  }
 }
 
-function arch(value) {
-  return value === "amd64" ? "x64" : value;
+// arch maps Node's process.arch to the lockfile schema's architecture names.
+function arch() {
+  switch (process.arch) {
+    case "x64":
+      return "amd64";
+    default:
+      return process.arch;
+  }
 }
 
 if (require.main === module) process.exit(main());

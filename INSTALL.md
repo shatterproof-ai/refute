@@ -72,7 +72,27 @@ refute-tool doctor
 `sync` downloads the current platform artifact, verifies SHA-256, extracts it
 under `.refute/cache/<sha256>/`, and atomically updates `.refute/bin/refute`.
 `run` and all package-manager `refute` shims execute `.refute/bin/refute` and
-preserve arguments and exit status.
+preserve arguments and exit status (including non-zero exits and signal
+deaths). Every shim locates the lockfile and `.refute/bin` by walking up from
+the working directory, so the commands work from any subdirectory of a project,
+not just its root.
+
+Supported platforms are `linux` and `darwin` on `amd64` and `arm64`; the
+`platform`/`architecture` values in `refute.lock.json` use those names (the
+same ones `go env GOOS`/`GOARCH` print). Windows is not a supported v0.1
+target: no Windows artifacts are published, and `sync` reports an unsupported
+platform if asked to resolve one. The shims are kept conformant by
+`scripts/shim-conformance.sh`, which drives every shim against one shared
+artifact and lockfile in CI.
+
+The npm and python shims perform `sync` natively (they ship no compiled
+binary). The cargo and jvm shims are thin launchers: they execute
+`.refute/bin/refute` directly for `run`, but delegate `sync` to a `refute-tool`
+executable on `PATH`. Install a shim that ships `refute-tool` (the npm
+`@shatterproof-ai/refute-tool` package or the python `refute-tool` wheel) so a
+`refute-tool` binary is available, then run `cargo refute -- sync` / the jvm
+launcher's `sync`. When `refute-tool` is absent these shims print an
+install hint instead of a bare OS error.
 
 Package-manager adapters are distributed from GitHub Releases instead of public
 registries:

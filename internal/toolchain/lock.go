@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 )
 
@@ -66,4 +67,26 @@ func SelectArtifact(lock Lock, platform, architecture string) (Artifact, error) 
 
 func CurrentPlatform() (string, string) {
 	return runtime.GOOS, runtime.GOARCH
+}
+
+// FindProjectRoot walks up from start to locate the directory that contains the
+// lockfile (LockfileName), returning that directory. This lets `refute-tool`
+// and the package-manager shims be invoked from any subdirectory of a project
+// and still resolve the same `.refute/bin` as an invocation from the root.
+// It returns an error if no lockfile is found before the filesystem root.
+func FindProjectRoot(start string) (string, error) {
+	dir, err := filepath.Abs(start)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", start, err)
+	}
+	for {
+		if info, statErr := os.Stat(filepath.Join(dir, LockfileName)); statErr == nil && !info.IsDir() {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("%s not found in %s or any parent directory", LockfileName, start)
+		}
+		dir = parent
+	}
 }

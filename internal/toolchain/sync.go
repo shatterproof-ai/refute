@@ -327,11 +327,6 @@ func ensureRealDirectory(path string) error {
 	return nil
 }
 
-func hasDigest(path, want string) bool {
-	got, err := fileDigest(path)
-	return err == nil && got == want
-}
-
 func activeMatches(path, artifactSHA string) bool {
 	if !isRegularNonSymlink(path) {
 		return false

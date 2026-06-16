@@ -59,6 +59,42 @@ func TestLoadLockRejectsIncompleteArtifact(t *testing.T) {
 	}
 }
 
+func TestFindProjectRootWalksUp(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, LockfileName), `{"version":"v1","manifest_url":"https://example.com/m.json","artifacts":[{"platform":"linux","architecture":"amd64","url":"https://example.com/x","sha256":"abc"}]}`)
+	nested := filepath.Join(root, "a", "b", "c")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := FindProjectRoot(nested)
+	if err != nil {
+		t.Fatalf("FindProjectRoot: %v", err)
+	}
+	// t.TempDir may live under a symlinked path (e.g. /var -> /private/var on
+	// macOS); compare resolved paths.
+	wantResolved, _ := filepath.EvalSymlinks(root)
+	gotResolved, _ := filepath.EvalSymlinks(got)
+	if gotResolved != wantResolved {
+		t.Fatalf("FindProjectRoot = %q, want %q", gotResolved, wantResolved)
+	}
+}
+
+func TestFindProjectRootFromRootItself(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, LockfileName), `{"version":"v1","manifest_url":"https://example.com/m.json","artifacts":[{"platform":"linux","architecture":"amd64","url":"https://example.com/x","sha256":"abc"}]}`)
+
+	got, err := FindProjectRoot(root)
+	if err != nil {
+		t.Fatalf("FindProjectRoot: %v", err)
+	}
+	wantResolved, _ := filepath.EvalSymlinks(root)
+	gotResolved, _ := filepath.EvalSymlinks(got)
+	if gotResolved != wantResolved {
+		t.Fatalf("FindProjectRoot = %q, want %q", gotResolved, wantResolved)
+	}
+}
+
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

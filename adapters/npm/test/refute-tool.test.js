@@ -11,6 +11,61 @@ function main() {
   testRejectsLinkTarMembers();
   testRejectsSymlinkedBinRoot();
   testReplacesSymlinkedActiveFiles();
+  testSyncWalksUpToLockfile();
+  testRefuteBinPropagatesFailureExit();
+  testRefuteBinPropagatesSignalDeath();
+}
+
+// Sync invoked from a subdirectory must install into the lockfile directory's
+// .refute, not the subdirectory's cwd.
+function testSyncWalksUpToLockfile() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "refute-npm-walkup-"));
+  const archive = writeArchive(root);
+  const digest = sha256(archive);
+  writeLock(root, archive, digest);
+  const nested = path.join(root, "a", "b");
+  fs.mkdirSync(nested, { recursive: true });
+
+  const result = spawnSync(process.execPath, [path.join(__dirname, "..", "bin", "refute-tool.js"), "sync"], {
+    cwd: nested,
+    encoding: "utf8",
+  });
+  assert.strictEqual(result.status, 0, result.stderr || result.stdout);
+  assert.strictEqual(fs.existsSync(path.join(root, ".refute", "bin", "refute")), true, "sync did not install into lockfile root");
+  assert.strictEqual(fs.existsSync(path.join(nested, ".refute")), false, "sync installed into the subdirectory");
+}
+
+// The `refute` bin must exit with the delegated binary's non-zero status
+// instead of always succeeding.
+function testRefuteBinPropagatesFailureExit() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "refute-npm-exit-"));
+  installFakeBinary(root, "#!/bin/sh\nexit 3\n");
+
+  const result = spawnSync(process.execPath, [path.join(__dirname, "..", "bin", "refute.js"), "anything"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  assert.strictEqual(result.status, 3, `refute bin did not propagate exit 3, got ${result.status}`);
+}
+
+// A signal death must surface as a non-zero status, not exit 0.
+function testRefuteBinPropagatesSignalDeath() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "refute-npm-signal-"));
+  installFakeBinary(root, "#!/bin/sh\nkill -TERM $$\n");
+
+  const result = spawnSync(process.execPath, [path.join(__dirname, "..", "bin", "refute.js"), "anything"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  assert.notStrictEqual(result.status, 0, "refute bin reported signal death as success");
+}
+
+function installFakeBinary(root, script) {
+  const binDir = path.join(root, ".refute", "bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  const active = path.join(binDir, "refute");
+  fs.writeFileSync(active, script, { mode: 0o755 });
+  fs.chmodSync(active, 0o755);
 }
 
 function testRejectsUnsafeTarMembers() {
