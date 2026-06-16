@@ -14,6 +14,7 @@ unless a current tracker issue explicitly reactivates them.
 - [Support Matrix](support-matrix.md) -- canonical language/backend support table.
 - [JSON Output and Exit Codes](json-schema.md) -- normative `--json`, `doctor --json`, coordinate, versioning, and exit-code reference.
 - [Release Process](release.md) -- repeatable v0.1 release commands and artifacts.
+- [Release Verification](release-verification.md) -- one-command pre-release check suite (`make verify`).
 - [Versioning and Compatibility](versioning.md) -- semantic versioning,
   pre-v1 compatibility, JSON schema, and MCP schema policy.
 - [Position Encoding](position-encoding.md) -- CLI byte-column vs LSP UTF-16 column constraint.
