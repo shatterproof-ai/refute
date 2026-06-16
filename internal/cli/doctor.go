@@ -4,13 +4,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/shatterproof-ai/refute/internal/backend/tsmorph"
-	"github.com/shatterproof-ai/refute/internal/edit"
+	"github.com/shatterproof-ai/refute/internal/config"
 )
+
+// doctorSchemaVersion identifies the `refute doctor --json` report shape. It is
+// intentionally distinct from edit.SchemaVersion (the operation-envelope
+// schema): the two documents evolve independently, so they must not share a
+// version number.
+const doctorSchemaVersion = "1"
 
 // DoctorStatus values describe the readiness of a backend on the current host.
 const (
@@ -51,43 +60,44 @@ var lookPathFn = exec.LookPath
 // workspace root (doctor context). Overridable in tests.
 var tsAdapterAvailableFn = func() bool { return tsmorph.Available() }
 
-var goOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
-var rustOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
+// doctorConfigFn resolves the effective configuration doctor probes against, so
+// that a custom server in refute.config.json is reported as found rather than
+// missing. Overridable in tests.
+var doctorConfigFn = loadDoctorConfig
+
+// loadDoctorConfig loads user/project configuration relative to the current
+// working directory. Doctor runs without a target file, so the workspace root
+// is discovered from the cwd. A load error degrades to built-in defaults rather
+// than failing the report.
+func loadDoctorConfig() *config.Config {
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+	root, err := FindWorkspaceRootFromDir(cwd)
+	if err != nil {
+		root = cwd
+	}
+	cfg, err := config.Load(flagConfig, root)
+	if err != nil {
+		return nil
+	}
+	return cfg
+}
 
 func buildDoctorReport() DoctorReport {
 	report := DoctorReport{
-		SchemaVersion: edit.SchemaVersion,
+		SchemaVersion: doctorSchemaVersion,
 		Command:       "doctor",
 	}
-	report.Backends = []DoctorBackendStatus{
-		probeLSP("go", "lsp/gopls", "gopls", DoctorStatusOK,
-			"go install golang.org/x/tools/gopls@latest", goOperations,
-			"Primary v0.1 target."),
-		probeTSMorphAdapter(),
-		probeLSP("typescript", "lsp/typescript-language-server", "typescript-language-server", DoctorStatusExperimental,
-			"npm install -g typescript-language-server typescript", []string{"rename"},
-			"Fallback for TypeScript/JavaScript when ts-morph adapter is unavailable."),
-		probeLSP("javascript", "lsp/typescript-language-server", "typescript-language-server", DoctorStatusExperimental,
-			"npm install -g typescript-language-server typescript", []string{"rename"},
-			"JavaScript support is experimental for v0.1."),
-		probeLSP("rust", "lsp/rust-analyzer", "rust-analyzer", DoctorStatusExperimental,
-			"rustup component add rust-analyzer", rustOperations,
-			"Rust support is experimental for v0.1; extract and inline operations depend on rust-analyzer assists and inline is single-call-site only."),
-		probeLSP("python", "lsp/pyright", "pyright-langserver", DoctorStatusPlanned,
-			"npm install -g pyright", []string{"rename"},
-			"Python support is planned, not yet covered by integration tests."),
-		{
-			Language: "java",
-			Backend:  "openrewrite",
-			Status:   DoctorStatusNotClaimed,
-			Caveats:  "Java/OpenRewrite support is not claimed for v0.1.",
-		},
-		{
-			Language: "kotlin",
-			Backend:  "openrewrite",
-			Status:   DoctorStatusNotClaimed,
-			Caveats:  "Kotlin/OpenRewrite support is not claimed for v0.1.",
-		},
+	cfg := doctorConfigFn()
+	for _, entry := range config.SupportMatrix {
+		// The ts-morph adapter is the preferred TypeScript backend; surface it
+		// just before the TypeScript language-server fallback row.
+		if entry.Language == "typescript" && entry.Backend == "lsp/typescript-language-server" {
+			report.Backends = append(report.Backends, probeTSMorphAdapter())
+		}
+		report.Backends = append(report.Backends, probeSupportEntry(cfg, entry))
 	}
 	return report
 }
@@ -111,27 +121,59 @@ func probeTSMorphAdapter() DoctorBackendStatus {
 	return row
 }
 
-// probeLSP looks up the named binary on PATH. okStatus is the status returned
-// when the binary is present (callers pick "ok" or "experimental" to reflect
-// the matrix). On miss, the row carries DoctorStatusMissing and the install
-// hint.
-func probeLSP(language, backend, binary, okStatus, installHint string, ops []string, caveats string) DoctorBackendStatus {
+// probeSupportEntry turns one support-matrix row into a doctor row. Unsupported
+// languages are reported without a host probe. For everything else, the server
+// binary is looked up on PATH: a configured server command (user/project
+// config) takes precedence over the matrix default so custom servers report as
+// found.
+func probeSupportEntry(cfg *config.Config, entry config.LanguageSupport) DoctorBackendStatus {
 	row := DoctorBackendStatus{
-		Language:    language,
-		Backend:     backend,
-		Operations:  ops,
-		InstallHint: installHint,
-		Caveats:     caveats,
+		Language:    entry.Language,
+		Backend:     entry.Backend,
+		InstallHint: entry.InstallHint,
+		Caveats:     entry.Caveats,
 	}
+	if entry.Level == config.LevelUnsupported {
+		row.Status = DoctorStatusNotClaimed
+		return row
+	}
+	row.Operations = entry.Operations
+
+	// The matrix Binary is the default probe target. An explicit user/project
+	// server override wins so a custom server reports as found. We read the
+	// resolved Servers map directly (not cfg.Server, which falls back to the
+	// builtin command) so doctor stays decoupled from builtinServers.
+	binary := entry.Binary
+	if cfg != nil {
+		if srv, ok := cfg.Servers[entry.Language]; ok && srv.Command != "" {
+			binary = srv.Command
+		}
+	}
+
 	path, err := lookPathFn(binary)
 	if err != nil {
 		row.Status = DoctorStatusMissing
 		row.MissingDependency = binary
 		return row
 	}
-	row.Status = okStatus
+	row.Status = presentStatus(entry.Level)
 	row.Binary = path
 	return row
+}
+
+// presentStatus maps a release-support tier to the doctor status reported when
+// the backend is present locally.
+func presentStatus(level string) string {
+	switch level {
+	case config.LevelSupported:
+		return DoctorStatusOK
+	case config.LevelExperimental:
+		return DoctorStatusExperimental
+	case config.LevelPlanned:
+		return DoctorStatusPlanned
+	default:
+		return DoctorStatusOK
+	}
 }
 
 func init() {
@@ -161,32 +203,20 @@ current release.`,
 	RootCmd.AddCommand(doctorCmd)
 }
 
-func renderDoctorHuman(w interface{ Write(p []byte) (int, error) }, report DoctorReport) {
+func renderDoctorHuman(w io.Writer, report DoctorReport) {
 	for _, b := range report.Backends {
-		line := fmt.Sprintf("%-12s %-40s %s\n", b.Language, b.Backend, b.Status)
-		_, _ = w.Write([]byte(line))
+		fmt.Fprintf(w, "%-12s %-40s %s\n", b.Language, b.Backend, b.Status)
 		if b.Binary != "" {
-			_, _ = w.Write([]byte(fmt.Sprintf("  binary: %s\n", b.Binary)))
+			fmt.Fprintf(w, "  binary: %s\n", b.Binary)
 		}
 		if len(b.Operations) > 0 && b.Status != DoctorStatusNotClaimed {
-			_, _ = w.Write([]byte(fmt.Sprintf("  operations: %s\n", joinOps(b.Operations))))
+			fmt.Fprintf(w, "  operations: %s\n", strings.Join(b.Operations, ", "))
 		}
 		if b.Status == DoctorStatusMissing && b.InstallHint != "" {
-			_, _ = w.Write([]byte(fmt.Sprintf("  install: %s\n", b.InstallHint)))
+			fmt.Fprintf(w, "  install: %s\n", b.InstallHint)
 		}
 		if b.Caveats != "" {
-			_, _ = w.Write([]byte(fmt.Sprintf("  note: %s\n", b.Caveats)))
+			fmt.Fprintf(w, "  note: %s\n", b.Caveats)
 		}
 	}
-}
-
-func joinOps(ops []string) string {
-	out := ""
-	for i, op := range ops {
-		if i > 0 {
-			out += ", "
-		}
-		out += op
-	}
-	return out
 }

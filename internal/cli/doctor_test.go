@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shatterproof-ai/refute/internal/edit"
+	"github.com/shatterproof-ai/refute/internal/config"
 )
 
 func TestDoctorCommand_JSONShape(t *testing.T) {
@@ -24,8 +24,11 @@ func TestDoctorCommand_JSONShape(t *testing.T) {
 		t.Fatalf("unmarshal: %v\nraw:\n%s", err, buf.String())
 	}
 
-	if got.SchemaVersion != edit.SchemaVersion {
-		t.Errorf("schemaVersion = %q, want %q", got.SchemaVersion, edit.SchemaVersion)
+	if got.SchemaVersion != doctorSchemaVersion {
+		t.Errorf("schemaVersion = %q, want %q", got.SchemaVersion, doctorSchemaVersion)
+	}
+	if got.SchemaVersion == "" {
+		t.Error("doctor report must populate schemaVersion")
 	}
 	if got.Command != "doctor" {
 		t.Errorf("command = %q, want \"doctor\"", got.Command)
@@ -72,10 +75,18 @@ func TestDoctorCommand_HumanShape(t *testing.T) {
 func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 	origLookPath := lookPathFn
 	origTSAdapter := tsAdapterAvailableFn
+	origConfig := doctorConfigFn
 	t.Cleanup(func() {
 		lookPathFn = origLookPath
 		tsAdapterAvailableFn = origTSAdapter
+		doctorConfigFn = origConfig
 	})
+
+	// Pin doctor to built-in defaults so the assertions are independent of any
+	// user/project config on the host running the suite.
+	doctorConfigFn = func() *config.Config {
+		return &config.Config{Servers: map[string]config.ServerConfig{}}
+	}
 
 	presentBinaries := map[string]string{
 		"gopls":                      "/fake/bin/gopls",
@@ -246,6 +257,46 @@ func TestDoctor_RustOperationsMatchSupportMatrix(t *testing.T) {
 	want := strings.Join(supportMatrixOperations(t, "Rust"), ", ")
 	if got != want {
 		t.Errorf("rust operations = %q, want support matrix operations %q", got, want)
+	}
+}
+
+// TestDoctor_ReflectsCustomServerConfig verifies that a custom language server
+// configured in user/project config is probed (and reported found) instead of
+// the built-in default binary, so custom servers are no longer mislabelled as
+// missing.
+func TestDoctor_ReflectsCustomServerConfig(t *testing.T) {
+	origLookPath := lookPathFn
+	origConfig := doctorConfigFn
+	t.Cleanup(func() {
+		lookPathFn = origLookPath
+		doctorConfigFn = origConfig
+	})
+
+	doctorConfigFn = func() *config.Config {
+		return &config.Config{
+			Servers: map[string]config.ServerConfig{
+				"go": {Command: "custom-gopls"},
+			},
+		}
+	}
+	lookPathFn = func(name string) (string, error) {
+		if name == "custom-gopls" {
+			return "/fake/bin/custom-gopls", nil
+		}
+		return "", errLookPathNotFound
+	}
+
+	report := buildDoctorReport()
+	goEntry := doctorBackendByLanguage(t, report, "go")
+
+	if goEntry.Status != DoctorStatusOK {
+		t.Errorf("go status = %q, want %q (custom server present)", goEntry.Status, DoctorStatusOK)
+	}
+	if goEntry.Binary != "/fake/bin/custom-gopls" {
+		t.Errorf("go binary = %q, want custom server path", goEntry.Binary)
+	}
+	if goEntry.MissingDependency != "" {
+		t.Errorf("go missing dependency = %q, want empty for present custom server", goEntry.MissingDependency)
 	}
 }
 

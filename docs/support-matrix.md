@@ -108,5 +108,6 @@ When `refute` cannot find a language server it prints an install hint. Sources:
 | TypeScript adapter | `npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz` |
 | Python | `npm install -g pyright` |
 
-These hints mirror `refute doctor`. Code-side install-hint consolidation is
-tracked separately in issue #69.
+These hints mirror `refute doctor` because both are derived from the single
+`SupportMatrix` table in `internal/config`; the table also feeds the
+missing-server error shown by `refute rename`, so the three can never drift.
