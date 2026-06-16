@@ -37,7 +37,7 @@ class SyncTests(unittest.TestCase):
             write_lock(root, archive, "../outside")
 
             with chdir(root):
-                result = cli.sync()
+                result = cli.sync(cli.project_root())
 
             self.assertEqual(result, 1)
             self.assertFalse((root / ".refute").exists())
@@ -50,7 +50,7 @@ class SyncTests(unittest.TestCase):
             write_lock(root, archive, digest, filename="../artifact.tar.gz")
 
             with chdir(root):
-                result = cli.sync()
+                result = cli.sync(cli.project_root())
 
             self.assertEqual(result, 1)
             self.assertFalse((root / ".refute").exists())
@@ -70,7 +70,7 @@ class SyncTests(unittest.TestCase):
             os.symlink(outside, tool_root / "cache")
 
             with chdir(root):
-                result = cli.sync()
+                result = cli.sync(cli.project_root())
 
             self.assertEqual(result, 1)
             self.assertTrue((tool_root / "cache").is_symlink())
@@ -92,7 +92,7 @@ class SyncTests(unittest.TestCase):
             os.symlink(outside, tool_root / "bin")
 
             with chdir(root):
-                result = cli.sync()
+                result = cli.sync(cli.project_root())
 
             self.assertEqual(result, 1)
             self.assertTrue((tool_root / "bin").is_symlink())
@@ -121,7 +121,7 @@ class SyncTests(unittest.TestCase):
                 os.symlink(target, link)
 
             with chdir(root):
-                result = cli.sync()
+                result = cli.sync(cli.project_root())
 
             self.assertEqual(result, 0)
             for link, target in targets.items():
@@ -137,7 +137,7 @@ class SyncTests(unittest.TestCase):
             write_lock(root, archive, digest)
 
             with chdir(root):
-                result = cli.sync()
+                result = cli.sync(cli.project_root())
 
             self.assertEqual(result, 1)
             self.assertFalse((root / "outside" / "refute").exists())
@@ -152,10 +152,45 @@ class SyncTests(unittest.TestCase):
                     write_lock(root, archive, digest)
 
                     with chdir(root):
-                        result = cli.sync()
+                        result = cli.sync(cli.project_root())
 
                     self.assertEqual(result, 1)
                     self.assertFalse((root / ".refute" / "bin" / "refute").exists())
+
+
+class RootResolutionTests(unittest.TestCase):
+    def test_project_root_walks_up_to_lockfile_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            archive, digest = write_archive(root)
+            write_lock(root, archive, digest)
+            nested = root / "a" / "b"
+            nested.mkdir(parents=True)
+
+            with chdir(nested):
+                self.assertEqual(cli.project_root().resolve(), root)
+                # sync from a subdirectory installs into the lockfile's .refute,
+                # not the subdirectory's.
+                self.assertEqual(cli.sync(cli.project_root()), 0)
+
+            self.assertTrue((root / ".refute" / "bin" / "refute").exists())
+            self.assertFalse((nested / ".refute").exists())
+
+
+class ExitPropagationTests(unittest.TestCase):
+    def test_run_translates_signal_death_to_non_zero(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            active = root / cli.ACTIVE_REL
+            active.parent.mkdir(parents=True)
+            # A script that kills itself with SIGTERM, so subprocess reports a
+            # negative return code (signal death).
+            active.write_text("#!/bin/sh\nkill -TERM $$\n", encoding="utf-8")
+            active.chmod(0o755)
+
+            code = cli.run(root, [])
+
+            self.assertEqual(code, 128 + 15)  # SIGTERM
 
 
 @contextlib.contextmanager

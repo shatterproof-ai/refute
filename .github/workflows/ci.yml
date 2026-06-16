@@ -215,6 +215,43 @@ jobs:
           TSMORPH_REQUIRED: "1"
         run: go test ./internal/backend/tsmorph
 
+  shim-conformance:
+    name: Toolchain shim conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Rust toolchain (cargo) ships on the ubuntu-latest image; no setup step
+      # needed. The harness reports SKIP rather than failing if any toolchain is
+      # absent, so a future image change degrades visibly instead of silently.
+      - name: Run cross-shim conformance harness
+        run: ./scripts/shim-conformance.sh
+
   gitleaks:
     name: Gitleaks
     runs-on: ubuntu-latest

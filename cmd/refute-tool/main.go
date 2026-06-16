@@ -22,8 +22,13 @@ func run(args []string) int {
 	ctx := context.Background()
 	switch args[0] {
 	case "sync":
+		root, err := projectRoot()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "refute-tool sync: %v\n", err)
+			return 1
+		}
 		result, err := toolchain.Sync(ctx, toolchain.SyncOptions{
-			ProjectRoot: ".",
+			ProjectRoot: root,
 			Stdout:      os.Stdout,
 		})
 		if err != nil {
@@ -41,16 +46,26 @@ func run(args []string) int {
 		if len(runArgs) > 0 && runArgs[0] == "--" {
 			runArgs = runArgs[1:]
 		}
+		root, err := projectRoot()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
 		return exitCode(toolchain.Run(ctx, toolchain.RunOptions{
-			ProjectRoot: ".",
+			ProjectRoot: root,
 			Args:        runArgs,
 			Stdin:       os.Stdin,
 			Stdout:      os.Stdout,
 			Stderr:      os.Stderr,
 		}))
 	case "doctor":
+		root, err := projectRoot()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
 		return exitCode(toolchain.Doctor(ctx, toolchain.DoctorOptions{
-			ProjectRoot: ".",
+			ProjectRoot: root,
 			Stdout:      os.Stdout,
 			Stderr:      os.Stderr,
 		}))
@@ -59,6 +74,22 @@ func run(args []string) int {
 		usage(os.Stderr)
 		return 2
 	}
+}
+
+// projectRoot resolves the project root by walking up from the working
+// directory to the directory containing the lockfile, so refute-tool works from
+// any subdirectory. When no lockfile is found it falls back to the working
+// directory, preserving the prior behavior (and letting sync/doctor report the
+// missing lockfile themselves).
+func projectRoot() (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	if root, err := toolchain.FindProjectRoot(cwd); err == nil {
+		return root, nil
+	}
+	return cwd, nil
 }
 
 func exitCode(err error) int {
