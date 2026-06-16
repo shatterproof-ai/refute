@@ -203,17 +203,12 @@ func localTypeScriptServer(language string, workspaceRoot string) (ServerConfig,
 }
 
 // InstallHint returns a human-readable command the user can run to install the
-// given LSP server. Returns the empty string if no hint is registered.
+// given LSP server. Returns the empty string if no hint is registered. The hint
+// is sourced from SupportMatrix so doctor, missing-server errors, and the
+// matrix doc never disagree.
 func InstallHint(language string) string {
-	switch language {
-	case "rust":
-		return "rustup component add rust-analyzer"
-	case "go":
-		return "go install golang.org/x/tools/gopls@latest"
-	case "typescript", "javascript":
-		return "npm install -g typescript-language-server typescript"
-	case "python":
-		return "pip install pyright"
+	if e, ok := supportByLanguage[language]; ok {
+		return e.InstallHint
 	}
 	return ""
 }

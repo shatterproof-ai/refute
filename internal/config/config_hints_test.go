@@ -8,7 +8,7 @@ func TestInstallHint(t *testing.T) {
 		"go":         "go install golang.org/x/tools/gopls@latest",
 		"typescript": "npm install -g typescript-language-server typescript",
 		"javascript": "npm install -g typescript-language-server typescript",
-		"python":     "pip install pyright",
+		"python":     "npm install -g pyright",
 		"cobol":      "",
 	}
 	for lang, want := range cases {
