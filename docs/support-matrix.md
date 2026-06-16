@@ -69,6 +69,15 @@ The `Operations` column lists the refactorings that route through the
 backend in the current release. Operations not listed return the
 `unsupported` JSON status when invoked.
 
+In `--json` mode every operation command (`rename`, `extract-function`,
+`extract-variable`, and `inline`) emits exactly one structured envelope on
+stdout for both success and failure. Failure envelopes carry the matching
+status from `internal/edit/json.go`: `backend-missing` when the language
+server is absent, `unsupported` for an operation the backend does not provide,
+`invalid-position` when a symbol cannot be resolved, and `backend-failed`
+(error code `apply-failed`) when applying edits fails after the preview is
+computed.
+
 For Tier 1 rename (`refute rename --symbol pkg.Func --new-name New`) the
 backend is selected from the file's extension once the symbol is resolved,
 following the same rules as Tier 2.

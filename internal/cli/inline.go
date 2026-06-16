@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shatterproof-ai/refute/internal/edit"
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
@@ -37,7 +38,17 @@ For Rust: use --symbol with --call-site <file>:<line>:<column>. See docs/support
 }
 
 func runInline() error {
-	telemetrySetContext(jsonContext{Operation: "inline"})
+	ctx := jsonContext{Operation: "inline"}
+	return routeOperationError(ctx, runInlineInner(&ctx))
+}
+
+// runInlineInner performs the inline and returns terminal errors for the shared
+// wrapper to route. It populates *ctx as it learns the file and backend so an
+// error envelope emitted by routeOperationError is fully attributed. A symbol
+// resolution failure emits an invalid-position envelope inline; the wrapper
+// passes the resulting jsonEmitted error through unchanged.
+func runInlineInner(ctx *jsonContext) error {
+	telemetrySetContext(*ctx)
 	if flagSymbol != "" && callSiteFlag == "" {
 		return fmt.Errorf("inline: --symbol requires --call-site <file>:<line>:<column> " +
 			"to disambiguate which call site to inline")
@@ -77,19 +88,25 @@ func runInline() error {
 		resolved, err := symbol.Resolve(query)
 		resolveDone()
 		if err != nil {
+			if flagJSON {
+				return emitJSONError(contextFromFile("inline", absFile),
+					edit.StatusInvalidPosition, "invalid-position", err.Error(),
+					"Check --file, --line, --col, and --name.")
+			}
 			return fmt.Errorf("symbol resolution: %w", err)
 		}
 		loc = resolved
 	}
 
+	*ctx = contextFromFile("inline", loc.File)
 	sel, workspaceRoot, err := buildBackend(loc.File)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = sel.Backend.Shutdown() }()
 
-	ctx := contextFromSelection("inline", sel, workspaceRoot)
-	telemetrySetContext(ctx)
+	*ctx = contextFromSelection("inline", sel, workspaceRoot)
+	telemetrySetContext(*ctx)
 	refactorDone := telemetryPhase("backend-refactor-request")
 	we, err := sel.Backend.InlineSymbol(loc)
 	refactorDone()
@@ -99,7 +116,7 @@ func runInline() error {
 	if len(we.FileEdits) == 0 {
 		return NoEditsError()
 	}
-	return applyOrPreview(we, ctx)
+	return applyOrPreview(we, *ctx)
 }
 
 func parseCallSite(s string) (symbol.Location, error) {
