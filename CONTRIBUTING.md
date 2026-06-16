@@ -13,6 +13,7 @@ Run these from the repo root before sending changes; all must be clean:
 go test ./...        # unit tests
 go vet ./...         # static checks
 gofmt -l .           # formatting — output must be empty
+govulncheck ./...    # vulnerability scan
 ```
 
 Integration tests (`go test -tags integration ./internal/...`) exercise real
