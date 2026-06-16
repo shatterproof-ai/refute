@@ -897,8 +897,18 @@ func parseWorkspaceEdit(raw json.RawMessage) ([]edit.FileEdit, error) {
 	// Fall back to changes map.
 	if len(we.Changes) > 0 {
 		fileEdits := make([]edit.FileEdit, 0, len(we.Changes))
-		for uri, lspEdits := range we.Changes {
+		uris := make([]string, 0, len(we.Changes))
+		for uri := range we.Changes {
+			uris = append(uris, uri)
+		}
+		sort.Strings(uris)
+
+		for _, uri := range uris {
 			path := uriToFile(uri)
+			if path == "" {
+				return nil, fmt.Errorf("changes entry has empty uri")
+			}
+			lspEdits := we.Changes[uri]
 			edits, err := convertEdits(path, lspEdits)
 			if err != nil {
 				return nil, err

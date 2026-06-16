@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -200,11 +199,11 @@ func TestClientShutdownCleansUpAfterShutdownRequestFailure(t *testing.T) {
 }
 
 func TestClientShutdownCleansUpAfterExitNotificationFailure(t *testing.T) {
-	reader := bytes.NewBuffer(lspFrame([]byte(`{"jsonrpc":"2.0","id":1,"result":null}`)))
 	// Transport.Write emits one write per message: the shutdown request is
 	// write 1 (succeeds), the exit notification is write 2 (fails here).
-	writer := &failAfterWrite{failAt: 2}
-	client, stderrPath := newShutdownTestClient(t, NewTransport(reader, writer), longRunningCommand(t))
+	responder := newResponseAfterWrite(t, lspFrame([]byte(`{"jsonrpc":"2.0","id":1,"result":null}`)))
+	writer := &failAfterResponseWrite{responseAfterWrite: responder, failAt: 2}
+	client, stderrPath := newShutdownTestClient(t, NewTransport(responder.reader, writer), longRunningCommand(t))
 	go client.readLoop()
 
 	err := client.Shutdown()
@@ -303,6 +302,24 @@ type failAfterWrite struct {
 func (w *failAfterWrite) Write(p []byte) (int, error) {
 	if w.writes.Add(1) >= w.failAt {
 		return 0, errors.New("write failed")
+	}
+	return len(p), nil
+}
+
+type failAfterResponseWrite struct {
+	*responseAfterWrite
+	failAt int64
+}
+
+func (w *failAfterResponseWrite) Write(p []byte) (int, error) {
+	if w.writes.Add(1) >= w.failAt {
+		return 0, errors.New("write failed")
+	}
+	if w.writes.Load() == 1 {
+		go func() {
+			_, _ = w.writer.Write(w.body)
+			_ = w.writer.Close()
+		}()
 	}
 	return len(p), nil
 }
