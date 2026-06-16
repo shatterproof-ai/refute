@@ -2,6 +2,7 @@ package edit_test
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -34,6 +35,62 @@ func TestJSONResult_StatusConstants(t *testing.T) {
 			t.Errorf("status constant for %q = %q, want %q", literal, constant, literal)
 		}
 	}
+}
+
+func TestJSONResult_DocumentedStatusesMatchConstants(t *testing.T) {
+	data, err := os.ReadFile("../../docs/json-schema.md")
+	if err != nil {
+		t.Fatalf("read docs/json-schema.md: %v", err)
+	}
+
+	got := documentedStatuses(t, string(data))
+	want := []string{
+		edit.StatusApplied,
+		edit.StatusDryRun,
+		edit.StatusNoOp,
+		edit.StatusAmbiguous,
+		edit.StatusUnsupported,
+		edit.StatusBackendMissing,
+		edit.StatusBackendFailed,
+		edit.StatusInvalidPosition,
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("documented statuses do not match edit constants\ngot:  %v\nwant: %v", got, want)
+	}
+}
+
+func documentedStatuses(t *testing.T, doc string) []string {
+	t.Helper()
+
+	const start = "<!-- json-statuses:start -->"
+	const end = "<!-- json-statuses:end -->"
+	startIdx := strings.Index(doc, start)
+	if startIdx < 0 {
+		t.Fatalf("docs/json-schema.md missing %s marker", start)
+	}
+	endIdx := strings.Index(doc[startIdx:], end)
+	if endIdx < 0 {
+		t.Fatalf("docs/json-schema.md missing %s marker", end)
+	}
+
+	section := doc[startIdx : startIdx+endIdx]
+	var statuses []string
+	for _, line := range strings.Split(section, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "- `") {
+			continue
+		}
+		rest := strings.TrimPrefix(line, "- `")
+		status, _, ok := strings.Cut(rest, "`")
+		if !ok || status == "" {
+			t.Fatalf("malformed documented status line: %q", line)
+		}
+		statuses = append(statuses, status)
+	}
+	if len(statuses) == 0 {
+		t.Fatalf("docs/json-schema.md status marker section contains no status bullets")
+	}
+	return statuses
 }
 
 func TestJSONResult_AppliedEnvelope(t *testing.T) {
