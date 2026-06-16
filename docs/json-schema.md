@@ -18,8 +18,9 @@ envelope:
 | `language` | string | no | Detected source language for the operation. |
 | `backend` | string | no | Backend selected for the operation, such as `lsp/gopls` or `tsmorph`. |
 | `workspaceRoot` | string | no | Absolute workspace root used for backend setup and relative analysis. |
-| `filesModified` | number | yes | Count of file entries in `edits`; `0` when no edits are present. |
+| `filesModified` | number | yes | Count of affected files: file-edit entries in `edits` plus `fileOps` entries; `0` when none are present. |
 | `edits` | array | no | File edits grouped by path. Omitted when empty. |
+| `fileOps` | array | no | Create/rename/delete file operations. Omitted when empty. See [File Operations](#file-operations). |
 | `newSymbol` | object | no | New symbol location after an operation that can report one. |
 | `candidates` | array | no | Candidate symbol locations when a request is ambiguous. |
 | `warnings` | array | no | Non-fatal warning strings. |
@@ -76,6 +77,23 @@ boundary. See [Position Encoding](position-encoding.md) for the Unicode caveat.
 | `line` | number | 1-indexed line. |
 | `column` | number | 1-indexed byte-offset column. |
 | `name` | string | Symbol name. |
+
+## File Operations
+
+`fileOps[]` entries describe create, rename, and delete operations that
+accompany text edits (for example, an "extract to new file" refactoring creates
+a file and edits both it and the original). The field is additive under
+`schemaVersion: "1"`; consumers that ignore it still process `edits` correctly.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `op` | string | One of `create`, `rename`, or `delete`. |
+| `file` | string | Target path for `create`/`delete`; source path for `rename`. |
+| `newFile` | string | Destination path for `rename`; omitted otherwise. |
+
+When both `edits` and `fileOps` are present, refute applies creates first (so a
+text edit can populate a new file), then text edits, then renames, then
+deletes, as a single all-or-nothing transaction.
 
 ## Error Object
 

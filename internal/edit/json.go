@@ -38,6 +38,15 @@ type JSONFileEdit struct {
 	Changes []JSONChange `json:"changes"`
 }
 
+// JSONFileOp is a create/rename/delete file operation in JSON output. Op is
+// one of "create", "rename", or "delete". File is the target (create/delete)
+// or the source (rename); NewFile is the rename destination.
+type JSONFileOp struct {
+	Op      string `json:"op"`
+	File    string `json:"file"`
+	NewFile string `json:"newFile,omitempty"`
+}
+
 // JSONSymbolLoc is a 1-indexed symbol location used for the newSymbol field.
 type JSONSymbolLoc struct {
 	File   string `json:"file"`
@@ -66,6 +75,7 @@ type JSONResult struct {
 	WorkspaceRoot  string          `json:"workspaceRoot,omitempty"`
 	FilesModified  int             `json:"filesModified"`
 	Edits          []JSONFileEdit  `json:"edits,omitempty"`
+	FileOps        []JSONFileOp    `json:"fileOps,omitempty"`
 	NewSymbol      *JSONSymbolLoc  `json:"newSymbol,omitempty"`
 	Candidates     []JSONSymbolLoc `json:"candidates,omitempty"`
 	Warnings       []string        `json:"warnings,omitempty"`
@@ -97,7 +107,14 @@ func RenderJSON(we *WorkspaceEdit, status string) *JSONResult {
 		}
 		res.Edits = append(res.Edits, jfe)
 	}
-	res.FilesModified = len(res.Edits)
+	for _, op := range we.FileOps {
+		res.FileOps = append(res.FileOps, JSONFileOp{
+			Op:      string(op.Kind),
+			File:    op.Path,
+			NewFile: op.NewPath,
+		})
+	}
+	res.FilesModified = len(res.Edits) + len(res.FileOps)
 	return res
 }
 

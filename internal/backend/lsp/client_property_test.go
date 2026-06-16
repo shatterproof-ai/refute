@@ -28,9 +28,9 @@ func TestParseWorkspaceEditArbitraryInputProperties(t *testing.T) {
 			}
 		}()
 
-		fileEdits, err := parseWorkspaceEdit(json.RawMessage(raw))
-		if err == nil {
-			assertNonEmptyFileEditPaths(t, fileEdits)
+		we, err := parseWorkspaceEdit(json.RawMessage(raw))
+		if err == nil && we != nil {
+			assertNonEmptyFileEditPaths(t, we.FileEdits)
 		}
 	})
 }
@@ -48,8 +48,8 @@ func TestParseWorkspaceEditDeterminismProperty(t *testing.T) {
 		if errorString(firstErr) != errorString(secondErr) {
 			t.Fatalf("parseWorkspaceEdit error is nondeterministic for %s:\nfirst:  %v\nsecond: %v", string(raw), firstErr, secondErr)
 		}
-		if firstErr == nil {
-			assertNonEmptyFileEditPaths(t, first)
+		if firstErr == nil && first != nil {
+			assertNonEmptyFileEditPaths(t, first.FileEdits)
 		}
 	})
 }

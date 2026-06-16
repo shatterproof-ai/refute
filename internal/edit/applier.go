@@ -56,6 +56,13 @@ func ApplyWithin(we *WorkspaceEdit, workspaceRoot string) (*ApplyResult, error) 
 func apply(we *WorkspaceEdit, boundary workspaceBoundary) (*ApplyResult, error) {
 	normalizeCodeActionPlaceholders(we)
 
+	// File operations (create/rename/delete) require the ordered, journalled
+	// transaction. The text-edits-only path keeps its original batched
+	// staging untouched.
+	if len(we.FileOps) > 0 {
+		return applyWithFileOps(we, boundary)
+	}
+
 	pendingFiles, err := computePendingFiles(we, boundary)
 	if err != nil {
 		return nil, err

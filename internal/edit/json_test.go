@@ -210,3 +210,64 @@ func TestJSONResult_BackendVersionRoundTripsAndOmitsWhenEmpty(t *testing.T) {
 		t.Errorf("empty backendVersion must be omitted, got: %s", bare)
 	}
 }
+
+func TestRenderJSONOmitsFileOpsWhenAbsent(t *testing.T) {
+	we := &edit.WorkspaceEdit{
+		FileEdits: []edit.FileEdit{
+			{Path: "/ws/a.go", Edits: []edit.TextEdit{
+				{Range: edit.Range{Start: edit.Position{Line: 0, Character: 0}, End: edit.Position{Line: 0, Character: 1}}, NewText: "x"},
+			}},
+		},
+	}
+	res := edit.RenderJSON(we, edit.StatusDryRun)
+	data, err := res.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	// Additive contract: with no file ops, the fileOps key is omitted entirely,
+	// so an old consumer that only reads schemaVersion/status/edits is unaffected.
+	if strings.Contains(string(data), "fileOps") {
+		t.Fatalf("expected no fileOps key when absent, got:\n%s", data)
+	}
+	if res.SchemaVersion != "1" {
+		t.Fatalf("schemaVersion = %q, want 1", res.SchemaVersion)
+	}
+	if res.FilesModified != 1 {
+		t.Fatalf("filesModified = %d, want 1", res.FilesModified)
+	}
+}
+
+func TestRenderJSONIncludesFileOps(t *testing.T) {
+	we := &edit.WorkspaceEdit{
+		FileEdits: []edit.FileEdit{
+			{Path: "/ws/new.go", Edits: []edit.TextEdit{
+				{Range: edit.Range{Start: edit.Position{Line: 0, Character: 0}, End: edit.Position{Line: 0, Character: 0}}, NewText: "package p\n"},
+			}},
+		},
+		FileOps: []edit.FileOperation{
+			{Kind: edit.FileOpCreate, Path: "/ws/new.go"},
+			{Kind: edit.FileOpRename, Path: "/ws/old.go", NewPath: "/ws/renamed.go"},
+			{Kind: edit.FileOpDelete, Path: "/ws/gone.go"},
+		},
+	}
+	res := edit.RenderJSON(we, edit.StatusDryRun)
+	if res.SchemaVersion != "1" {
+		t.Fatalf("schemaVersion = %q, want 1", res.SchemaVersion)
+	}
+	if len(res.FileOps) != 3 {
+		t.Fatalf("expected 3 fileOps, got %+v", res.FileOps)
+	}
+	if res.FileOps[0].Op != "create" || res.FileOps[0].File != "/ws/new.go" {
+		t.Fatalf("create op = %+v", res.FileOps[0])
+	}
+	if res.FileOps[1].Op != "rename" || res.FileOps[1].File != "/ws/old.go" || res.FileOps[1].NewFile != "/ws/renamed.go" {
+		t.Fatalf("rename op = %+v", res.FileOps[1])
+	}
+	if res.FileOps[2].Op != "delete" || res.FileOps[2].File != "/ws/gone.go" {
+		t.Fatalf("delete op = %+v", res.FileOps[2])
+	}
+	// 1 edited file + 3 file ops.
+	if res.FilesModified != 4 {
+		t.Fatalf("filesModified = %d, want 4", res.FilesModified)
+	}
+}
