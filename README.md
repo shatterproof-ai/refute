@@ -115,6 +115,10 @@ Two flags shape every operation's output:
 Scripts and agents should default to `--json --dry-run` to inspect a proposed
 refactoring before applying it.
 
+See [`docs/json-schema.md`](docs/json-schema.md) for the normative JSON
+envelope, coordinate semantics, doctor report schema, stability rules, and
+exit-code reference.
+
 ## Local telemetry
 
 `refute` writes local, opt-out invocation telemetry to:

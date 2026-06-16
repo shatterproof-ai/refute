@@ -22,9 +22,16 @@ var (
 // failures, so each error reaches stderr exactly once. Execute restores usage
 // output for command-line syntax errors only.
 var RootCmd = &cobra.Command{
-	Use:           "refute",
-	Short:         "Automated source code refactoring",
-	Long:          "refute orchestrates existing refactoring engines to provide IDE-quality refactoring from the command line.",
+	Use:   "refute",
+	Short: "Automated source code refactoring",
+	Long: `refute orchestrates existing refactoring engines to provide IDE-quality
+refactoring from the command line.
+
+EXIT CODES
+  0  command succeeded
+  1  general failure, invalid request, unsupported operation, ambiguous match, or backend failure
+  2  no edits or no matching symbol
+  3  required backend missing`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
