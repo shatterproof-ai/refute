@@ -1,7 +1,9 @@
 package selector
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/backend/lsp"
@@ -24,21 +26,26 @@ var (
 	tsMorphAvailable = func(workspaceRoot, explicitPath string) bool {
 		return tsmorph.AvailableAt(workspaceRoot, explicitPath)
 	}
-	newTSMorphBackend = func(adapterPath string) backend.RefactoringBackend {
-		return tsmorph.NewAdapterWithPath(adapterPath)
+	newTSMorphBackend = func(ctx context.Context, adapterPath string) backend.RefactoringBackend {
+		a := tsmorph.NewAdapterWithPath(adapterPath)
+		a.SetContext(ctx)
+		return a
 	}
 	newOpenRewriteBackend = func() backend.RefactoringBackend {
 		return openrewrite.NewAdapter("")
 	}
-	newLSPBackend = func(cfg config.ServerConfig, languageID string) backend.RefactoringBackend {
-		return lsp.NewAdapter(cfg, languageID, nil)
+	newLSPBackend = func(ctx context.Context, cfg config.ServerConfig, languageID string, requestTimeout time.Duration) backend.RefactoringBackend {
+		a := lsp.NewAdapter(cfg, languageID, nil)
+		a.SetContext(ctx)
+		a.SetRequestTimeout(requestTimeout)
+		return a
 	}
 )
 
 // ForFile selects a backend for the given file path while preserving current
 // behavior for existing languages while allowing TypeScript/JavaScript to
 // prefer ts-morph when it is available locally.
-func ForFile(cfg *config.Config, workspaceRoot string, filePath string) (*Selection, error) {
+func ForFile(ctx context.Context, cfg *config.Config, workspaceRoot string, filePath string) (*Selection, error) {
 	detected := language.Detect(filePath)
 	language := detected.Language
 	languageID := detected.LanguageID
@@ -49,7 +56,7 @@ func ForFile(cfg *config.Config, workspaceRoot string, filePath string) (*Select
 			Language:    language,
 			LanguageID:  languageID,
 			BackendName: "tsmorph",
-			Backend:     newTSMorphBackend(explicitAdapterPath),
+			Backend:     newTSMorphBackend(ctx, explicitAdapterPath),
 		}, nil
 	}
 
@@ -72,7 +79,7 @@ func ForFile(cfg *config.Config, workspaceRoot string, filePath string) (*Select
 		LanguageID:  languageID,
 		BackendName: "lsp",
 		Server:      serverCfg,
-		Backend:     newLSPBackend(serverCfg, languageID),
+		Backend:     newLSPBackend(ctx, serverCfg, languageID, cfg.RequestTimeout()),
 	}, nil
 }
 

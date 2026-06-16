@@ -145,7 +145,7 @@ func buildBackend(filePath string) (*selector.Selection, string, error) {
 		selectDone()
 		return nil, "", fmt.Errorf("loading config: %w", err)
 	}
-	sel, err := selector.ForFile(cfg, workspaceRoot, filePath)
+	sel, err := selector.ForFile(commandContext(), cfg, workspaceRoot, filePath)
 	if err != nil {
 		selectDone()
 		return nil, "", err
@@ -337,6 +337,8 @@ func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
 	selectDone()
 
 	adapter := lsp.NewAdapter(serverCfg, language, nil)
+	adapter.SetContext(commandContext())
+	adapter.SetRequestTimeout(cfg.RequestTimeout())
 	ctx.BackendVersion = backendVersionForLanguageServer(language, serverCfg.Command)
 	initDone := telemetryPhase("backend-initialization")
 	if err := adapter.Initialize(workspaceRoot); err != nil {

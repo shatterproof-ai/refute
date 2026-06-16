@@ -1,6 +1,7 @@
 package lsp_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -39,7 +40,7 @@ func ShouldNotIndex() {}
 		}
 	}
 
-	client, err := lsp.StartClient("gopls", []string{"serve"}, dir)
+	client, err := lsp.StartClient(context.Background(), "gopls", []string{"serve"}, dir, 0)
 	if err != nil {
 		t.Fatalf("StartClient: %v", err)
 	}

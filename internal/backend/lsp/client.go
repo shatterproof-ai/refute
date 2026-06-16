@@ -59,6 +59,10 @@ const lspContentModified = -32801
 const lspInvalidParams = -32602
 const defaultRequestTimeout = 30 * time.Second
 
+// defaultShutdownTimeout bounds how long Shutdown waits for a server that has
+// acknowledged the shutdown request to actually exit before it is force-killed.
+const defaultShutdownTimeout = 5 * time.Second
+
 // isLSPError reports whether err contains a jsonrpcError with the given code.
 func isLSPError(err error, code int) bool {
 	var jrpcErr *jsonrpcError
@@ -202,6 +206,23 @@ type Client struct {
 	done           chan struct{}
 	progress       *progressTracker
 	requestTimeout time.Duration
+	// shutdownTimeout bounds the happy-path wait for the server to exit after
+	// the exit notification before Shutdown force-kills it. Zero means
+	// defaultShutdownTimeout.
+	shutdownTimeout time.Duration
+	// ctx is the base context propagated from the CLI. When it is cancelled
+	// (e.g. on SIGINT) in-flight requests return promptly. Nil means
+	// context.Background().
+	ctx context.Context
+}
+
+// baseContext returns the client's base context, defaulting to
+// context.Background() when none was provided (e.g. in direct test construction).
+func (c *Client) baseContext() context.Context {
+	if c.ctx != nil {
+		return c.ctx
+	}
+	return context.Background()
 }
 
 // serverCapabilities holds the subset of LSP server capabilities we care about.
@@ -211,7 +232,15 @@ type serverCapabilities struct {
 
 // StartClient launches an LSP server subprocess communicating via stdin/stdout
 // and completes the initialize/initialized handshake.
-func StartClient(command string, args []string, workspaceRoot string) (*Client, error) {
+//
+// ctx is the base context for the client's requests; when it is cancelled
+// (e.g. SIGINT from the CLI) in-flight requests return promptly. A nil ctx is
+// treated as context.Background(). requestTimeout bounds each individual LSP
+// request; a non-positive value falls back to defaultRequestTimeout.
+func StartClient(ctx context.Context, command string, args []string, workspaceRoot string, requestTimeout time.Duration) (*Client, error) {
+	if requestTimeout <= 0 {
+		requestTimeout = defaultRequestTimeout
+	}
 	cmd := exec.Command(command, args...)
 	stderr, err := capture.New("refute-lsp-stderr-*")
 	if err != nil {
@@ -236,13 +265,15 @@ func StartClient(command string, args []string, workspaceRoot string) (*Client, 
 	}
 
 	c := &Client{
-		transport:      NewTransport(stdout, stdin),
-		process:        cmd,
-		stderr:         stderr,
-		pending:        make(map[int]chan jsonrpcResponse),
-		done:           make(chan struct{}),
-		progress:       newProgressTracker(),
-		requestTimeout: defaultRequestTimeout,
+		transport:       NewTransport(stdout, stdin),
+		process:         cmd,
+		stderr:          stderr,
+		pending:         make(map[int]chan jsonrpcResponse),
+		done:            make(chan struct{}),
+		progress:        newProgressTracker(),
+		requestTimeout:  requestTimeout,
+		shutdownTimeout: defaultShutdownTimeout,
+		ctx:             ctx,
 	}
 
 	go c.readLoop()
@@ -399,6 +430,8 @@ func (c *Client) request(method string, params interface{}) (json.RawMessage, er
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
+	ctx := c.baseContext()
+
 	var resp jsonrpcResponse
 	select {
 	case resp = <-ch:
@@ -407,6 +440,11 @@ func (c *Client) request(method string, params interface{}) (json.RawMessage, er
 		delete(c.pending, id)
 		c.mu.Unlock()
 		return nil, c.withServerStderr(fmt.Errorf("%s request: %w after %s", method, ErrRequestTimeout, timeout))
+	case <-ctx.Done():
+		c.mu.Lock()
+		delete(c.pending, id)
+		c.mu.Unlock()
+		return nil, c.withServerStderr(fmt.Errorf("%s request: %w", method, ctx.Err()))
 	case <-c.done:
 		c.mu.Lock()
 		delete(c.pending, id)
@@ -646,13 +684,47 @@ func (c *Client) Shutdown() error {
 			return
 		}
 
-		// Wait for readLoop to drain and process to exit.
-		<-c.done
-		if err := c.process.Wait(); err != nil {
+		// Wait for the process to exit, but time-box it: a server that
+		// acknowledges shutdown yet never exits must not hang the CLI. On
+		// timeout, fall through to a force kill.
+		if err := c.waitProcessTimeout(); err != nil {
 			shutdownErr = c.withServerStderr(fmt.Errorf("wait process: %w", err))
 		}
 	})
 	return shutdownErr
+}
+
+// waitProcessTimeout waits for the server process to exit on its own within the
+// shutdown timeout. If it does not, the process is force-killed and reaped so
+// the call always returns and stderr cleanup can run. A clean self-exit returns
+// the process's own wait error (if any); the kill path returns nil because the
+// kill is the intended, successful fallback.
+func (c *Client) waitProcessTimeout() error {
+	timeout := c.shutdownTimeout
+	if timeout <= 0 {
+		timeout = defaultShutdownTimeout
+	}
+
+	waitErr := make(chan error, 1)
+	go func() { waitErr <- c.process.Wait() }()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case err := <-waitErr:
+		return err
+	case <-timer.C:
+		if c.process.Process != nil {
+			if err := c.process.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				return fmt.Errorf("kill unresponsive server: %w", err)
+			}
+		}
+		// Reap the killed process. Wait returns a "signal: killed" error, which
+		// is expected here and not surfaced as a Shutdown failure.
+		<-waitErr
+		return nil
+	}
 }
 
 func (c *Client) killAndWaitProcess() error {

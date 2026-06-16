@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -175,7 +176,7 @@ func TestStartClientIncludesServerStderrOnInitializeFailure(t *testing.T) {
 		t.Fatalf("write fake server: %v", err)
 	}
 
-	_, err := StartClient(server, nil, dir)
+	_, err := StartClient(context.Background(), server, nil, dir, 0)
 	if err == nil {
 		t.Fatal("expected StartClient to fail")
 	}
@@ -215,6 +216,49 @@ func TestClientShutdownCleansUpAfterExitNotificationFailure(t *testing.T) {
 	}
 
 	requireShutdownCleanup(t, client, stderrPath)
+}
+
+func TestClientShutdownTimesOutAndKillsUnresponsiveServer(t *testing.T) {
+	// The server acknowledges the shutdown request and accepts the exit
+	// notification, but never exits and keeps its connection open. Without a
+	// time-box, Shutdown blocks forever on <-c.done / process.Wait().
+	responder := newRespondKeepOpen(t, lspFrame([]byte(`{"jsonrpc":"2.0","id":1,"result":null}`)))
+	client, stderrPath := newShutdownTestClient(t, NewTransport(responder.reader, responder), longRunningCommand(t))
+	client.shutdownTimeout = 50 * time.Millisecond
+	go client.readLoop()
+
+	start := time.Now()
+	if err := client.Shutdown(); err != nil {
+		t.Fatalf("Shutdown should succeed via kill fallback: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("Shutdown did not time-box; it blocked for %s", elapsed)
+	}
+
+	requireShutdownCleanup(t, client, stderrPath)
+}
+
+func TestClientRequestCancelsOnContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &Client{
+		transport:      NewTransport(nil, io.Discard),
+		pending:        make(map[int]chan jsonrpcResponse),
+		requestTimeout: time.Minute, // long, so cancellation ends the call, not the timeout
+		ctx:            ctx,
+	}
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := client.request("workspace/symbol", map[string]string{"query": "x"})
+	if err == nil {
+		t.Fatal("expected request to fail on context cancellation, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled in chain, got %v", err)
+	}
 }
 
 func TestClientShutdownCleansUpAfterNormalShutdown(t *testing.T) {
@@ -351,6 +395,33 @@ func (w *responseAfterWrite) Write(p []byte) (int, error) {
 			_, _ = w.writer.Write(w.body)
 			_ = w.writer.Close()
 		}()
+	}
+	return len(p), nil
+}
+
+// respondKeepOpen answers the first write with body but, unlike
+// responseAfterWrite, never closes the pipe — simulating a server that
+// acknowledges shutdown yet keeps its connection open and never exits.
+type respondKeepOpen struct {
+	reader *io.PipeReader
+	writer *io.PipeWriter
+	body   []byte
+	writes atomic.Int64
+}
+
+func newRespondKeepOpen(t *testing.T, body []byte) *respondKeepOpen {
+	t.Helper()
+	reader, writer := io.Pipe()
+	t.Cleanup(func() {
+		reader.Close()
+		writer.Close()
+	})
+	return &respondKeepOpen{reader: reader, writer: writer, body: body}
+}
+
+func (w *respondKeepOpen) Write(p []byte) (int, error) {
+	if w.writes.Add(1) == 1 {
+		go func() { _, _ = w.writer.Write(w.body) }()
 	}
 	return len(p), nil
 }

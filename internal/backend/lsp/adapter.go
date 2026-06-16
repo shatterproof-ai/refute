@@ -36,6 +36,25 @@ type Adapter struct {
 	// without waiting on the production delay.
 	renameMaxRetries int
 	renameRetryDelay time.Duration
+
+	// ctx is the base context propagated from the CLI (cancelled on SIGINT).
+	// requestTimeout overrides the per-request LSP timeout when non-zero.
+	ctx            context.Context
+	requestTimeout time.Duration
+}
+
+// SetContext sets the base context propagated to the LSP client so that
+// cancelling it (e.g. on SIGINT) aborts in-flight requests. It must be called
+// before Initialize.
+func (a *Adapter) SetContext(ctx context.Context) {
+	a.ctx = ctx
+}
+
+// SetRequestTimeout sets the per-request LSP timeout used by the client. A
+// non-positive value leaves the client default in place. It must be called
+// before Initialize.
+func (a *Adapter) SetRequestTimeout(d time.Duration) {
+	a.requestTimeout = d
 }
 
 // ErrRenameNoEdits signals that the server kept returning zero edits for a
@@ -62,7 +81,7 @@ func (a *Adapter) Initialize(workspaceRoot string) error {
 		return fmt.Errorf("abs workspace root: %w", err)
 	}
 
-	client, err := StartClient(a.cfg.Command, a.cfg.Args, absRoot)
+	client, err := StartClient(a.ctx, a.cfg.Command, a.cfg.Args, absRoot, a.requestTimeout)
 	if err != nil {
 		return fmt.Errorf("start LSP client: %w", err)
 	}
