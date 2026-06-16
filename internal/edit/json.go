@@ -57,18 +57,19 @@ type JSONError struct {
 // SchemaVersion and Status; all other fields are optional and may be absent
 // for a given status.
 type JSONResult struct {
-	SchemaVersion string          `json:"schemaVersion"`
-	Status        string          `json:"status"`
-	Operation     string          `json:"operation,omitempty"`
-	Language      string          `json:"language,omitempty"`
-	Backend       string          `json:"backend,omitempty"`
-	WorkspaceRoot string          `json:"workspaceRoot,omitempty"`
-	FilesModified int             `json:"filesModified"`
-	Edits         []JSONFileEdit  `json:"edits,omitempty"`
-	NewSymbol     *JSONSymbolLoc  `json:"newSymbol,omitempty"`
-	Candidates    []JSONSymbolLoc `json:"candidates,omitempty"`
-	Warnings      []string        `json:"warnings,omitempty"`
-	Error         *JSONError      `json:"error,omitempty"`
+	SchemaVersion  string          `json:"schemaVersion"`
+	Status         string          `json:"status"`
+	Operation      string          `json:"operation,omitempty"`
+	Language       string          `json:"language,omitempty"`
+	Backend        string          `json:"backend,omitempty"`
+	BackendVersion string          `json:"backendVersion,omitempty"`
+	WorkspaceRoot  string          `json:"workspaceRoot,omitempty"`
+	FilesModified  int             `json:"filesModified"`
+	Edits          []JSONFileEdit  `json:"edits,omitempty"`
+	NewSymbol      *JSONSymbolLoc  `json:"newSymbol,omitempty"`
+	Candidates     []JSONSymbolLoc `json:"candidates,omitempty"`
+	Warnings       []string        `json:"warnings,omitempty"`
+	Error          *JSONError      `json:"error,omitempty"`
 }
 
 // RenderJSON converts a WorkspaceEdit into a JSONResult envelope with the

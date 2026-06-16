@@ -37,12 +37,13 @@ func TestRecorderWritesStartEndWithProjectAndSession(t *testing.T) {
 		Now: fixedClock(time.Date(2026, 5, 13, 10, 0, 0, 0, time.UTC)),
 	})
 	rec.SetOperation(telemetry.OperationContext{
-		Operation:     "rename",
-		Language:      "go",
-		Backend:       "lsp",
-		WorkspaceRoot: workspace,
-		Status:        edit.StatusDryRun,
-		FilesModified: 2,
+		Operation:      "rename",
+		Language:       "go",
+		Backend:        "lsp",
+		BackendVersion: "gopls v1.2.3",
+		WorkspaceRoot:  workspace,
+		Status:         edit.StatusDryRun,
+		FilesModified:  2,
 	})
 	rec.Finish(telemetry.FinishInfo{ExitCode: 0})
 
@@ -67,6 +68,9 @@ func TestRecorderWritesStartEndWithProjectAndSession(t *testing.T) {
 	}
 	if events[1]["status"] != edit.StatusDryRun {
 		t.Fatalf("status = %v, want dry-run", events[1]["status"])
+	}
+	if events[1]["backendVersion"] != "gopls v1.2.3" {
+		t.Fatalf("backendVersion = %v, want gopls v1.2.3", events[1]["backendVersion"])
 	}
 	agent := events[1]["agent"].(map[string]any)
 	if agent["sessionId"] != "session-123" || agent["entrypoint"] != "cli" {

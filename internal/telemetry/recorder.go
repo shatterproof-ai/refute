@@ -40,13 +40,14 @@ type Options struct {
 // OperationContext is the operation metadata known after command parsing and
 // backend selection.
 type OperationContext struct {
-	Operation     string
-	Language      string
-	Backend       string
-	WorkspaceRoot string
-	Status        string
-	FilesModified int
-	Warnings      []string
+	Operation      string
+	Language       string
+	Backend        string
+	BackendVersion string
+	WorkspaceRoot  string
+	Status         string
+	FilesModified  int
+	Warnings       []string
 }
 
 // FinishInfo contains the final process outcome.
@@ -145,6 +146,7 @@ type invocationEndEvent struct {
 	Operation        string        `json:"operation,omitempty"`
 	Language         string        `json:"language,omitempty"`
 	Backend          string        `json:"backend,omitempty"`
+	BackendVersion   string        `json:"backendVersion,omitempty"`
 	WorkspaceRoot    string        `json:"workspaceRoot,omitempty"`
 	Project          ProjectInfo   `json:"project,omitempty"`
 	PhaseTimings     []PhaseTiming `json:"phaseTimings,omitempty"`
@@ -248,6 +250,9 @@ func (r *Recorder) SetOperation(ctx OperationContext) {
 	}
 	if ctx.Backend != "" {
 		r.ctx.Backend = ctx.Backend
+	}
+	if ctx.BackendVersion != "" {
+		r.ctx.BackendVersion = ctx.BackendVersion
 	}
 	if ctx.WorkspaceRoot != "" {
 		r.ctx.WorkspaceRoot = ctx.WorkspaceRoot
@@ -408,6 +413,7 @@ func (r *Recorder) Finish(info FinishInfo) {
 		Operation:        ctx.Operation,
 		Language:         ctx.Language,
 		Backend:          ctx.Backend,
+		BackendVersion:   ctx.BackendVersion,
 		WorkspaceRoot:    ctx.WorkspaceRoot,
 		Project:          project,
 		PhaseTimings:     phases,

@@ -36,6 +36,7 @@ type DoctorBackendStatus struct {
 	Backend           string   `json:"backend"`
 	Status            string   `json:"status"`
 	Binary            string   `json:"binary,omitempty"`
+	Version           string   `json:"version,omitempty"`
 	Operations        []string `json:"operations,omitempty"`
 	MissingDependency string   `json:"missingDependency,omitempty"`
 	InstallHint       string   `json:"installHint,omitempty"`
@@ -114,6 +115,7 @@ func probeTSMorphAdapter() DoctorBackendStatus {
 	}
 	if tsAdapterAvailableFn() {
 		row.Status = DoctorStatusOK
+		row.Version = tsmorph.AdapterPackageVersion
 	} else {
 		row.Status = DoctorStatusMissing
 		row.MissingDependency = tsmorph.AdapterPackageName
@@ -158,6 +160,7 @@ func probeSupportEntry(cfg *config.Config, entry config.LanguageSupport) DoctorB
 	}
 	row.Status = presentStatus(entry.Level)
 	row.Binary = path
+	row.Version = versionProbeFn(path, entry.VersionArgs)
 	return row
 }
 
@@ -208,6 +211,9 @@ func renderDoctorHuman(w io.Writer, report DoctorReport) {
 		fmt.Fprintf(w, "%-12s %-40s %s\n", b.Language, b.Backend, b.Status)
 		if b.Binary != "" {
 			fmt.Fprintf(w, "  binary: %s\n", b.Binary)
+		}
+		if b.Version != "" {
+			fmt.Fprintf(w, "  version: %s\n", b.Version)
 		}
 		if len(b.Operations) > 0 && b.Status != DoctorStatusNotClaimed {
 			fmt.Fprintf(w, "  operations: %s\n", strings.Join(b.Operations, ", "))

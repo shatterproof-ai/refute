@@ -76,10 +76,12 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 	origLookPath := lookPathFn
 	origTSAdapter := tsAdapterAvailableFn
 	origConfig := doctorConfigFn
+	origProbe := versionProbeFn
 	t.Cleanup(func() {
 		lookPathFn = origLookPath
 		tsAdapterAvailableFn = origTSAdapter
 		doctorConfigFn = origConfig
+		versionProbeFn = origProbe
 	})
 
 	// Pin doctor to built-in defaults so the assertions are independent of any
@@ -87,6 +89,8 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 	doctorConfigFn = func() *config.Config {
 		return &config.Config{Servers: map[string]config.ServerConfig{}}
 	}
+	// Stub version probing so the test never shells out to a real server.
+	versionProbeFn = func(command string, args []string) string { return "" }
 
 	presentBinaries := map[string]string{
 		"gopls":                      "/fake/bin/gopls",
@@ -267,9 +271,11 @@ func TestDoctor_RustOperationsMatchSupportMatrix(t *testing.T) {
 func TestDoctor_ReflectsCustomServerConfig(t *testing.T) {
 	origLookPath := lookPathFn
 	origConfig := doctorConfigFn
+	origProbe := versionProbeFn
 	t.Cleanup(func() {
 		lookPathFn = origLookPath
 		doctorConfigFn = origConfig
+		versionProbeFn = origProbe
 	})
 
 	doctorConfigFn = func() *config.Config {
@@ -285,6 +291,7 @@ func TestDoctor_ReflectsCustomServerConfig(t *testing.T) {
 		}
 		return "", errLookPathNotFound
 	}
+	versionProbeFn = func(command string, args []string) string { return "" }
 
 	report := buildDoctorReport()
 	goEntry := doctorBackendByLanguage(t, report, "go")
@@ -297,6 +304,50 @@ func TestDoctor_ReflectsCustomServerConfig(t *testing.T) {
 	}
 	if goEntry.MissingDependency != "" {
 		t.Errorf("go missing dependency = %q, want empty for present custom server", goEntry.MissingDependency)
+	}
+}
+
+// TestDoctor_ReportsBackendVersion verifies that doctor probes and surfaces each
+// present backend's version in both the JSON rows and the human-readable output.
+func TestDoctor_ReportsBackendVersion(t *testing.T) {
+	origLookPath := lookPathFn
+	origConfig := doctorConfigFn
+	origProbe := versionProbeFn
+	origTSAdapter := tsAdapterAvailableFn
+	t.Cleanup(func() {
+		lookPathFn = origLookPath
+		doctorConfigFn = origConfig
+		versionProbeFn = origProbe
+		tsAdapterAvailableFn = origTSAdapter
+	})
+
+	doctorConfigFn = func() *config.Config {
+		return &config.Config{Servers: map[string]config.ServerConfig{}}
+	}
+	lookPathFn = func(name string) (string, error) {
+		if name == "gopls" {
+			return "/fake/bin/gopls", nil
+		}
+		return "", errLookPathNotFound
+	}
+	tsAdapterAvailableFn = func() bool { return false }
+	versionProbeFn = func(command string, args []string) string {
+		if command == "/fake/bin/gopls" {
+			return "golang.org/x/tools/gopls v1.2.3"
+		}
+		return ""
+	}
+
+	report := buildDoctorReport()
+	goEntry := doctorBackendByLanguage(t, report, "go")
+	if goEntry.Version != "golang.org/x/tools/gopls v1.2.3" {
+		t.Errorf("go version = %q, want probed version", goEntry.Version)
+	}
+
+	var buf bytes.Buffer
+	renderDoctorHuman(&buf, report)
+	if !strings.Contains(buf.String(), "version: golang.org/x/tools/gopls v1.2.3") {
+		t.Errorf("human output missing version line:\n%s", buf.String())
 	}
 }
 
