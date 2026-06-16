@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased
+
+Use this template for each release:
+
+```markdown
+## vX.Y.Z - YYYY-MM-DD
+
+One-paragraph release summary.
+
+### Added
+
+- New supported commands, operations, backends, schemas, or package artifacts.
+
+### Changed
+
+- Compatible behavior changes and documentation updates.
+
+### Deprecated
+
+- Supported surfaces that still work but are planned for removal or replacement.
+
+### Removed
+
+- Removed commands, flags, fields, schemas, adapters, or support claims.
+
+### Fixed
+
+- User-visible bug fixes.
+
+### Compatibility Notes
+
+- CLI compatibility impact.
+- JSON schema changes, including `schemaVersion` changes and migration notes.
+- MCP schema changes, including tool request/response version changes and
+  migration notes.
+- Supported, experimental, planned, and not-claimed language support changes.
+```
+
 ## v0.1.0 - 2026-05-06
 
 Initial dogfood release of the `refute` single-shot CLI.

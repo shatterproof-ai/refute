@@ -138,6 +138,9 @@ routing. Use the process exit code as the shell-level success/failure signal.
 
 ## Stability and Versioning
 
+See [Versioning and Compatibility](versioning.md) for the broader CLI, JSON,
+and future MCP compatibility policy.
+
 For `schemaVersion: "1"`:
 
 - Existing field names and meanings are stable.

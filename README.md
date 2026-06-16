@@ -25,6 +25,8 @@ coverage, test coverage, and the promotion process. Run `refute doctor`
 to see the same data evaluated against your local environment.
 See [`docs/release.md`](docs/release.md) for repeatable v0.1 release commands
 and artifact naming.
+See [`docs/versioning.md`](docs/versioning.md) for the CLI, JSON, and future
+MCP compatibility policy.
 See [`docs/README.md`](docs/README.md) for the full documentation index,
 including current contracts and historical execution artifacts.
 
@@ -117,7 +119,8 @@ refactoring before applying it.
 
 See [`docs/json-schema.md`](docs/json-schema.md) for the normative JSON
 envelope, coordinate semantics, doctor report schema, stability rules, and
-exit-code reference.
+exit-code reference. See [`docs/versioning.md`](docs/versioning.md) for the
+broader CLI, JSON, and future MCP compatibility policy.
 
 ## Local telemetry
 
