@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -28,13 +29,23 @@ var (
 	flagJSON    bool
 )
 
+// renameAddressingHelp explains how to point rename at a symbol. The same text
+// is appended to every rename command's Long so the addressing modes are
+// discoverable from --help rather than only from an error.
+const renameAddressingHelp = `Address the symbol in one of two ways:
+  - by position: --file with --line, then either --col (exact column) or --name
+    (the identifier to find on that line); or
+  - by qualified name: --symbol (e.g. pkg.Func or Type.Method).
+--name finds an identifier on a line; --symbol is a fully qualified name;
+--new-name is the replacement identifier.`
+
 func addRenameFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&flagFile, "file", "", "source file path")
-	cmd.Flags().IntVar(&flagLine, "line", 0, "line number (1-indexed)")
-	cmd.Flags().IntVar(&flagCol, "col", 0, "column number (1-indexed, optional)")
-	cmd.Flags().StringVar(&flagName, "name", "", "symbol name to find on the line")
-	cmd.Flags().StringVar(&flagNewName, "new-name", "", "new name for the symbol")
-	cmd.Flags().StringVar(&flagSymbol, "symbol", "", "qualified symbol name (e.g., pkg.Func or Type.Method)")
+	cmd.Flags().StringVar(&flagFile, "file", "", "source file path (with --line)")
+	cmd.Flags().IntVar(&flagLine, "line", 0, "line number, 1-indexed (with --file)")
+	cmd.Flags().IntVar(&flagCol, "col", 0, "column number, 1-indexed (optional; alternative to --name)")
+	cmd.Flags().StringVar(&flagName, "name", "", "identifier to find on the line (alternative to --col)")
+	cmd.Flags().StringVar(&flagNewName, "new-name", "", "new name for the symbol (required)")
+	cmd.Flags().StringVar(&flagSymbol, "symbol", "", "qualified symbol name, e.g. pkg.Func or Type.Method (alternative to --file/--line)")
 	cmd.Flags().BoolVar(&flagJSON, "json", false, "emit structured JSON instead of human-readable output")
 	_ = cmd.MarkFlagRequired("new-name")
 }
@@ -43,7 +54,8 @@ func makeRenameCmd(use string, kind symbol.SymbolKind) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   use,
 		Short: fmt.Sprintf("Rename a %s (Go, Rust, TypeScript)", kind),
-		Long:  fmt.Sprintf("Rename a %s at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server). See docs/support-matrix.md.", kind),
+		Long: fmt.Sprintf("Rename a %s at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server).\n\n%s\n\nSee %s.",
+			kind, renameAddressingHelp, supportMatrixURL),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRename(kind)
 		},
@@ -56,7 +68,8 @@ func init() {
 	renameCmd := &cobra.Command{
 		Use:   "rename",
 		Short: "Rename a symbol across the workspace (Go, Rust, TypeScript)",
-		Long:  "Rename a symbol at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server). See docs/support-matrix.md.",
+		Long: "Rename a symbol at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server).\n\n" +
+			renameAddressingHelp + "\n\nSee " + supportMatrixURL + ".",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRename(symbol.KindUnknown)
 		},
@@ -182,12 +195,45 @@ func finishRename(b backend.RefactoringBackend, ctx jsonContext, loc symbol.Loca
 	we, err := b.Rename(loc, newName)
 	refactorDone()
 	if err != nil {
-		return fmt.Errorf("rename failed: %w", err)
+		return translateRenameError(err, newName)
 	}
 	if len(we.FileEdits) == 0 {
 		return NoEditsError()
 	}
 	return applyOrPreview(we, ctx)
+}
+
+// translateRenameError maps backend rename failures into refute's vocabulary so
+// users see an actionable message instead of a stacked JSON-RPC chain like
+// "rename failed: rename: rename request: JSON-RPC error 0: old and new names
+// are the same: Foo". A rename to the symbol's existing name is treated as the
+// documented exit-2 no-op rather than an error.
+func translateRenameError(err error, newName string) error {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "old and new names are the same"):
+		return &ExitCodeError{Code: noOpExitCode, Message: fmt.Sprintf("%q is already the symbol's name; nothing to rename", newName)}
+	case strings.Contains(msg, "is not a valid identifier"), strings.Contains(msg, "invalid identifier"):
+		return fmt.Errorf("%q is not a valid identifier", newName)
+	default:
+		return fmt.Errorf("rename failed: %s", cleanBackendErrorMessage(msg))
+	}
+}
+
+// cleanBackendErrorMessage strips the LSP plumbing prefixes ("rename: ",
+// "rename request: ", "JSON-RPC error N: ") that backends prepend, leaving the
+// underlying human-readable message.
+func cleanBackendErrorMessage(msg string) string {
+	for _, prefix := range []string{"rename: ", "rename request: "} {
+		msg = strings.TrimPrefix(msg, prefix)
+	}
+	if idx := strings.Index(msg, "JSON-RPC error "); idx != -1 {
+		rest := msg[idx+len("JSON-RPC error "):]
+		if colon := strings.Index(rest, ": "); colon != -1 {
+			msg = msg[:idx] + rest[colon+2:]
+		}
+	}
+	return msg
 }
 
 // applyOrPreview emits the result per --dry-run/--json/default flags.

@@ -73,7 +73,7 @@ a Tier-3 operation directly.
 
 The target language is taken from --lang, else detected from --file, else
 defaults to Go. Languages without an LSP backend (e.g. Java, Kotlin) return a
-structured unsupported result. See docs/support-matrix.md.`,
+structured unsupported result. See ` + supportMatrixURL + `.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runListSymbols()
 		},

@@ -19,6 +19,11 @@ var (
 	flagVerbose bool
 )
 
+// supportMatrixURL is the canonical location of the language/operation support
+// matrix. Command help links here rather than a repo-relative path, which is
+// meaningless for an installed binary.
+const supportMatrixURL = "https://github.com/shatterproof-ai/refute/blob/main/docs/support-matrix.md"
+
 // RootCmd is the top-level CLI command.
 //
 // SilenceUsage and SilenceErrors make cli.Run the single error printer:
@@ -46,7 +51,7 @@ func init() {
 	})
 	RootCmd.PersistentFlags().StringVar(&flagConfig, "config", "", "path to config file")
 	RootCmd.PersistentFlags().BoolVar(&flagDryRun, "dry-run", false, "show diff without applying changes")
-	RootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "show detailed output")
+	RootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "after a non-dry-run apply, also print the unified diff (no effect in --dry-run or --json modes)")
 	RootCmd.AddCommand(versionCmd)
 }
 

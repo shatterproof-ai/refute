@@ -19,11 +19,11 @@ var (
 )
 
 func addExtractFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&flagFile, "file", "", "source file path")
-	cmd.Flags().IntVar(&flagStartLine, "start-line", 0, "start line (1-indexed)")
-	cmd.Flags().IntVar(&flagStartCol, "start-col", 0, "start column (1-indexed)")
-	cmd.Flags().IntVar(&flagEndLine, "end-line", 0, "end line (1-indexed)")
-	cmd.Flags().IntVar(&flagEndCol, "end-col", 0, "end column (1-indexed)")
+	cmd.Flags().StringVar(&flagFile, "file", "", "source file path (required)")
+	cmd.Flags().IntVar(&flagStartLine, "start-line", 0, "start line, 1-indexed (required)")
+	cmd.Flags().IntVar(&flagStartCol, "start-col", 0, "start column, 1-indexed (required)")
+	cmd.Flags().IntVar(&flagEndLine, "end-line", 0, "end line, 1-indexed (required)")
+	cmd.Flags().IntVar(&flagEndCol, "end-col", 0, "end column, 1-indexed (required)")
 	cmd.Flags().StringVar(&flagExtName, "name", "", "name for the extracted symbol (optional; gopls default used if empty)")
 	cmd.Flags().BoolVar(&flagJSON, "json", false, "emit structured JSON instead of human-readable output")
 	for _, f := range []string{"file", "start-line", "start-col", "end-line", "end-col"} {
@@ -35,7 +35,7 @@ func init() {
 	extractFuncCmd := &cobra.Command{
 		Use:   "extract-function",
 		Short: "Extract a selection into a new function (Go, Rust)",
-		Long:  "Extract the selected code range into a new named function. Supports Go (gopls) and Rust (rust-analyzer). See docs/support-matrix.md.",
+		Long:  "Extract the selected code range into a new named function. The selection is given by --file with --start-line/--start-col and --end-line/--end-col. Supports Go (gopls) and Rust (rust-analyzer). See " + supportMatrixURL + ".",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runExtract("function")
 		},
@@ -45,7 +45,7 @@ func init() {
 	extractVarCmd := &cobra.Command{
 		Use:   "extract-variable",
 		Short: "Extract a selection into a new variable (Go, Rust)",
-		Long:  "Extract the selected code range into a new named variable. Supports Go (gopls) and Rust (rust-analyzer). See docs/support-matrix.md.",
+		Long:  "Extract the selected code range into a new named variable. The selection is given by --file with --start-line/--start-col and --end-line/--end-col. Supports Go (gopls) and Rust (rust-analyzer). See " + supportMatrixURL + ".",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runExtract("variable")
 		},
