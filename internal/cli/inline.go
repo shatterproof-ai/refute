@@ -65,7 +65,7 @@ func runInlineInner(ctx *jsonContext) error {
 			return fmt.Errorf("parse --call-site: %w", err)
 		}
 		if flagSymbol != "" {
-			_, _, name, err := ParseRustQualifiedName(flagSymbol)
+			_, _, name, err := symbol.ParseRustQualifiedName(flagSymbol)
 			if err != nil {
 				return fmt.Errorf("invalid --symbol %q: %w", flagSymbol, err)
 			}

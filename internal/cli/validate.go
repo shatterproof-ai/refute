@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
 // locationMode selects which addressing rules validateLocationFlags enforces.
@@ -180,13 +182,13 @@ func validatePositiveCoord(cmd *cobra.Command, flag string, value int) error {
 // validateSymbolValue rejects an empty or syntactically malformed --symbol. A
 // qualified name using Rust's :: separators is parsed eagerly so a malformed
 // value is reported rather than silently downgraded.
-func validateSymbolValue(symbol string) error {
-	if strings.TrimSpace(symbol) == "" {
+func validateSymbolValue(value string) error {
+	if strings.TrimSpace(value) == "" {
 		return fmt.Errorf("--symbol must not be empty")
 	}
-	if strings.Contains(symbol, "::") {
-		if _, _, _, err := ParseRustQualifiedName(symbol); err != nil {
-			return fmt.Errorf("invalid --symbol %q: %w", symbol, err)
+	if strings.Contains(value, "::") {
+		if _, _, _, err := symbol.ParseRustQualifiedName(value); err != nil {
+			return fmt.Errorf("invalid --symbol %q: %w", value, err)
 		}
 	}
 	return nil
