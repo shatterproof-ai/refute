@@ -85,7 +85,7 @@ following the same rules as Tier 2.
 ## Integration lane policy
 
 The required CI integration lane covers the supported Go path only. CI installs
-`gopls` and runs `go test -tags integration ./internal/` without experimental
+`gopls` and runs `go test -tags integration ./internal/...` without experimental
 opt-in so Rust, TypeScript, JavaScript, and unsupported-language fixtures skip
 with an explicit opt-in message.
 

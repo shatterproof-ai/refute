@@ -12,8 +12,61 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
+
+func TestResolveWithRetryReturnsFirstNonEmpty(t *testing.T) {
+	hit := []symbol.Location{{Name: "FormatGreeting"}}
+	calls := 0
+	got, err := resolveWithRetry(func() ([]symbol.Location, error) {
+		calls++
+		// Empty for the first two attempts (server still indexing under
+		// load), then a hit — exactly the Tier-1 flake scenario.
+		if calls < 3 {
+			return nil, nil
+		}
+		return hit, nil
+	}, 5, time.Millisecond)
+	if err != nil {
+		t.Fatalf("resolveWithRetry: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "FormatGreeting" {
+		t.Fatalf("expected the eventual hit, got %+v", got)
+	}
+	if calls != 3 {
+		t.Fatalf("expected 3 attempts before the hit, got %d", calls)
+	}
+}
+
+func TestResolveWithRetryExhaustsToNotFound(t *testing.T) {
+	calls := 0
+	_, err := resolveWithRetry(func() ([]symbol.Location, error) {
+		calls++
+		return nil, nil
+	}, 4, time.Millisecond)
+	if !errors.Is(err, backend.ErrSymbolNotFound) {
+		t.Fatalf("expected ErrSymbolNotFound after exhausting retries, got %v", err)
+	}
+	if calls != 4 {
+		t.Fatalf("expected 4 attempts, got %d", calls)
+	}
+}
+
+func TestResolveWithRetryPropagatesError(t *testing.T) {
+	sentinel := errors.New("transport boom")
+	calls := 0
+	_, err := resolveWithRetry(func() ([]symbol.Location, error) {
+		calls++
+		return nil, sentinel
+	}, 5, time.Millisecond)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected the underlying error, got %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("a hard error must not be retried; got %d attempts", calls)
+	}
+}
 
 func TestByteColumnToUTF16Character(t *testing.T) {
 	line := `const label = "é𝄞"; target := 1`
@@ -253,6 +306,75 @@ func (w *emptyRenameWriter) Write(frame []byte) (int, error) {
 			JSONRPC: "2.0",
 			ID:      req.ID,
 			Result:  json.RawMessage(`{"changes":{}}`),
+		}
+	}
+	return len(frame), nil
+}
+
+// TestFindSymbolRetriesThenNotFound drives FindSymbol through the adapter with a
+// fake workspace/symbol server that always answers empty, exercising the
+// symbolMaxRetries/symbolRetryDelay override plumbing and the adapter-level
+// retry path that the free-function tests above do not reach. It pins the
+// behaviour the Tier-1 flake fix depends on: an empty result is retried, not
+// trusted, and exhaustion surfaces ErrSymbolNotFound.
+func TestFindSymbolRetriesThenNotFound(t *testing.T) {
+	writer := &emptySymbolWriter{}
+	client := &Client{
+		transport:      NewTransport(nil, writer),
+		pending:        make(map[int]chan jsonrpcResponse),
+		done:           make(chan struct{}),
+		progress:       newProgressTracker(),
+		requestTimeout: time.Second,
+	}
+	writer.client = client
+	adapter := &Adapter{
+		languageID:       "go",
+		client:           client,
+		symbolMaxRetries: 3,
+		symbolRetryDelay: time.Millisecond,
+	}
+
+	_, err := adapter.FindSymbol(symbol.Query{QualifiedName: "Missing"})
+	if !errors.Is(err, backend.ErrSymbolNotFound) {
+		t.Fatalf("expected ErrSymbolNotFound after retries exhaust, got %v", err)
+	}
+	if writer.symbolCalls != 3 {
+		t.Fatalf("expected workspace/symbol to be queried 3 times, got %d", writer.symbolCalls)
+	}
+}
+
+// emptySymbolWriter is a fake LSP server transport that always answers
+// workspace/symbol with an empty result, simulating gopls whose symbol index is
+// still warming up.
+type emptySymbolWriter struct {
+	client      *Client
+	symbolCalls int
+}
+
+func (w *emptySymbolWriter) Write(frame []byte) (int, error) {
+	body, err := NewTransport(bytes.NewReader(frame), nil).Read()
+	if err != nil {
+		return 0, err
+	}
+	var req jsonrpcRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return 0, err
+	}
+	if req.Method == "workspace/symbol" {
+		if req.ID == nil {
+			return 0, fmt.Errorf("workspace/symbol request missing id")
+		}
+		w.symbolCalls++
+		w.client.mu.Lock()
+		ch := w.client.pending[*req.ID]
+		w.client.mu.Unlock()
+		if ch == nil {
+			return 0, fmt.Errorf("missing pending request for id %d", *req.ID)
+		}
+		ch <- jsonrpcResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result:  json.RawMessage(`[]`),
 		}
 	}
 	return len(frame), nil
