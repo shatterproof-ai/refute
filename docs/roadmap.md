@@ -50,7 +50,7 @@ Deliverables:
 - Include backend name, language, operation, files changed, warnings, and
   candidate symbols in JSON output.
 - Add a `list-symbols` CLI command backed by LSP `workspace/symbol` where
-  available.
+  available. **(Shipped.)**
 - Add a `list-backends` or `doctor` command that reports available tools,
   missing dependencies, and supported operations.
 - Add golden JSON tests for all agent-facing output shapes.

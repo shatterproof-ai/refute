@@ -108,6 +108,78 @@ When present, `error` has this shape:
 Scripts should use `status` for high-level routing and `error.code` for a more
 specific branch inside an error status.
 
+## list-symbols Result
+
+`refute list-symbols --json` is a read-only discovery query rather than an edit,
+so it uses its own envelope: a `symbols` array in place of `edits`/`fileOps`,
+and the success status `ok` rather than the edit-oriented statuses above. It
+resolves candidates through the LSP `workspace/symbol` request. Consumers branch
+on `schemaVersion`, then on `status`.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `schemaVersion` | string | yes | JSON contract version. Current value is `"1"`. |
+| `status` | string | yes | `ok` for a successful listing (including an empty match set); otherwise an error status (see below). |
+| `operation` | string | no | Always `list-symbols`. |
+| `language` | string | no | Resolved query language (from `--lang`, else detected from `--file`, else `go`). |
+| `backend` | string | no | Backend used, normally `lsp`. |
+| `backendVersion` | string | no | Resolved language-server version, when observable. |
+| `workspaceRoot` | string | no | Absolute workspace root used for symbol resolution. |
+| `query` | string | no | The `--query` value, when one was supplied. |
+| `symbols` | array | yes | Matching symbols. Present and empty (`[]`) when nothing matched. |
+| `warnings` | array | no | Non-fatal warning strings, e.g. a `--file` scope that matched no symbols though the server reported some elsewhere. |
+| `error` | object | no | Structured error detail when the listing failed. Uses the [Error Object](#error-object) shape. |
+
+Each `symbols[]` entry has this shape:
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `file` | string | yes | Absolute path of the file declaring the symbol. |
+| `line` | number | yes | 1-indexed line. |
+| `column` | number | yes | 1-indexed byte-offset column. |
+| `kind` | string | yes | Symbol kind, e.g. `function`, `type`, `field`, `method`, `variable`, `class`, `parameter`. |
+| `name` | string | yes | Symbol name as reported by the language server. |
+| `container` | string | no | Enclosing container (package, type, module); omitted when none. |
+| `qualifiedName` | string | yes | `container.name` when a container is present, else the bare name. |
+
+Entries are sorted by `file`, then `line`, then `column`.
+
+### list-symbols statuses and exit codes
+
+| `status` | `error.code` | Exit | Cause |
+| --- | --- | --- | --- |
+| `ok` | — | `0` | Listing succeeded. An empty `symbols` array is still `ok`, not an error. |
+| `backend-missing` | `backend-unavailable` | `3` | The language server for the resolved language is not installed; `error.hint` points to `refute doctor`. |
+| `unsupported` | `unsupported-language` | `1` | The language has no LSP backend (e.g. Java, Kotlin); `error.hint` lists the supported languages. |
+| `backend-failed` | `invalid-request` | `1` | An invalid `--kind` value was supplied. |
+| `backend-failed` | `operation-failed` | `1` | The backend was reachable but the `workspace/symbol` query failed. |
+
+A successful listing example:
+
+```json
+{
+  "schemaVersion": "1",
+  "status": "ok",
+  "operation": "list-symbols",
+  "language": "go",
+  "backend": "lsp",
+  "backendVersion": "golang.org/x/tools/gopls v0.22.0",
+  "workspaceRoot": "/abs/workspace",
+  "query": "User",
+  "symbols": [
+    {
+      "file": "/abs/workspace/util/user.go",
+      "line": 4,
+      "column": 6,
+      "kind": "type",
+      "name": "User",
+      "container": "example.com/renametest/util",
+      "qualifiedName": "example.com/renametest/util.User"
+    }
+  ]
+}
+```
+
 ## Doctor Report
 
 `refute doctor --json` writes a `DoctorReport` object to stdout and exits `0`

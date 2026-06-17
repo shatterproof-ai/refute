@@ -93,6 +93,30 @@ For Tier 1 rename (`refute rename --symbol pkg.Func --new-name New`) the
 backend is selected from the file's extension once the symbol is resolved,
 following the same rules as Tier 2.
 
+## Symbol discovery (`list-symbols`)
+
+`refute list-symbols` is a read-only discovery query, separate from the
+refactoring `Operations` column above. It resolves candidates through the LSP
+`workspace/symbol` request, so it is available for every language with an LSP
+backend — regardless of which refactoring operations that backend can perform:
+
+| Language | `list-symbols` backend | Available today |
+| --- | --- | --- |
+| Go | `lsp/gopls` | Yes (supported). |
+| Rust | `lsp/rust-analyzer` | Yes (experimental). |
+| TypeScript | `lsp/typescript-language-server` | Yes (experimental). Always uses the LSP server; the ts-morph adapter does not serve `list-symbols`. |
+| JavaScript | `lsp/typescript-language-server` | Yes (experimental). Same LSP-only path as TypeScript. |
+| Python | `lsp/pyright` | Yes when `pyright-langserver` is installed (planned tier; no integration coverage). |
+| Java | OpenRewrite | No. Returns JSON status `unsupported` (`unsupported-language`). |
+| Kotlin | OpenRewrite | No. Returns JSON status `unsupported` (`unsupported-language`). |
+
+The query language is taken from `--lang`, else detected from `--file`, else
+defaults to `go`. When the resolved language has an LSP backend that is not
+installed, the command reports JSON status `backend-missing` (exit `3`); an
+unsupported language reports `unsupported` (exit `1`). See
+[`docs/json-schema.md`](json-schema.md) for the full `list-symbols --json`
+envelope, statuses, and exit codes.
+
 ## Integration lane policy
 
 The required CI integration lane covers the supported Go path only. CI installs
