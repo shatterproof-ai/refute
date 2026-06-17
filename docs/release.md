@@ -5,6 +5,21 @@ The release automation builds static `refute` archives for linux and macOS on
 amd64 and arm64, stamps version metadata into `refute version`, writes a
 canonical manifest, and checksums every binary and adapter artifact.
 
+## Verify the Candidate First
+
+Before building or tagging, verify the release candidate with one command:
+
+```bash
+make verify
+```
+
+This runs the full pre-release check suite (static analysis, formatting,
+vulnerability scan, unit tests, build, binary smoke test, integration, shim
+conformance, and docs checks) with clear pass/fail/skip output. See
+[Release Verification](release-verification.md) for the full check list and the
+exit-code contract. `scripts/release.sh` builds artifacts but does not run these
+checks, so run `make verify` first.
+
 ## Local Artifact Build
 
 From the repository root:
