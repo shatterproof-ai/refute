@@ -37,6 +37,12 @@ type Adapter struct {
 	renameMaxRetries int
 	renameRetryDelay time.Duration
 
+	// symbolMaxRetries and symbolRetryDelay override the workspace/symbol
+	// resolution retry defaults when non-zero, for the same testing reason as
+	// the rename overrides above.
+	symbolMaxRetries int
+	symbolRetryDelay time.Duration
+
 	// ctx is the base context propagated from the CLI (cancelled on SIGINT).
 	// requestTimeout overrides the per-request LSP timeout when non-zero.
 	ctx            context.Context
@@ -138,6 +144,41 @@ func (a *Adapter) FindSymbol(query symbol.Query) ([]symbol.Location, error) {
 	}
 	leaf := parts[len(parts)-1]
 
+	// gopls can answer workspace/symbol with an empty result while its symbol
+	// index is still warming up under concurrent load, even after $/progress
+	// reports the server idle. Treating that first empty answer as
+	// authoritative was the root cause of the flaky Tier-1 resolution
+	// failures, so re-query with exponential backoff before concluding the
+	// symbol is absent. See issue #52.
+	//
+	// Tradeoff: workspace/symbol cannot distinguish "index not warm yet" from
+	// "symbol genuinely absent", so a real not-found (e.g. a mistyped symbol
+	// name) pays the full retry budget before erroring. Exponential backoff
+	// keeps that worst case bounded (~2.3s) while letting the common
+	// already-indexed case resolve on the first cheap retry.
+	const (
+		defaultSymbolMaxRetries = 6
+		defaultSymbolRetryDelay = 100 * time.Millisecond
+	)
+	maxRetries := defaultSymbolMaxRetries
+	if a.symbolMaxRetries > 0 {
+		maxRetries = a.symbolMaxRetries
+	}
+	retryDelay := defaultSymbolRetryDelay
+	if a.symbolRetryDelay > 0 {
+		retryDelay = a.symbolRetryDelay
+	}
+
+	return resolveWithRetry(func() ([]symbol.Location, error) {
+		return a.matchWorkspaceSymbols(leaf, parts, query)
+	}, maxRetries, retryDelay)
+}
+
+// matchWorkspaceSymbols issues a single workspace/symbol query for leaf and
+// returns the locations that satisfy the qualified-name and kind filters. An
+// empty result with a nil error means nothing matched on this attempt; callers
+// decide whether to retry.
+func (a *Adapter) matchWorkspaceSymbols(leaf string, parts []string, query symbol.Query) ([]symbol.Location, error) {
 	syms, err := a.client.WorkspaceSymbol(leaf)
 	if err != nil {
 		return nil, err
@@ -171,11 +212,38 @@ func (a *Adapter) FindSymbol(query symbol.Query) ([]symbol.Location, error) {
 			Container: s.ContainerName,
 		})
 	}
-
-	if len(matches) == 0 {
-		return nil, backend.ErrSymbolNotFound
-	}
 	return matches, nil
+}
+
+// maxSymbolRetryDelay caps the per-attempt backoff so a deep retry budget
+// cannot stretch the worst-case wait without bound.
+const maxSymbolRetryDelay = 800 * time.Millisecond
+
+// resolveWithRetry repeatedly invokes query until it returns a non-empty match
+// set, exhausts the retry budget, or hits a hard error. An empty match set is
+// treated as a transient "index not ready yet" signal and retried after an
+// exponentially increasing backoff (starting at baseDelay, capped at
+// maxSymbolRetryDelay); a non-nil error is returned immediately. Exhausting
+// the budget without a match yields backend.ErrSymbolNotFound.
+func resolveWithRetry(query func() ([]symbol.Location, error), maxRetries int, baseDelay time.Duration) ([]symbol.Location, error) {
+	delay := baseDelay
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(delay)
+			delay *= 2
+			if delay > maxSymbolRetryDelay {
+				delay = maxSymbolRetryDelay
+			}
+		}
+		matches, err := query()
+		if err != nil {
+			return nil, err
+		}
+		if len(matches) > 0 {
+			return matches, nil
+		}
+	}
+	return nil, backend.ErrSymbolNotFound
 }
 
 func parseQualifiedName(name string) []string {

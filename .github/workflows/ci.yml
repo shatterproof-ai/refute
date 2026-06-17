@@ -34,7 +34,7 @@ jobs:
       #   2. Update GOPLS_VERSION below.
       #   3. Run the inline gate locally against it
       #      (REFUTE_REQUIRE_GOPLS_INLINE=1 go test ./internal/backend/lsp/),
-      #      then the integration suite (go test -tags integration ./internal/),
+      #      then the integration suite (go test -tags integration ./internal/...),
       #      and update any caveats in docs/support-matrix.md if behavior
       #      changed.
       - name: Install supported Go integration backend
@@ -94,13 +94,13 @@ jobs:
         run: go test -race -timeout 120s ./...
 
       - name: Run supported Go integration tests
-        run: go test -tags integration ./internal/
+        run: go test -tags integration ./internal/...
 
       - name: Run experimental integration tests
         continue-on-error: true
         env:
           REFUTE_EXPERIMENTAL_INTEGRATION: "1"
-        run: go test -tags integration ./internal/
+        run: go test -tags integration ./internal/...
 
   shellcheck:
     name: ShellCheck
