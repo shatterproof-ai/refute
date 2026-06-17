@@ -131,6 +131,13 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 				},
 				{
 					Language:    "javascript",
+					Backend:     "tsmorph",
+					Status:      DoctorStatusOK,
+					InstallHint: "npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz",
+				},
+				{
+					Language:    "javascript",
+					Backend:     "lsp/typescript-language-server",
 					Status:      DoctorStatusExperimental,
 					Binary:      "/fake/bin/typescript-language-server",
 					InstallHint: "npm install -g typescript-language-server typescript",
@@ -184,6 +191,14 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 				},
 				{
 					Language:          "javascript",
+					Backend:           "tsmorph",
+					Status:            DoctorStatusMissing,
+					MissingDependency: "@shatterproof-ai/refute-ts-adapter",
+					InstallHint:       "npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz",
+				},
+				{
+					Language:          "javascript",
+					Backend:           "lsp/typescript-language-server",
 					Status:            DoctorStatusMissing,
 					MissingDependency: "typescript-language-server",
 					InstallHint:       "npm install -g typescript-language-server typescript",
@@ -250,6 +265,52 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestDoctor_JavaScriptTSMorphRow verifies doctor surfaces JavaScript rename
+// support through the ts-morph adapter as its own row, distinct from the
+// JavaScript language-server fallback row, in both the JSON report and the
+// human-readable output.
+func TestDoctor_JavaScriptTSMorphRow(t *testing.T) {
+	origTSAdapter := tsAdapterAvailableFn
+	t.Cleanup(func() { tsAdapterAvailableFn = origTSAdapter })
+	tsAdapterAvailableFn = func() bool { return true }
+
+	report := buildDoctorReport()
+	jsAdapter := doctorBackendByLangAndBackend(t, report, "javascript", "tsmorph")
+	if jsAdapter.Status != DoctorStatusOK {
+		t.Errorf("javascript/tsmorph status = %q, want %q", jsAdapter.Status, DoctorStatusOK)
+	}
+	if len(jsAdapter.Operations) != 1 || jsAdapter.Operations[0] != "rename" {
+		t.Errorf("javascript/tsmorph operations = %v, want [rename]", jsAdapter.Operations)
+	}
+
+	// The adapter row must precede the JavaScript language-server fallback row so
+	// the preferred backend is reported first.
+	var adapterIdx, lspIdx = -1, -1
+	for i, b := range report.Backends {
+		if b.Language != "javascript" {
+			continue
+		}
+		switch b.Backend {
+		case "tsmorph":
+			adapterIdx = i
+		case "lsp/typescript-language-server":
+			lspIdx = i
+		}
+	}
+	if adapterIdx == -1 || lspIdx == -1 {
+		t.Fatalf("javascript rows missing: adapterIdx=%d lspIdx=%d", adapterIdx, lspIdx)
+	}
+	if adapterIdx > lspIdx {
+		t.Errorf("javascript/tsmorph row at %d should precede lsp row at %d", adapterIdx, lspIdx)
+	}
+
+	var buf bytes.Buffer
+	renderDoctorHuman(&buf, report)
+	if !strings.Contains(buf.String(), "javascript   tsmorph") {
+		t.Errorf("human output missing javascript tsmorph row:\n%s", buf.String())
 	}
 }
 

@@ -63,6 +63,14 @@ versions, so the version is captured wherever it is observable:
 | Java | `.java` | OpenRewrite | — | — | none | unsupported | Not claimed for v0.1. JAR packaging deferred. |
 | Kotlin | `.kt` | OpenRewrite | — | — | none | unsupported | Not claimed for v0.1. |
 
+`refute doctor` lists the ts-morph adapter as its own row for **both**
+TypeScript and JavaScript, immediately above each language's
+`lsp/typescript-language-server` fallback row. This keeps JavaScript rename
+readiness through ts-morph distinct from JavaScript language-server support: a
+host with the adapter installed reports `tsmorph ok` for JavaScript even when
+the fallback language server is absent, matching the backend that actually
+serves a JavaScript rename.
+
 ## How operations map to backends
 
 The `Operations` column lists the refactorings that route through the
