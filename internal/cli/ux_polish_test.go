@@ -117,6 +117,32 @@ func TestTranslateRenameError(t *testing.T) {
 		}
 	})
 
+	t.Run("same-name surfaces a no-op envelope in --json mode", func(t *testing.T) {
+		origJSON := flagJSON
+		t.Cleanup(func() { flagJSON = origJSON })
+		flagJSON = true
+
+		renameErr := translateRenameError(
+			fmt.Errorf("rename: rename request: JSON-RPC error 0: old and new names are the same: Foo"),
+			"Foo")
+		ctx := jsonContext{Operation: "rename", Language: "go", Backend: "lsp", WorkspaceRoot: "/ws"}
+
+		var routed error
+		out := captureStdout(t, func() {
+			routed = routeOperationError(ctx, renameErr)
+		})
+		var ec *ExitCodeError
+		if !errors.As(routed, &ec) || ec.Code != noOpExitCode {
+			t.Fatalf("expected exit-2 ExitCodeError, got %#v", routed)
+		}
+		if !strings.Contains(out, `"status": "no-op"`) {
+			t.Errorf("expected no-op envelope, got:\n%s", out)
+		}
+		if strings.Contains(out, "JSON-RPC") {
+			t.Errorf("envelope leaks plumbing:\n%s", out)
+		}
+	})
+
 	t.Run("invalid identifier is humanized", func(t *testing.T) {
 		err := translateRenameError(
 			fmt.Errorf("rename: rename request: JSON-RPC error 0: \"1bad\" is not a valid identifier"),
