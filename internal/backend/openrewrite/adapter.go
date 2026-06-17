@@ -22,6 +22,11 @@ import (
 // jarCacheSubPath is the relative path where the adapter JAR is built by Maven.
 const jarCacheSubPath = "adapters/openrewrite/target/openrewrite-adapter.jar"
 
+// jarEnvVar overrides OpenRewrite adapter JAR discovery with an explicit path.
+// This lets the adapter run against a real Java project (which has no refute
+// go.mod above it) without relying on the in-checkout build-output walk-up.
+const jarEnvVar = "REFUTE_OPENREWRITE_JAR"
+
 // ProtocolVersion is the OpenRewrite adapter wire-contract version. Both the Go
 // driver and the Java adapter (Main.java) must agree on it; a mismatch is a hard
 // error rather than a best-effort execution (see
@@ -233,6 +238,14 @@ func (a *Adapter) Capabilities() []backend.Capability {
 
 // buildRenameParams constructs the JSON-RPC params for a rename call.
 func (a *Adapter) buildRenameParams(loc symbol.Location, newName string) (map[string]any, error) {
+	// The OpenRewrite handler only parses .java sources, so a Kotlin rename would
+	// silently produce zero edits and be reported as success. Reject it with an
+	// explicit unsupported error instead. (Kotlin is not claimed for v0.1.)
+	if ext := strings.ToLower(filepath.Ext(loc.File)); ext == ".kt" || ext == ".kts" {
+		return nil, fmt.Errorf("%w: the OpenRewrite adapter does not implement Kotlin rename (%s)",
+			backend.ErrUnsupported, loc.File)
+	}
+
 	params := map[string]any{
 		"workspaceRoot": a.workspaceRoot,
 		"newName":       newName,
@@ -321,25 +334,39 @@ func (a *Adapter) callRename(params map[string]any) ([]edit.FileEdit, error) {
 	return fileEdits, nil
 }
 
-// resolveJar finds the OpenRewrite adapter JAR. If a.jarPath is set it is
-// used directly; otherwise the conventional build output path under the
-// checkout root is tried.
+// resolveJar finds the OpenRewrite adapter JAR. Resolution order:
+//  1. an explicit path passed to NewAdapter,
+//  2. the REFUTE_OPENREWRITE_JAR environment variable,
+//  3. the conventional Maven build output, located by walking up to the refute
+//     checkout (development convenience only).
+//
+// Every failure names the expected path, the build command, and the env-var
+// override so the error is actionable in a real Java project (which has no
+// refute go.mod above it), instead of an opaque "go.mod not found".
 func (a *Adapter) resolveJar(workspaceRoot string) (string, error) {
+	buildHint := fmt.Sprintf(
+		"build it from a refute checkout with `mvn package -f adapters/openrewrite/pom.xml -q`, then set %s to the resulting %s",
+		jarEnvVar, jarCacheSubPath,
+	)
+
 	if a.jarPath != "" {
-		if _, err := os.Stat(a.jarPath); err == nil {
-			return a.jarPath, nil
-		}
+		return statJar(a.jarPath, fmt.Sprintf("OpenRewrite adapter JAR (not found at the configured path %s)", a.jarPath), buildHint)
+	}
+	if env := os.Getenv(jarEnvVar); env != "" {
+		return statJar(env, fmt.Sprintf("OpenRewrite adapter JAR (not found at %s, from %s)", env, jarEnvVar), buildHint)
+	}
+
+	checkoutRoot, err := findCheckoutRoot(workspaceRoot)
+	if err != nil {
+		// Not inside a refute checkout (the common case for a real Java
+		// project): the env override is the supported path. Surface an
+		// actionable runtime-missing error instead of the opaque go.mod error.
 		return "", &backend.ErrAdapterRuntimeMissing{
 			Language:       "java",
 			AdapterName:    "openrewrite",
-			MissingRuntime: fmt.Sprintf("OpenRewrite adapter JAR (not found at %s)", a.jarPath),
+			MissingRuntime: fmt.Sprintf("OpenRewrite adapter JAR (set %s to the built JAR, e.g. %s)", jarEnvVar, jarCacheSubPath),
+			InstallHint:    buildHint,
 		}
-	}
-
-	// Walk up from workspaceRoot to find the checkout root (where go.mod lives).
-	checkoutRoot, err := findCheckoutRoot(workspaceRoot)
-	if err != nil {
-		return "", err
 	}
 	candidate := filepath.Join(checkoutRoot, jarCacheSubPath)
 	if _, err := os.Stat(candidate); err == nil {
@@ -349,7 +376,23 @@ func (a *Adapter) resolveJar(workspaceRoot string) (string, error) {
 		Language:       "java",
 		AdapterName:    "openrewrite",
 		MissingRuntime: fmt.Sprintf("OpenRewrite adapter JAR (not found at %s)", candidate),
-		InstallHint:    fmt.Sprintf("mvn package -f %s/adapters/openrewrite/pom.xml -q", checkoutRoot),
+		InstallHint:    fmt.Sprintf("mvn package -f %s/adapters/openrewrite/pom.xml -q (or set %s to an explicit path)", checkoutRoot, jarEnvVar),
+	}
+}
+
+// statJar returns path if it exists, or a typed ErrAdapterRuntimeMissing
+// carrying the supplied actionable message and install hint otherwise, so the
+// CLI can distinguish "build the adapter" from a generic failure regardless of
+// how the JAR location was supplied.
+func statJar(path, missingMsg, installHint string) (string, error) {
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	}
+	return "", &backend.ErrAdapterRuntimeMissing{
+		Language:       "java",
+		AdapterName:    "openrewrite",
+		MissingRuntime: missingMsg,
+		InstallHint:    installHint,
 	}
 }
 
@@ -397,8 +440,99 @@ func javaMethodPatternPrefix(filePath, methodName string) (string, error) {
 	return fqn + " " + methodName, nil
 }
 
-// parseJavaPackage extracts the package name from Java source text.
+// stripCommentsAndStrings blanks Java line comments, block comments (including
+// Javadoc), and string/char literals, replacing their bytes with spaces while
+// preserving newlines. The result keeps source offsets and line structure so a
+// naive line scan over it cannot match keywords that only appear inside a
+// comment or literal. It is a lexical pass, not a full parser, but it removes
+// the dominant false-positive class for `parseJavaClass`/`parseJavaPackage`.
+func stripCommentsAndStrings(src string) string {
+	const (
+		normal = iota
+		lineComment
+		blockComment
+		stringLit
+		charLit
+	)
+	var b strings.Builder
+	b.Grow(len(src))
+	blank := func(c byte) {
+		if c == '\n' {
+			b.WriteByte('\n')
+		} else {
+			b.WriteByte(' ')
+		}
+	}
+	state := normal
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		switch state {
+		case normal:
+			switch {
+			case c == '/' && i+1 < len(src) && src[i+1] == '/':
+				state = lineComment
+				b.WriteString("  ")
+				i++
+			case c == '/' && i+1 < len(src) && src[i+1] == '*':
+				state = blockComment
+				b.WriteString("  ")
+				i++
+			case c == '"':
+				state = stringLit
+				b.WriteByte(' ')
+			case c == '\'':
+				state = charLit
+				b.WriteByte(' ')
+			default:
+				b.WriteByte(c)
+			}
+		case lineComment:
+			if c == '\n' {
+				state = normal
+				b.WriteByte('\n')
+			} else {
+				b.WriteByte(' ')
+			}
+		case blockComment:
+			if c == '*' && i+1 < len(src) && src[i+1] == '/' {
+				state = normal
+				b.WriteString("  ")
+				i++
+			} else {
+				blank(c)
+			}
+		case stringLit:
+			switch {
+			case c == '\\' && i+1 < len(src):
+				b.WriteString("  ")
+				i++
+			case c == '"':
+				state = normal
+				b.WriteByte(' ')
+			default:
+				blank(c)
+			}
+		case charLit:
+			switch {
+			case c == '\\' && i+1 < len(src):
+				b.WriteString("  ")
+				i++
+			case c == '\'':
+				state = normal
+				b.WriteByte(' ')
+			default:
+				blank(c)
+			}
+		}
+	}
+	return b.String()
+}
+
+// parseJavaPackage extracts the package name from Java source text. Comments
+// and string/char literals are blanked first so a `package`/`class` word inside
+// a comment or string cannot poison the result.
 func parseJavaPackage(src string) string {
+	src = stripCommentsAndStrings(src)
 	for _, line := range strings.SplitAfter(src, "\n") {
 		t := strings.TrimSpace(line)
 		if strings.HasPrefix(t, "package ") && strings.HasSuffix(t, ";") {
@@ -408,9 +542,11 @@ func parseJavaPackage(src string) string {
 	return ""
 }
 
-// parseJavaClass extracts the first public class (or interface/enum) name from
-// Java source text.
+// parseJavaClass extracts the first class (or interface/enum/@interface) name
+// from Java source text. Comments and string/char literals are blanked first so
+// a Javadoc line like "This class does X" cannot be mistaken for a declaration.
 func parseJavaClass(src string) string {
+	src = stripCommentsAndStrings(src)
 	for _, line := range strings.SplitAfter(src, "\n") {
 		t := strings.TrimSpace(line)
 		for _, keyword := range []string{"class ", "interface ", "enum ", "@interface "} {
