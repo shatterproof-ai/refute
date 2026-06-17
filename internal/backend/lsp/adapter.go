@@ -321,7 +321,7 @@ func (a *Adapter) ExtractVariable(r symbol.SourceRange, name string) (*edit.Work
 }
 
 func (a *Adapter) extract(r symbol.SourceRange, name string, kind string, rustOp rustActionOp) (*edit.WorkspaceEdit, error) {
-	if a.languageID == "rust" {
+	if a.profile().engine == engineAssist {
 		return a.runCodeAction(r, name, rustOp)
 	}
 	we, placeholder, err := a.extractImpl(r, kind)
@@ -593,7 +593,7 @@ func rewritePlaceholderName(w *edit.WorkspaceEdit, name string) bool {
 // identifier-width range. Gopls returns no actions for a zero-width range, so
 // the request covers the whole identifier (min 1 char).
 func (a *Adapter) InlineSymbol(loc symbol.Location) (*edit.WorkspaceEdit, error) {
-	if a.languageID == "rust" {
+	if a.profile().engine == engineAssist {
 		nameLen := len(loc.Name)
 		if nameLen < 1 {
 			nameLen = 1
@@ -668,17 +668,19 @@ func (a *Adapter) Capabilities() []backend.Capability {
 	}
 }
 
-// PrimeWorkspace explicitly primes the workspace for Tier 1 queries.
-// For Go, this calls PrimeGoWorkspace to open all packages via workspace/symbol.
-// For other languages, priming happens during Initialize.
+// PrimeWorkspace explicitly primes the workspace for Tier 1 queries. Languages
+// whose profile primes on Initialize (priming.onInitialize) need no explicit
+// prime and return early; languages primed on demand (currently Go, whose broad
+// workspace/symbol prime is driven by the Tier-1 rename path) are primed here.
 func (a *Adapter) PrimeWorkspace(workspaceRoot string) (int, error) {
 	if a.client == nil {
 		return 0, fmt.Errorf("adapter not initialized")
 	}
-	if a.languageID == "go" {
-		return a.client.PrimeGoWorkspace(workspaceRoot)
+	p := a.profile().priming
+	if len(p.extensions) == 0 || p.onInitialize {
+		return 0, nil
 	}
-	return 0, nil
+	return a.client.PrimeGoWorkspace(workspaceRoot)
 }
 
 func rangeToLSP(r symbol.SourceRange) (startLine, startChar, endLine, endChar int, err error) {
@@ -774,16 +776,23 @@ func (a *Adapter) DocumentSymbols(path string) ([]DocumentSymbol, error) {
 	return a.client.DocumentSymbol(path)
 }
 
-// primeWorkspace dispatches to the language-specific priming walker. Failures
-// are intentionally non-fatal — if priming partially fails the first request
-// will still trigger the rest of the index.
+// profile returns the registered language profile for this adapter's language,
+// or a conservative default for an unregistered language.
+func (a *Adapter) profile() languageProfile {
+	return profileFor(a.languageID)
+}
+
+// primeWorkspace primes the workspace during Initialize for languages whose
+// profile opts in (primingProfile.onInitialize). Go is primed separately and
+// explicitly via PrimeWorkspace on the Tier-1 rename path. Failures are
+// intentionally non-fatal — if priming partially fails the first request will
+// still trigger the rest of the index.
 func (a *Adapter) primeWorkspace(absRoot string) {
-	switch a.languageID {
-	case "typescript", "typescriptreact", "javascript", "javascriptreact":
-		_ = PrimeWorkspace(a.client, absRoot, a.languageID)
-	case "rust":
-		_ = PrimeRustWorkspace(recordingDidOpener{adapter: a}, absRoot)
+	p := a.profile().priming
+	if !p.onInitialize {
+		return
 	}
+	_ = primeFiles(recordingDidOpener{adapter: a}, absRoot, p)
 }
 
 func (a *Adapter) didOpen(filePath string) error {
@@ -836,7 +845,7 @@ func (o recordingDidOpener) DidOpen(path, languageID string) error {
 // matchAction dispatches to the language-specific action-pattern matcher.
 // Returns ErrUnsupported if the language has no matcher registered.
 func (a *Adapter) matchAction(actions []CodeAction, op rustActionOp) (*CodeAction, error) {
-	if a.languageID == "rust" {
+	if a.profile().engine == engineAssist {
 		return matchRustAction(actions, op)
 	}
 	return nil, fmt.Errorf("no code-action matcher for language %q", a.languageID)

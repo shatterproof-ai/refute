@@ -6,45 +6,48 @@ import (
 	"strings"
 )
 
-const maxPrimedFiles = 10
+// didOpener is the minimal interface the priming walker needs. Both *Client and
+// test fakes satisfy it.
+type didOpener interface {
+	DidOpen(path, languageID string) error
+}
 
-// PrimeWorkspace opens up to maxPrimedFiles source files for languages that
-// benefit from a warmer project graph before the first rename request arrives.
-// Failures are non-fatal.
-func PrimeWorkspace(client *Client, root string, languageID string) error {
-	var opened int
-	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+// primeFiles is the single workspace-priming walk, parameterized by a
+// language's primingProfile. It opens up to p.fileCap source files whose
+// extension is registered in p.extensions (as the mapped languageID), skipping
+// p.skipDirs and any dot-prefixed directory. It returns the number of files
+// opened.
+//
+// Priming is best-effort: unreadable paths and individual DidOpen failures are
+// skipped rather than aborting the walk. The caller is responsible for any
+// post-priming sentinel round-trip (see primingProfile.drainWithSentinel).
+func primeFiles(opener didOpener, root string, p primingProfile) int {
+	if len(p.extensions) == 0 {
+		return 0
+	}
+	opened := 0
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, werr error) error {
+		if werr != nil {
+			return nil // skip unreadable paths silently
 		}
 		if d.IsDir() {
-			name := d.Name()
-			if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" {
-				return filepath.SkipDir
+			base := filepath.Base(path)
+			if base != "." && (strings.HasPrefix(base, ".") || p.skipDirs[base]) {
+				return fs.SkipDir
 			}
 			return nil
 		}
-		if opened >= maxPrimedFiles {
-			return filepath.SkipAll
+		if opened >= p.fileCap {
+			return fs.SkipAll
 		}
-		var langID string
-		switch strings.ToLower(filepath.Ext(path)) {
-		case ".ts":
-			langID = "typescript"
-		case ".tsx":
-			langID = "typescriptreact"
-		case ".js":
-			langID = "javascript"
-		case ".jsx":
-			langID = "javascriptreact"
-		case ".rs":
-			langID = "rust"
+		langID, ok := p.extensions[strings.ToLower(filepath.Ext(path))]
+		if !ok {
+			return nil
 		}
-		if langID == languageID {
-			if openErr := client.DidOpen(path, langID); openErr == nil {
-				opened++
-			}
+		if err := opener.DidOpen(path, langID); err == nil {
+			opened++
 		}
 		return nil
 	})
+	return opened
 }

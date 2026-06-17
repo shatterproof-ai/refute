@@ -16,18 +16,19 @@ func TestPrimeRustWorkspace_SkipListAndCap(t *testing.T) {
 	mkfile(t, tmp, ".git/hooks/post-commit.rs") // contrived
 	mkfile(t, tmp, "node_modules/crate/src/x.rs")
 	mkfile(t, tmp, ".cargo/registry/y.rs")
+	rustPriming := profileFor("rust").priming
 	// Additional real files to test the cap.
-	for i := 0; i < maxPrimedFiles+5; i++ {
+	for i := 0; i < rustPriming.fileCap+5; i++ {
 		mkfile(t, tmp, filepath.Join("extra", "f"+intToStr(i)+".rs"))
 	}
 
 	client := newFakeClient()
-	err := PrimeRustWorkspace(client, tmp)
-	if err != nil {
-		t.Fatalf("PrimeRustWorkspace: %v", err)
+	opened := primeFiles(client, tmp, rustPriming)
+	if opened != len(client.opened) {
+		t.Errorf("primeFiles returned %d but recorded %d opens", opened, len(client.opened))
 	}
-	if len(client.opened) > maxPrimedFiles {
-		t.Errorf("opened %d files, want ≤%d", len(client.opened), maxPrimedFiles)
+	if len(client.opened) > rustPriming.fileCap {
+		t.Errorf("opened %d files, want ≤%d", len(client.opened), rustPriming.fileCap)
 	}
 	for _, path := range client.opened {
 		for _, banned := range []string{"target/", ".git/", "node_modules/", ".cargo/"} {
