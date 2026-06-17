@@ -56,6 +56,10 @@ func makeRenameCmd(use string, kind symbol.SymbolKind) *cobra.Command {
 		Short: fmt.Sprintf("Rename a %s (Go, Rust, TypeScript)", kind),
 		Long: fmt.Sprintf("Rename a %s at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server).\n\n%s\n\nSee %s.",
 			kind, renameAddressingHelp, supportMatrixURL),
+		Args: cobra.NoArgs,
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return validateLocationFlags(cmd, modeRename)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRename(kind)
 		},
@@ -70,6 +74,10 @@ func init() {
 		Short: "Rename a symbol across the workspace (Go, Rust, TypeScript)",
 		Long: "Rename a symbol at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server).\n\n" +
 			renameAddressingHelp + "\n\nSee " + supportMatrixURL + ".",
+		Args: cobra.NoArgs,
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return validateLocationFlags(cmd, modeRename)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRename(symbol.KindUnknown)
 		},
@@ -367,7 +375,10 @@ func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
 	if err != nil {
 		return nil, err
 	}
-	language := tier1Language(query)
+	language, err := inferTier1Language(query.QualifiedName, query.File)
+	if err != nil {
+		return nil, handleTier1BackendSetupError(tier1RenameContext("", workspaceRoot), err)
+	}
 	ctx := tier1RenameContext(language, workspaceRoot)
 	telemetrySetContext(ctx)
 
@@ -413,14 +424,30 @@ func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
 	return &tier1RenameBackend{adapter: adapter, language: language, ctx: ctx}, nil
 }
 
-func tier1Language(query symbol.Query) string {
-	if query.File == "" {
-		return "go" // fallback for naked --symbol without --file
+// inferTier1Language determines which language backend a Tier 1 (--symbol)
+// rename should target. With a --file it follows the file's extension. For a
+// naked --symbol it infers from the qualified-name separator (Rust uses "::")
+// or the workspace markers around the current directory, and errors rather than
+// silently assuming Go — sending a Rust name like mod::Thing::run to gopls only
+// fails late and confusingly.
+func inferTier1Language(qualifiedName, file string) (string, error) {
+	if file != "" {
+		if language := DetectServerKey(file); language != "" {
+			return language, nil
+		}
+		return "go", nil
 	}
-	if language := DetectServerKey(query.File); language != "" {
-		return language
+	if strings.Contains(qualifiedName, "::") {
+		return "rust", nil
 	}
-	return "go"
+	if cwd, err := os.Getwd(); err == nil {
+		if language := DetectLanguageFromDir(cwd); language != "" {
+			return language, nil
+		}
+	}
+	return "", fmt.Errorf("cannot infer a language for --symbol %q without --file; "+
+		"pass --file to point at the symbol, or run from inside the project "+
+		"(go.mod or Cargo.toml). Rust qualified names use :: separators", qualifiedName)
 }
 
 func tier1RenameContext(language, workspaceRoot string) jsonContext {
