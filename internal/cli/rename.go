@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
@@ -244,95 +243,6 @@ func cleanBackendErrorMessage(msg string) string {
 	return msg
 }
 
-// applyOrPreview emits the result per --dry-run/--json/default flags.
-func applyOrPreview(we *edit.WorkspaceEdit, ctx jsonContext) error {
-	telemetrySetContext(ctx)
-	if flagJSON {
-		return emitJSON(we, ctx, statusForFlags())
-	}
-	if flagDryRun {
-		telemetrySetStatus(edit.StatusDryRun)
-		telemetryCaptureSnapshot(we)
-		renderDone := telemetryPhase("output-rendering")
-		diff, err := edit.RenderDiff(we)
-		renderDone()
-		if err != nil {
-			telemetrySetStatus("failed")
-			return fmt.Errorf("rendering diff: %w", err)
-		}
-		fmt.Print(diff)
-		return nil
-	}
-	telemetryCaptureSnapshot(we)
-	applyDone := telemetryPhase("apply")
-	result, err := edit.ApplyWithin(we, ctx.WorkspaceRoot)
-	applyDone()
-	if err != nil {
-		return fmt.Errorf("applying edits: %w", err)
-	}
-	telemetrySetStatus(edit.StatusApplied)
-	telemetryMarkApplied()
-	telemetrySetFilesModified(result.FilesModified)
-	green := color.New(color.FgGreen).SprintFunc()
-	fmt.Fprintf(os.Stderr, "%s Modified %d file(s):", green("ok"), result.FilesModified)
-	for _, fe := range we.FileEdits {
-		rel, _ := filepath.Rel(ctx.WorkspaceRoot, fe.Path)
-		if rel == "" {
-			rel = fe.Path
-		}
-		fmt.Fprintf(os.Stderr, " %s", rel)
-	}
-	fmt.Fprintln(os.Stderr)
-	if flagVerbose {
-		if diff, err := edit.RenderDiff(we); err == nil && diff != "" {
-			fmt.Print(diff)
-		}
-	}
-	return nil
-}
-
-func emitJSON(we *edit.WorkspaceEdit, ctx jsonContext, status string) error {
-	telemetrySetContext(ctx)
-	if flagDryRun {
-		telemetrySetStatus(status)
-	}
-	telemetryCaptureSnapshot(we)
-	renderDone := telemetryPhase("output-rendering")
-	res := edit.RenderJSON(we, status)
-	res.Operation = ctx.Operation
-	res.Language = ctx.Language
-	res.Backend = ctx.Backend
-	res.BackendVersion = ctx.BackendVersion
-	res.WorkspaceRoot = ctx.WorkspaceRoot
-	renderDone()
-	if !flagDryRun {
-		applyDone := telemetryPhase("apply")
-		if _, err := edit.ApplyWithin(we, ctx.WorkspaceRoot); err != nil {
-			applyDone()
-			// The success envelope was built but never written. Emit a single
-			// apply-failed error envelope instead of plain text so JSON
-			// consumers get parseable output on the most dangerous failure
-			// (a partial apply after preview).
-			return emitJSONError(ctx, edit.StatusBackendFailed, "apply-failed",
-				fmt.Sprintf("applying edits: %v", err),
-				"Inspect the workspace for a partial apply before retrying.")
-		}
-		applyDone()
-		telemetrySetStatus(status)
-		telemetryMarkApplied()
-	}
-	telemetrySetFilesModified(res.FilesModified)
-	marshalDone := telemetryPhase("output-rendering")
-	data, err := res.Marshal()
-	marshalDone()
-	if err != nil {
-		telemetrySetStatus("failed")
-		return fmt.Errorf("marshalling JSON: %w", err)
-	}
-	fmt.Println(string(data))
-	return nil
-}
-
 func runRenameTier1(query symbol.Query) error {
 	setup, err := setupTier1RenameBackend(query)
 	if err != nil {
@@ -473,7 +383,16 @@ func handleTier1WorkspacePrimeError(ctx jsonContext, err error) error {
 	return fmt.Errorf("priming workspace: %w", err)
 }
 
-func resolveTier1Symbol(adapter backend.RefactoringBackend, language string, query symbol.Query) (symbol.Location, error) {
+// tier1Resolver is the slice of the LSP adapter that Tier 1 symbol resolution
+// needs: raw workspace/symbol lookup plus Rust candidate narrowing. *lsp.Adapter
+// satisfies it; the narrow interface keeps the CLI orchestration unit-testable
+// without a live language server.
+type tier1Resolver interface {
+	FindSymbol(symbol.Query) ([]symbol.Location, error)
+	FilterRustCandidates(infos []symbol.Location, modulePath []string, trait, name string) []symbol.Location
+}
+
+func resolveTier1Symbol(adapter tier1Resolver, language string, query symbol.Query) (symbol.Location, error) {
 	done := telemetryPhase("symbol-resolution")
 	defer done()
 	if language == "rust" {
@@ -492,8 +411,12 @@ func resolveTier1Symbol(adapter backend.RefactoringBackend, language string, que
 	return locs[0], nil
 }
 
-func resolveRustTier1Symbol(adapter backend.RefactoringBackend, query symbol.Query) (symbol.Location, error) {
-	modulePath, trait, name, err := ParseRustQualifiedName(query.QualifiedName)
+// resolveRustTier1Symbol parses a Rust qualified name and narrows the
+// workspace/symbol matches via the LSP adapter's Rust candidate filter. The
+// domain logic (container matching, trait resolution) lives in backend/lsp; the
+// CLI only orchestrates and maps the outcome onto refute's error types.
+func resolveRustTier1Symbol(adapter tier1Resolver, query symbol.Query) (symbol.Location, error) {
+	modulePath, trait, name, err := symbol.ParseRustQualifiedName(query.QualifiedName)
 	if err != nil {
 		return symbol.Location{}, &tier1RustSymbolParseError{err: err}
 	}
@@ -501,7 +424,7 @@ func resolveRustTier1Symbol(adapter backend.RefactoringBackend, query symbol.Que
 	if err != nil {
 		return symbol.Location{}, &tier1SymbolResolutionError{err: err}
 	}
-	candidates := filterRustCandidates(infos, modulePath, trait, name, adapter)
+	candidates := adapter.FilterRustCandidates(infos, modulePath, trait, name)
 	switch len(candidates) {
 	case 0:
 		return symbol.Location{}, &ErrSymbolNotFound{
@@ -603,81 +526,4 @@ func ambiguousError(ctx jsonContext, locs []symbol.Location) error {
 	}
 	msg += "Use --file and --line to narrow the selection."
 	return &ExitCodeError{Code: 1, Message: msg}
-}
-
-// filterRustCandidates narrows workspace/symbol results by module path and,
-// for trait-qualified queries, by enclosing trait. The cheap branch matches
-// the trait via parseRustContainer. The expensive branch falls back to
-// DocumentSymbol when the container parser cannot identify the trait.
-func filterRustCandidates(
-	infos []symbol.Location,
-	modulePath []string,
-	trait, name string,
-	adapter backend.RefactoringBackend,
-) []symbol.Location {
-	out := make([]symbol.Location, 0, len(infos))
-	for _, info := range infos {
-		if info.Name != name {
-			continue
-		}
-		infoMod, infoType, infoTrait := lsp.ParseRustContainer(info.Container)
-		if !moduleMatches(modulePath, infoMod, infoType) {
-			continue
-		}
-		if trait != "" {
-			resolved := infoTrait
-			if resolved == "" {
-				resolved = resolveTraitByDocumentSymbol(adapter, info)
-			}
-			if resolved != trait {
-				continue
-			}
-		}
-		out = append(out, info)
-	}
-	return out
-}
-
-// moduleMatches returns true when expected is a suffix of actual (actual may
-// have extra leading segments). An expected of ["Greeter"] matches any
-// container ending in Greeter; ["greet", "Greeter"] requires both.
-func moduleMatches(expected, actualMod []string, actualType string) bool {
-	full := append([]string{}, actualMod...)
-	if actualType != "" {
-		full = append(full, actualType)
-	}
-	if len(expected) == 0 {
-		return true
-	}
-	if len(full) == 0 {
-		// rust-analyzer omits containerName for some module-level functions;
-		// accept any name match when no container info is available.
-		return true
-	}
-	// Use the shorter length for suffix matching: rust-analyzer may return an
-	// abbreviated container (e.g., "util" instead of "greet::util").
-	n := len(full)
-	if len(expected) < n {
-		n = len(expected)
-	}
-	for i := 0; i < n; i++ {
-		if full[len(full)-n+i] != expected[len(expected)-n+i] {
-			return false
-		}
-	}
-	return true
-}
-
-// resolveTraitByDocumentSymbol is populated only on the expensive branch.
-// On the cheap branch it is a no-op that returns "". See Task 6.
-func resolveTraitByDocumentSymbol(adapter backend.RefactoringBackend, info symbol.Location) string {
-	a, ok := adapter.(*lsp.Adapter)
-	if !ok {
-		return ""
-	}
-	symbols, err := a.DocumentSymbols(info.File)
-	if err != nil {
-		return ""
-	}
-	return lsp.FindEnclosingImplTrait(symbols, info.Line-1) // info.Line is 1-indexed; DocSymbol is 0-indexed
 }

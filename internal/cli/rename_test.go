@@ -10,76 +10,82 @@ import (
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
-type tier1FakeBackend struct {
+// fakeTier1Resolver satisfies tier1Resolver so the CLI orchestration in
+// resolveRustTier1Symbol can be tested without a live language server. The Rust
+// candidate-filtering domain logic itself is tested in internal/backend/lsp.
+type fakeTier1Resolver struct {
 	findQuery symbol.Query
 	locs      []symbol.Location
-	err       error
+	findErr   error
+	filtered  []symbol.Location
+	gotName   string
 }
 
-func (b *tier1FakeBackend) Initialize(string) error { return nil }
-func (b *tier1FakeBackend) Shutdown() error         { return nil }
-
-func (b *tier1FakeBackend) FindSymbol(query symbol.Query) ([]symbol.Location, error) {
-	b.findQuery = query
-	return b.locs, b.err
+func (f *fakeTier1Resolver) FindSymbol(q symbol.Query) ([]symbol.Location, error) {
+	f.findQuery = q
+	return f.locs, f.findErr
 }
 
-func (b *tier1FakeBackend) Rename(symbol.Location, string) (*edit.WorkspaceEdit, error) {
-	return nil, backend.ErrUnsupported
+func (f *fakeTier1Resolver) FilterRustCandidates(infos []symbol.Location, modulePath []string, trait, name string) []symbol.Location {
+	f.gotName = name
+	return f.filtered
 }
 
-func (b *tier1FakeBackend) ExtractFunction(symbol.SourceRange, string) (*edit.WorkspaceEdit, error) {
-	return nil, backend.ErrUnsupported
-}
-
-func (b *tier1FakeBackend) ExtractVariable(symbol.SourceRange, string) (*edit.WorkspaceEdit, error) {
-	return nil, backend.ErrUnsupported
-}
-
-func (b *tier1FakeBackend) InlineSymbol(symbol.Location) (*edit.WorkspaceEdit, error) {
-	return nil, backend.ErrUnsupported
-}
-
-func (b *tier1FakeBackend) MoveToFile(symbol.Location, string) (*edit.WorkspaceEdit, error) {
-	return nil, backend.ErrUnsupported
-}
-
-func (b *tier1FakeBackend) Capabilities() []backend.Capability { return nil }
-
-func TestResolveRustTier1SymbolFiltersCandidate(t *testing.T) {
-	b := &tier1FakeBackend{
-		locs: []symbol.Location{
-			{File: "src/lib.rs", Line: 4, Column: 1, Name: "fmt", Container: "module::Other"},
-			{File: "src/lib.rs", Line: 9, Column: 1, Name: "fmt", Container: "module::impl Display for Greeter"},
-		},
+func TestResolveRustTier1Symbol_SingleCandidate(t *testing.T) {
+	want := symbol.Location{File: "src/lib.rs", Line: 9, Column: 1, Name: "fmt"}
+	f := &fakeTier1Resolver{
+		locs:     []symbol.Location{{Name: "fmt"}, {Name: "fmt"}},
+		filtered: []symbol.Location{want},
 	}
 
-	loc, err := resolveRustTier1Symbol(b, symbol.Query{QualifiedName: "module::<Greeter as Display>::fmt"})
+	loc, err := resolveRustTier1Symbol(f, symbol.Query{QualifiedName: "module::<Greeter as Display>::fmt"})
 	if err != nil {
-		t.Fatalf("resolveRustTier1Symbol returned error: %v", err)
+		t.Fatalf("resolveRustTier1Symbol: %v", err)
 	}
-	if loc.Line != 9 || loc.Name != "fmt" {
-		t.Fatalf("loc = %+v, want fmt at line 9", loc)
+	if loc != want {
+		t.Fatalf("loc = %+v, want %+v", loc, want)
 	}
-	if b.findQuery.QualifiedName != "fmt" {
-		t.Fatalf("FindSymbol query = %+v, want qualified name fmt", b.findQuery)
+	// The qualified name is reduced to the bare leaf before the workspace lookup.
+	if f.findQuery.QualifiedName != "fmt" || f.gotName != "fmt" {
+		t.Fatalf("FindSymbol query=%q, filter name=%q, want fmt", f.findQuery.QualifiedName, f.gotName)
 	}
 }
 
-func TestResolveRustTier1SymbolReturnsAmbiguousCandidates(t *testing.T) {
-	want := []symbol.Location{
-		{File: "src/lib.rs", Line: 4, Column: 1, Name: "rename_me", Container: "module"},
-		{File: "src/other.rs", Line: 7, Column: 3, Name: "rename_me", Container: "module"},
+func TestResolveRustTier1Symbol_Ambiguous(t *testing.T) {
+	cands := []symbol.Location{
+		{File: "src/lib.rs", Line: 4, Name: "rename_me"},
+		{File: "src/other.rs", Line: 7, Name: "rename_me"},
 	}
-	b := &tier1FakeBackend{locs: want}
+	f := &fakeTier1Resolver{locs: cands, filtered: cands}
 
-	_, err := resolveRustTier1Symbol(b, symbol.Query{QualifiedName: "module::rename_me"})
+	_, err := resolveRustTier1Symbol(f, symbol.Query{QualifiedName: "module::rename_me"})
 	var ambiguous *backend.ErrAmbiguous
 	if !errors.As(err, &ambiguous) {
 		t.Fatalf("err = %#v, want backend.ErrAmbiguous", err)
 	}
-	if len(ambiguous.Candidates) != len(want) {
-		t.Fatalf("candidates = %d, want %d", len(ambiguous.Candidates), len(want))
+	if len(ambiguous.Candidates) != 2 {
+		t.Fatalf("candidates = %d, want 2", len(ambiguous.Candidates))
+	}
+}
+
+func TestResolveRustTier1Symbol_NotFound(t *testing.T) {
+	f := &fakeTier1Resolver{
+		locs:     []symbol.Location{{Name: "rename_me"}},
+		filtered: nil,
+	}
+	_, err := resolveRustTier1Symbol(f, symbol.Query{QualifiedName: "module::rename_me"})
+	var notFound *ErrSymbolNotFound
+	if !errors.As(err, &notFound) {
+		t.Fatalf("err = %#v, want *ErrSymbolNotFound", err)
+	}
+}
+
+func TestResolveRustTier1Symbol_ParseError(t *testing.T) {
+	f := &fakeTier1Resolver{}
+	_, err := resolveRustTier1Symbol(f, symbol.Query{QualifiedName: "foo()"})
+	var parseErr *tier1RustSymbolParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("err = %#v, want *tier1RustSymbolParseError", err)
 	}
 }
 
