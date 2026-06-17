@@ -54,11 +54,11 @@ func validateRenameFlags(cmd *cobra.Command) error {
 		if err := validateSymbolValue(flagSymbol); err != nil {
 			return err
 		}
-		// A naked --symbol (no --file) must be routable to a language backend.
-		if flagFile == "" {
-			if _, err := inferTier1Language(flagSymbol, ""); err != nil {
-				return err
-			}
+		// --symbol reaches here only without position flags (the mutual-exclusion
+		// check above already rejected the combination), so this is always a
+		// naked symbol that must be routable to a language backend.
+		if _, err := inferTier1Language(flagSymbol, ""); err != nil {
+			return err
 		}
 		return nil
 	}

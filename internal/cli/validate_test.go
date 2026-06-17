@@ -199,6 +199,18 @@ func TestDetectLanguageFromDir(t *testing.T) {
 	if got := DetectLanguageFromDir(t.TempDir()); got != "" {
 		t.Errorf("bare dir: got %q, want empty", got)
 	}
+
+	// A polyglot root (both markers) is ambiguous and must not be guessed.
+	mixed := t.TempDir()
+	if err := os.WriteFile(filepath.Join(mixed, "go.mod"), []byte("module x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mixed, "Cargo.toml"), []byte("[package]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectLanguageFromDir(mixed); got != "" {
+		t.Errorf("mixed dir: got %q, want empty (ambiguous)", got)
+	}
 }
 
 // TestCommandsRejectPositionalArgs confirms every operation command wires an

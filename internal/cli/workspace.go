@@ -54,8 +54,10 @@ func DetectServerKey(filePath string) string {
 
 // DetectLanguageFromDir walks up from dir looking for a language-defining
 // workspace marker and returns the server key it implies ("go" or "rust"), or
-// "" when no unambiguous marker is found. Used to route a naked --symbol that
-// carries no file or :: separator.
+// "" when no marker is found or the nearest marker-bearing directory is
+// ambiguous (both Go and Rust markers present). Used to route a naked --symbol
+// that carries no file or :: separator; an ambiguous result deliberately yields
+// "" so the caller asks for --file rather than guessing.
 func DetectLanguageFromDir(dir string) string {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
@@ -63,10 +65,14 @@ func DetectLanguageFromDir(dir string) string {
 	}
 	cur := absDir
 	for {
+		hasGo := fileExists(filepath.Join(cur, "go.mod")) || fileExists(filepath.Join(cur, "go.work"))
+		hasRust := fileExists(filepath.Join(cur, "Cargo.toml"))
 		switch {
-		case fileExists(filepath.Join(cur, "go.mod")), fileExists(filepath.Join(cur, "go.work")):
+		case hasGo && hasRust:
+			return "" // ambiguous: do not guess
+		case hasGo:
 			return "go"
-		case fileExists(filepath.Join(cur, "Cargo.toml")):
+		case hasRust:
 			return "rust"
 		}
 		parent := filepath.Dir(cur)

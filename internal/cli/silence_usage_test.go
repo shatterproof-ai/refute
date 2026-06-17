@@ -55,8 +55,8 @@ func TestSilenceUsageHelper(t *testing.T) {
 	case "unknown-command":
 		os.Args = []string{"refute", "does-not-exist"}
 	case "json-required-flag":
-		// --symbol passes location validation (language inferred from the
-		// repo's go.mod), so the missing required --new-name is the first
+		// --symbol Foo satisfies location validation (language inferred from the
+		// repo's go.mod), leaving the missing required --new-name as the only
 		// rejection — exercising the required-flag JSON envelope path.
 		os.Args = []string{"refute", "rename", "--json", "--symbol", "Foo"}
 	default:
