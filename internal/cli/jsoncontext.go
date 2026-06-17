@@ -39,7 +39,7 @@ func contextFromFile(operation, filePath string) jsonContext {
 			if root, err := FindWorkspaceRootFromFile(abs); err == nil {
 				ctx.WorkspaceRoot = root
 			}
-			ctx.Language = DetectServerKey(abs)
+			ctx.Language = DetectLanguageName(abs)
 		}
 	}
 	return ctx

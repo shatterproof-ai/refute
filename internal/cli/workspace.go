@@ -47,9 +47,20 @@ func FindWorkspaceRootFromFile(filePath string) (string, error) {
 }
 
 // DetectServerKey returns the server config key for a file based on its
-// extension. Used to look up the language server in the config.
+// extension. Used to look up the language server in the config. This is a
+// lookup key, not user-facing metadata: JavaScript files report "typescript"
+// here because they route through the TypeScript server. For the user-facing
+// language name, use DetectLanguageName.
 func DetectServerKey(filePath string) string {
 	return language.Detect(filePath).CLIConfigKey
+}
+
+// DetectLanguageName returns the user-facing language name for a file based on
+// its extension (e.g. "javascript" for .js). Unlike DetectServerKey it does not
+// collapse JavaScript onto the TypeScript config/server key, so it is the value
+// to surface in JSON output and other user-visible metadata.
+func DetectLanguageName(filePath string) string {
+	return language.Detect(filePath).Language
 }
 
 // DetectLanguageFromDir walks up from dir looking for a language-defining

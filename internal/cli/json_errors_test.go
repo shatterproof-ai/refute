@@ -64,6 +64,90 @@ func writeServerConfig(t *testing.T, dir, language, command string) string {
 	return p
 }
 
+// writeJSFixture writes a minimal JavaScript file under dir so a pre-backend
+// resolution error can report language metadata without needing ts-morph.
+func writeJSFixture(t *testing.T, dir string) string {
+	t.Helper()
+	jsFile := filepath.Join(dir, "math.js")
+	if err := os.WriteFile(jsFile, []byte("export function sum(left, right) {\n    return left + right;\n}\n"), 0o644); err != nil {
+		t.Fatalf("write math.js: %v", err)
+	}
+	return jsFile
+}
+
+// TestRunRename_JSJSONErrorReportsJavaScriptLanguage covers the pre-backend
+// resolution failure path for a .js file. JavaScript routes through the
+// TypeScript config/server key internally, but the user-facing JSON metadata
+// must report language "javascript", not the config key "typescript".
+func TestRunRename_JSJSONErrorReportsJavaScriptLanguage(t *testing.T) {
+	resetRenameFlagsForTest(t)
+	dir := t.TempDir()
+	jsFile := writeJSFixture(t, dir)
+
+	flagFile = jsFile
+	flagLine = 1
+	flagName = "add"
+	flagNewName = "total"
+	flagJSON = true
+	flagDryRun = true
+
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = runRename(symbol.KindFunction)
+	})
+	var ec *ExitCodeError
+	if !errors.As(runErr, &ec) || ec.Code == 0 {
+		t.Fatalf("expected non-zero ExitCodeError, got %#v", runErr)
+	}
+	var got edit.JSONResult
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("unmarshal: %v\nraw:\n%s", err, out)
+	}
+	if got.Status != edit.StatusInvalidPosition {
+		t.Errorf("status = %q, want %q; envelope:\n%s", got.Status, edit.StatusInvalidPosition, out)
+	}
+	if got.Error == nil || got.Error.Code != "invalid-position" {
+		t.Fatalf("unexpected error object: %+v\nraw:\n%s", got.Error, out)
+	}
+	if got.Language != "javascript" {
+		t.Errorf("language = %q, want %q (config key must not leak); envelope:\n%s", got.Language, "javascript", out)
+	}
+}
+
+// TestRunRename_TSJSONErrorReportsTypeScriptLanguage guards the symmetric
+// TypeScript case so the JavaScript fix does not regress .ts metadata.
+func TestRunRename_TSJSONErrorReportsTypeScriptLanguage(t *testing.T) {
+	resetRenameFlagsForTest(t)
+	dir := t.TempDir()
+	tsFile := filepath.Join(dir, "math.ts")
+	if err := os.WriteFile(tsFile, []byte("export function sum(left: number, right: number) {\n    return left + right;\n}\n"), 0o644); err != nil {
+		t.Fatalf("write math.ts: %v", err)
+	}
+
+	flagFile = tsFile
+	flagLine = 1
+	flagName = "add"
+	flagNewName = "total"
+	flagJSON = true
+	flagDryRun = true
+
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = runRename(symbol.KindFunction)
+	})
+	var ec *ExitCodeError
+	if !errors.As(runErr, &ec) || ec.Code == 0 {
+		t.Fatalf("expected non-zero ExitCodeError, got %#v", runErr)
+	}
+	var got edit.JSONResult
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("unmarshal: %v\nraw:\n%s", err, out)
+	}
+	if got.Language != "typescript" {
+		t.Errorf("language = %q, want %q; envelope:\n%s", got.Language, "typescript", out)
+	}
+}
+
 // TestTier1Rename_JSONBackendMissing exercises the tier-1 setup path with a
 // non-existent LSP binary configured. The CLI must emit a JSON envelope with
 // status backend-missing rather than a plain stderr error.
