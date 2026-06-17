@@ -884,8 +884,12 @@ func TestEndToEnd_FileNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected non-zero exit for nonexistent file, got success; output:\n%s", out)
 	}
-	if !strings.Contains(string(out), "no such file") {
-		t.Errorf("expected 'no such file' in output, got:\n%s", out)
+	// The CLI's --file validation reports a missing path with "does not exist"
+	// and echoes the offending path. Assert on both so the test stays useful
+	// without being coupled to incidental wording.
+	if !strings.Contains(string(out), "does not exist") ||
+		!strings.Contains(string(out), "/nonexistent/path/to/file.go") {
+		t.Errorf("expected missing-file error naming the path in output, got:\n%s", out)
 	}
 }
 
