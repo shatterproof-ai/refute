@@ -136,6 +136,74 @@ func TestApplyEdits_SamePositionInsertThenReplace(t *testing.T) {
 	}
 }
 
+func TestPositionToOffset_MultiByteContentUsesByteOffsets(t *testing.T) {
+	// positionToOffset works in bytes: Character is a byte offset within the
+	// line, not a rune or UTF-16 index (the LSP->byte conversion happens
+	// upstream). With multi-byte runes the byte offset and the rune count
+	// diverge, so this pins that the function counts bytes and still bounds
+	// Character to the line. "café" is 5 bytes (é = 2 bytes) with its newline
+	// at byte 5; line 1 "汉字x" starts at byte 6 (汉/字 = 3 bytes each, x = 1).
+	content := []byte("café\n汉字x\n")
+	cases := []struct {
+		name string
+		pos  Position
+		want int
+	}{
+		{"start of multi-byte line", Position{Line: 0, Character: 0}, 0},
+		{"byte at start of é", Position{Line: 0, Character: 3}, 3},
+		{"line-end newline after 2-byte é", Position{Line: 0, Character: 5}, 5},
+		{"start of CJK line", Position{Line: 1, Character: 0}, 6},
+		{"byte at start of 字", Position{Line: 1, Character: 3}, 9},
+		{"line-end of CJK line", Position{Line: 1, Character: 7}, 13},
+		{"one byte past CJK line spills to next line", Position{Line: 1, Character: 8}, -1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := positionToOffset(content, tc.pos)
+			if got != tc.want {
+				t.Errorf("positionToOffset(%q, %+v) = %d; want %d", content, tc.pos, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestApplyEdits_MultiByteContentReplacement(t *testing.T) {
+	// Replacing a run of multi-byte runes must use the byte offsets the range
+	// resolves to and leave the surrounding multi-byte content byte-for-byte
+	// intact. "café " is 6 bytes (é = 2) so 汉字 occupy bytes 6..11 and the
+	// newline is the line-end at byte 12.
+	content := []byte("café 汉字\n")
+	edits := []TextEdit{{
+		Range:   Range{Start: Position{Line: 0, Character: 6}, End: Position{Line: 0, Character: 12}},
+		NewText: "ASCII",
+	}}
+	got, err := applyEdits(content, edits)
+	if err != nil {
+		t.Fatalf("applyEdits: %v", err)
+	}
+	if string(got) != "café ASCII\n" {
+		t.Fatalf("multi-byte replacement: got %q, want %q", string(got), "café ASCII\n")
+	}
+}
+
+func TestApplyEdits_MultiByteSamePositionInsertOrder(t *testing.T) {
+	// The same-position array-order rule must hold inside multi-byte content
+	// and with multi-byte insert text. "aé" is 3 bytes; Character 1 is the
+	// rune boundary between 'a' and 'é', so both inserts land there and must
+	// appear in array order without splitting the following 2-byte 'é'.
+	pos := Position{Line: 0, Character: 1}
+	got, err := applyEdits([]byte("aé"), []TextEdit{
+		{Range: Range{Start: pos, End: pos}, NewText: "✓"},
+		{Range: Range{Start: pos, End: pos}, NewText: "X"},
+	})
+	if err != nil {
+		t.Fatalf("applyEdits: %v", err)
+	}
+	if string(got) != "a✓Xé" {
+		t.Fatalf("multi-byte same-position inserts: got %q, want %q", string(got), "a✓Xé")
+	}
+}
+
 func FuzzPositionToOffset(f *testing.F) {
 	add := func(content string, line, char int) {
 		var hdr [8]byte
