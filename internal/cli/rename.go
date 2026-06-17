@@ -292,6 +292,7 @@ func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
 	if err != nil {
 		return nil, handleTier1BackendSetupError(tier1RenameContext("", workspaceRoot), err)
 	}
+
 	ctx := tier1RenameContext(language, workspaceRoot)
 	telemetrySetContext(ctx)
 
@@ -305,45 +306,17 @@ func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
 		return nil, handleTier1BackendSetupError(ctx, &selector.ErrLanguageUnsupported{Language: language, Caveat: entry.Caveats})
 	}
 
-	selectDone := telemetryPhase("backend-selection")
-	cfg, err := config.Load(flagConfig, workspaceRoot)
+	// Tier-1 rename targets the whole module, so the languageID is the language
+	// key itself (no file scope). setupLSPBackend re-sets the telemetry context
+	// to the same value before emitting its phases.
+	adapter, ctx, err := setupLSPBackend("rename", language, "", workspaceRoot)
 	if err != nil {
-		selectDone()
-		return nil, handleTier1BackendSetupError(ctx, fmt.Errorf("loading config: %w", err))
+		var setupErr *lspBackendSetupError
+		if errors.As(err, &setupErr) && setupErr.phase == "prime" {
+			return nil, handleTier1WorkspacePrimeError(ctx, setupErr.err)
+		}
+		return nil, handleTier1BackendSetupError(ctx, setupErr.err)
 	}
-	serverCfg := cfg.Server(language)
-	if serverCfg.Command == "" {
-		selectDone()
-		return nil, handleTier1BackendSetupError(ctx, fmt.Errorf("no server configured for language %q", language))
-	}
-	if _, lookErr := exec.LookPath(serverCfg.Command); lookErr != nil {
-		selectDone()
-		return nil, handleTier1BackendSetupError(ctx, &ErrLSPServerMissing{
-			Language:    language,
-			Command:     serverCfg.Command,
-			InstallHint: config.InstallHint(language),
-		})
-	}
-	selectDone()
-
-	adapter := lsp.NewAdapter(serverCfg, language, nil)
-	adapter.SetContext(commandContext())
-	adapter.SetRequestTimeout(cfg.RequestTimeout())
-	ctx.BackendVersion = backendVersionForLanguageServer(language, serverCfg.Command)
-	initDone := telemetryPhase("backend-initialization")
-	if err := adapter.Initialize(workspaceRoot); err != nil {
-		initDone()
-		return nil, handleTier1BackendSetupError(ctx, err)
-	}
-	initDone()
-	// Prime so workspace/symbol sees the whole module.
-	primeDone := telemetryPhase("workspace-priming")
-	if _, err := adapter.PrimeWorkspace(workspaceRoot); err != nil {
-		primeDone()
-		_ = adapter.Shutdown()
-		return nil, handleTier1WorkspacePrimeError(ctx, err)
-	}
-	primeDone()
 	return &tier1RenameBackend{adapter: adapter, language: language, ctx: ctx}, nil
 }
 

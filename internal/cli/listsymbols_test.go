@@ -265,3 +265,37 @@ func TestListSymbolsCommand_InvalidKind(t *testing.T) {
 		t.Fatal("expected error for invalid --kind")
 	}
 }
+
+// TestSetupListSymbolsBackend_NoServerConfigured guards the selection-phase
+// error wrapping after the shared setupLSPBackend extraction (#104): an empty
+// server command must surface "no server configured" unchanged.
+func TestSetupListSymbolsBackend_NoServerConfigured(t *testing.T) {
+	resetListFlagsForTest(t)
+	dir := t.TempDir()
+	flagConfig = writeServerConfig(t, dir, "go", "")
+
+	_, _, err := setupListSymbolsBackend("go", "", dir)
+	if err == nil {
+		t.Fatal("expected error for empty server command, got nil")
+	}
+	if !strings.Contains(err.Error(), `no server configured for language "go"`) {
+		t.Errorf("error = %q, want it to contain 'no server configured for language \"go\"'", err)
+	}
+}
+
+// TestSetupListSymbolsBackend_ServerBinaryMissing guards that a configured but
+// absent LSP binary still surfaces a typed *ErrLSPServerMissing.
+func TestSetupListSymbolsBackend_ServerBinaryMissing(t *testing.T) {
+	resetListFlagsForTest(t)
+	dir := t.TempDir()
+	flagConfig = writeServerConfig(t, dir, "go", "refute-nonexistent-lsp-binary-xyz")
+
+	_, _, err := setupListSymbolsBackend("go", "", dir)
+	var missing *ErrLSPServerMissing
+	if !errors.As(err, &missing) {
+		t.Fatalf("error = %v, want *ErrLSPServerMissing", err)
+	}
+	if missing.Language != "go" {
+		t.Errorf("missing.Language = %q, want %q", missing.Language, "go")
+	}
+}
