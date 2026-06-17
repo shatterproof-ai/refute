@@ -18,9 +18,9 @@ func init() {
 	inlineCmd := &cobra.Command{
 		Use:   "inline",
 		Short: "Inline a symbol at the given position (Go, Rust)",
-		Long: `Inline a variable or function call at the specified file position. Supports Go (gopls) and Rust (rust-analyzer).
-Requires --file and either --line --col (exact position) or --line --name (scan line).
-For Rust: use --symbol with --call-site <file>:<line>:<column>. See docs/support-matrix.md.`,
+		Long: "Inline a variable or function call at the specified file position. Supports Go (gopls) and Rust (rust-analyzer).\n" +
+			"Requires --file and either --line --col (exact position) or --line --name (scan line).\n" +
+			"For Rust: use --symbol with --call-site <file>:<line>:<column>. See " + supportMatrixURL + ".",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInline()
 		},

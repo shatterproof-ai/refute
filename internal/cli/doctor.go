@@ -183,10 +183,9 @@ func init() {
 	doctorCmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Report which language backends are installed and ready to use",
-		Long: `doctor inspects the local environment for language servers and adapter
-assets that refute relies on. It reports which languages are ready, which
-need a missing dependency installed, and which are not claimed for the
-current release.`,
+		Long: `Inspect the local environment for the language servers and adapter assets
+that refute relies on. Reports which languages are ready, which need a missing
+dependency installed, and which are not claimed for the current release.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			report := buildDoctorReport()
 			out := cmd.OutOrStdout()

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -19,13 +20,39 @@ var (
 	BuildDate = "unknown"
 )
 
+// versionInfo is the --json shape for the version command.
+type versionInfo struct {
+	Version   string `json:"version"`
+	Commit    string `json:"commit"`
+	BuildDate string `json:"buildDate"`
+}
+
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version, commit, and build date",
-	Run: func(cmd *cobra.Command, args []string) {
+	Long: `Print the refute version, the git commit it was built from, and the build
+date. Pass --json to emit the same fields as a structured object for scripts.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
 		w := cmd.OutOrStdout()
+		if flagJSON {
+			data, err := json.MarshalIndent(versionInfo{
+				Version:   Version,
+				Commit:    Commit,
+				BuildDate: BuildDate,
+			}, "", "  ")
+			if err != nil {
+				return fmt.Errorf("marshalling version: %w", err)
+			}
+			fmt.Fprintln(w, string(data))
+			return nil
+		}
 		fmt.Fprintf(w, "refute version %s\n", Version)
 		fmt.Fprintf(w, "commit: %s\n", Commit)
-		fmt.Fprintf(w, "built:  %s\n", BuildDate)
+		fmt.Fprintf(w, "built: %s\n", BuildDate)
+		return nil
 	},
+}
+
+func init() {
+	versionCmd.Flags().BoolVar(&flagJSON, "json", false, "emit structured JSON instead of human-readable output")
 }

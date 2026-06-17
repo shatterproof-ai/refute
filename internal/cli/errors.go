@@ -16,6 +16,10 @@ import (
 // runtime-missing path so scripts can branch on "install something" uniformly.
 const backendMissingExitCode = 3
 
+// noOpExitCode is the refute convention for "nothing to do" — no edits produced
+// or no matching symbol — so scripts can distinguish it from a real failure.
+const noOpExitCode = 2
+
 // ExitCodeError carries a requested process exit code alongside an optional
 // message. Commands return this instead of calling os.Exit so deferred
 // cleanup (Shutdown, file close) always runs.
@@ -37,7 +41,7 @@ type exitCoder interface {
 // NoEditsError is returned when a refactoring produced no changes. Exit 2 is
 // the refute convention for "nothing to do" (useful for scripting).
 func NoEditsError() error {
-	return &ExitCodeError{Code: 2, Message: "no changes produced"}
+	return &ExitCodeError{Code: noOpExitCode, Message: "no changes produced"}
 }
 
 // ErrLSPServerMissing signals that the LSP server binary is not on PATH.
