@@ -15,6 +15,7 @@ unless a current tracker issue explicitly reactivates them.
 - [JSON Output and Exit Codes](json-schema.md) -- normative `--json`, `doctor --json`, coordinate, versioning, and exit-code reference.
 - [Release Process](release.md) -- repeatable v0.1 release commands and artifacts.
 - [Release Verification](release-verification.md) -- one-command pre-release check suite (`make verify`).
+- [Release Readiness Criteria](release-readiness.md) -- reviewable checklist mapping each "ready for usage" criterion to a test, doc, issue, or check.
 - [Versioning and Compatibility](versioning.md) -- semantic versioning,
   pre-v1 compatibility, JSON schema, and MCP schema policy.
 - [Position Encoding](position-encoding.md) -- CLI byte-column vs LSP UTF-16 column constraint.
