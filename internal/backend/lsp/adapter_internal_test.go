@@ -117,6 +117,36 @@ func TestUTF16CharacterToByteCharacterRejectsSurrogateSplit(t *testing.T) {
 	}
 }
 
+func TestUTF16CharacterToByteCharacterRejectsOutOfRange(t *testing.T) {
+	// "a𝄞b" is 4 UTF-16 code units (a=1, 𝄞=2, b=1). A negative index and any
+	// index beyond the last unit have no byte position; the LSP->byte
+	// conversion must error rather than silently clamp to an edge, since a
+	// bogus offset would corrupt the edit it feeds. This covers the leading
+	// negative guard and the trailing "ran off the end" branch that the
+	// in-range and surrogate-split cases above never reach.
+	cases := []struct {
+		name      string
+		line      string
+		character int
+	}{
+		{"negative character", "a𝄞b", -1},
+		{"one past end", "a𝄞b", 5},
+		{"far past end", "abc", 99},
+		{"past end of empty line", "", 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := utf16CharacterToByteCharacter(tc.line, tc.character)
+			if err == nil {
+				t.Fatalf("expected out-of-range error for character %d in %q", tc.character, tc.line)
+			}
+			if !strings.Contains(err.Error(), "out of range") {
+				t.Fatalf("error = %q, want out-of-range message", err)
+			}
+		})
+	}
+}
+
 func TestReplaceWholeIdent_respectsIdentifierBoundaries(t *testing.T) {
 	got := replaceWholeIdent("newFunction()\nnewFunctionCall()\n_ = newFunction", "newFunction", "sum")
 	want := "sum()\nnewFunctionCall()\n_ = sum"
