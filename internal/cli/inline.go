@@ -21,6 +21,10 @@ func init() {
 		Long: "Inline a variable or function call at the specified file position. Supports Go (gopls) and Rust (rust-analyzer).\n" +
 			"Requires --file and either --line --col (exact position) or --line --name (scan line).\n" +
 			"For Rust: use --symbol with --call-site <file>:<line>:<column>. See " + supportMatrixURL + ".",
+		Args: cobra.NoArgs,
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return validateLocationFlags(cmd, modeInline)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInline()
 		},
@@ -62,9 +66,10 @@ func runInlineInner(ctx *jsonContext) error {
 		}
 		if flagSymbol != "" {
 			_, _, name, err := ParseRustQualifiedName(flagSymbol)
-			if err == nil {
-				parsed.Name = name
+			if err != nil {
+				return fmt.Errorf("invalid --symbol %q: %w", flagSymbol, err)
 			}
+			parsed.Name = name
 		}
 		loc = parsed
 	} else {
@@ -119,18 +124,41 @@ func runInlineInner(ctx *jsonContext) error {
 	return applyOrPreview(we, *ctx)
 }
 
+// parseCallSite parses a --call-site value of the form file:line:column. The
+// file may itself contain colons (e.g. a Windows drive path like C:\src\x.rs),
+// so line and column are taken from the last two colon-separated fields and the
+// remainder is the path. The path is absolute-resolved and the coordinates must
+// be positive (1-indexed).
 func parseCallSite(s string) (symbol.Location, error) {
-	parts := strings.Split(s, ":")
-	if len(parts) != 3 {
+	lastColon := strings.LastIndex(s, ":")
+	if lastColon < 0 {
 		return symbol.Location{}, fmt.Errorf("expected file:line:column, got %q", s)
 	}
-	line, err := strconv.Atoi(parts[1])
+	secondColon := strings.LastIndex(s[:lastColon], ":")
+	if secondColon < 0 {
+		return symbol.Location{}, fmt.Errorf("expected file:line:column, got %q", s)
+	}
+	file := s[:secondColon]
+	if file == "" {
+		return symbol.Location{}, fmt.Errorf("call-site file path must not be empty: %q", s)
+	}
+	line, err := strconv.Atoi(s[secondColon+1 : lastColon])
 	if err != nil {
 		return symbol.Location{}, fmt.Errorf("line must be an integer: %w", err)
 	}
-	col, err := strconv.Atoi(parts[2])
+	col, err := strconv.Atoi(s[lastColon+1:])
 	if err != nil {
 		return symbol.Location{}, fmt.Errorf("column must be an integer: %w", err)
 	}
-	return symbol.Location{File: parts[0], Line: line, Column: col}, nil
+	if line < 1 {
+		return symbol.Location{}, fmt.Errorf("line must be >= 1 (1-indexed), got %d", line)
+	}
+	if col < 1 {
+		return symbol.Location{}, fmt.Errorf("column must be >= 1 (1-indexed), got %d", col)
+	}
+	abs, err := filepath.Abs(file)
+	if err != nil {
+		return symbol.Location{}, fmt.Errorf("resolving call-site path %q: %w", file, err)
+	}
+	return symbol.Location{File: abs, Line: line, Column: col}, nil
 }

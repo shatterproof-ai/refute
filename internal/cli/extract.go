@@ -36,6 +36,10 @@ func init() {
 		Use:   "extract-function",
 		Short: "Extract a selection into a new function (Go, Rust)",
 		Long:  "Extract the selected code range into a new named function. The selection is given by --file with --start-line/--start-col and --end-line/--end-col. Supports Go (gopls) and Rust (rust-analyzer). See " + supportMatrixURL + ".",
+		Args:  cobra.NoArgs,
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return validateLocationFlags(cmd, modeExtract)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runExtract("function")
 		},
@@ -46,6 +50,10 @@ func init() {
 		Use:   "extract-variable",
 		Short: "Extract a selection into a new variable (Go, Rust)",
 		Long:  "Extract the selected code range into a new named variable. The selection is given by --file with --start-line/--start-col and --end-line/--end-col. Supports Go (gopls) and Rust (rust-analyzer). See " + supportMatrixURL + ".",
+		Args:  cobra.NoArgs,
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return validateLocationFlags(cmd, modeExtract)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runExtract("variable")
 		},

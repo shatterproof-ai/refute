@@ -51,3 +51,33 @@ func FindWorkspaceRootFromFile(filePath string) (string, error) {
 func DetectServerKey(filePath string) string {
 	return language.Detect(filePath).CLIConfigKey
 }
+
+// DetectLanguageFromDir walks up from dir looking for a language-defining
+// workspace marker and returns the server key it implies ("go" or "rust"), or
+// "" when no unambiguous marker is found. Used to route a naked --symbol that
+// carries no file or :: separator.
+func DetectLanguageFromDir(dir string) string {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return ""
+	}
+	cur := absDir
+	for {
+		switch {
+		case fileExists(filepath.Join(cur, "go.mod")), fileExists(filepath.Join(cur, "go.work")):
+			return "go"
+		case fileExists(filepath.Join(cur, "Cargo.toml")):
+			return "rust"
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return ""
+		}
+		cur = parent
+	}
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
