@@ -74,7 +74,18 @@ func init() {
 }
 
 func runRename(kind symbol.SymbolKind) error {
-	telemetrySetContext(jsonContext{Operation: "rename"})
+	ctx := jsonContext{Operation: "rename"}
+	return routeOperationError(ctx, runRenameInner(kind, &ctx))
+}
+
+// runRenameInner performs the rename and returns terminal errors for the shared
+// wrapper to route. It updates *ctx as it resolves language/backend metadata so
+// an envelope emitted by routeOperationError is fully attributed. Paths that
+// produce a specialized status (invalid-position, backend-unavailable) emit
+// their envelope inline; the wrapper recognizes the resulting jsonEmitted error
+// and passes it through without a second envelope.
+func runRenameInner(kind symbol.SymbolKind, ctx *jsonContext) error {
+	telemetrySetContext(*ctx)
 	query := symbol.Query{
 		QualifiedName: flagSymbol,
 		File:          flagFile,
@@ -115,21 +126,15 @@ func runRename(kind symbol.SymbolKind) error {
 	sel, workspaceRoot, err := buildBackend(loc.File)
 	if err != nil {
 		if flagJSON {
-			ctx := contextFromFile("rename", loc.File)
-			return emitJSONError(ctx, backendErrorStatus(err), "backend-unavailable", err.Error(), "Run `refute doctor` for backend setup details.")
+			*ctx = contextFromFile("rename", loc.File)
+			return emitJSONError(*ctx, backendErrorStatus(err), "backend-unavailable", err.Error(), "Run `refute doctor` for backend setup details.")
 		}
 		return err
 	}
 	defer func() { _ = sel.Backend.Shutdown() }()
 
-	ctx := contextFromSelection("rename", sel, workspaceRoot)
-	if err := finishRename(sel.Backend, ctx, loc, flagNewName); err != nil {
-		if flagJSON {
-			return emitJSONOperationError(ctx, err)
-		}
-		return err
-	}
-	return nil
+	*ctx = contextFromSelection("rename", sel, workspaceRoot)
+	return finishRename(sel.Backend, *ctx, loc, flagNewName)
 }
 
 // buildBackend selects and initializes a refactoring backend for the given file.
@@ -250,8 +255,13 @@ func emitJSON(we *edit.WorkspaceEdit, ctx jsonContext, status string) error {
 		applyDone := telemetryPhase("apply")
 		if _, err := edit.ApplyWithin(we, ctx.WorkspaceRoot); err != nil {
 			applyDone()
-			telemetrySetStatus("failed")
-			return fmt.Errorf("applying edits: %w", err)
+			// The success envelope was built but never written. Emit a single
+			// apply-failed error envelope instead of plain text so JSON
+			// consumers get parseable output on the most dangerous failure
+			// (a partial apply after preview).
+			return emitJSONError(ctx, edit.StatusBackendFailed, "apply-failed",
+				fmt.Sprintf("applying edits: %v", err),
+				"Inspect the workspace for a partial apply before retrying.")
 		}
 		applyDone()
 		telemetrySetStatus(status)
@@ -510,7 +520,9 @@ func ambiguousError(ctx jsonContext, locs []symbol.Location) error {
 		}
 		data, _ := res.Marshal()
 		fmt.Println(string(data))
-		return &ExitCodeError{Code: 1}
+		// Mark the envelope as already written so routeOperationError does not
+		// emit a second one when this bubbles up through runRenameInner.
+		return &jsonEmitted{err: &ExitCodeError{Code: 1}}
 	}
 	msg := "Ambiguous — multiple candidates:\n"
 	for _, l := range locs {

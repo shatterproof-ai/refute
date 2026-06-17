@@ -52,6 +52,33 @@ func statusForFlags() string {
 	return edit.StatusApplied
 }
 
+// jsonEmitted wraps an error whose structured JSON envelope has already been
+// written to stdout. Routing wrappers detect it (via errors.As) and pass it
+// through unchanged instead of emitting a second envelope. It unwraps to the
+// underlying error so exit-code mapping and errors.As(&ExitCodeError) keep
+// working transparently.
+type jsonEmitted struct{ err error }
+
+func (e *jsonEmitted) Error() string { return e.err.Error() }
+func (e *jsonEmitted) Unwrap() error { return e.err }
+
+// routeOperationError converts a terminal operation error into exactly one
+// structured JSON envelope when --json is set. Errors whose envelope was
+// already written (jsonEmitted) pass through untouched so no second envelope is
+// printed; outside --json mode the error is returned verbatim for stderr
+// rendering by Run. This is the shared wrapper that rename, extract-function,
+// extract-variable, and inline funnel their terminal errors through.
+func routeOperationError(ctx jsonContext, err error) error {
+	if err == nil || !flagJSON {
+		return err
+	}
+	var emitted *jsonEmitted
+	if errors.As(err, &emitted) {
+		return err
+	}
+	return emitJSONOperationError(ctx, err)
+}
+
 // emitJSONError writes a structured error envelope to stdout and returns an
 // ExitCodeError so Run() exits with a non-zero status without printing the
 // message twice. Intended for use only when flagJSON is set.
@@ -78,7 +105,7 @@ func emitJSONError(ctx jsonContext, status, code, message, hint string, exitCode
 		return fmt.Errorf("marshalling JSON error: %w", err)
 	}
 	fmt.Println(string(data))
-	return &ExitCodeError{Code: jsonErrorExitCode(status, exitCode...)}
+	return &jsonEmitted{err: &ExitCodeError{Code: jsonErrorExitCode(status, exitCode...)}}
 }
 
 func jsonErrorExitCode(status string, exitCode ...int) int {
@@ -144,10 +171,18 @@ func emitJSONBackendSetupError(ctx jsonContext, err error) error {
 		err.Error(), "Run `refute doctor` for backend setup details.")
 }
 
+// emitJSONOperationError is the shared router that maps a terminal operation
+// error to a structured envelope. It recognizes every failure category an
+// operation can surface so rename, extract, and inline all report identical
+// statuses for identical causes. Backend setup and initialization errors are
+// delegated to emitJSONBackendSetupError so the typed adapter/LSP/init
+// distinctions are honored regardless of which operation surfaced them.
 func emitJSONOperationError(ctx jsonContext, err error) error {
 	var ec exitCoder
 	var symbolMissing *ErrSymbolNotFound
 	switch {
+	case isBackendSetupError(err):
+		return emitJSONBackendSetupError(ctx, err)
 	case errors.Is(err, backend.ErrUnsupported):
 		return emitJSONError(ctx, edit.StatusUnsupported, "unsupported-operation", err.Error(), "")
 	case errors.Is(err, backend.ErrSymbolNotFound):
@@ -157,6 +192,36 @@ func emitJSONOperationError(ctx jsonContext, err error) error {
 	case errors.As(err, &ec) && ec.ExitCode() == 2:
 		return emitJSONError(ctx, edit.StatusNoOp, "no-op", err.Error(), "", ec.ExitCode())
 	default:
-		return emitJSONError(ctx, edit.StatusBackendFailed, "operation-failed", err.Error(), "", exitCodeForError(err))
+		status := backendErrorStatus(err)
+		return emitJSONError(ctx, status, operationErrorCode(status), err.Error(), backendStatusHint(status), exitCodeForError(err))
 	}
+}
+
+// isBackendSetupError reports whether err is one of the typed backend setup or
+// initialization failures that emitJSONBackendSetupError classifies.
+func isBackendSetupError(err error) bool {
+	var runtimeMissing *backend.ErrAdapterRuntimeMissing
+	var lspMissing *ErrLSPServerMissing
+	var initFail *ErrBackendInitFailure
+	return errors.As(err, &runtimeMissing) ||
+		errors.As(err, &lspMissing) ||
+		errors.As(err, &initFail)
+}
+
+// operationErrorCode picks the error.code for a generic operation failure from
+// the resolved status: a missing backend reports backend-missing, everything
+// else reports the operation-failed catch-all.
+func operationErrorCode(status string) string {
+	if status == edit.StatusBackendMissing {
+		return "backend-missing"
+	}
+	return "operation-failed"
+}
+
+// backendStatusHint returns the remediation hint for backend-related statuses.
+func backendStatusHint(status string) string {
+	if status == edit.StatusBackendMissing {
+		return "Run `refute doctor` for backend setup details."
+	}
+	return ""
 }

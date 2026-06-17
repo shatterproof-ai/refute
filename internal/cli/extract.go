@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/shatterproof-ai/refute/internal/edit"
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
@@ -56,12 +57,22 @@ func init() {
 }
 
 func runExtract(kind string) error {
+	ctx := jsonContext{Operation: "extract-" + kind}
+	return routeOperationError(ctx, runExtractInner(kind, &ctx))
+}
+
+// runExtractInner performs the extraction and returns terminal errors for the
+// shared wrapper to route. It populates *ctx with best-available metadata
+// (language/workspace from the file, then backend once selected) so an error
+// envelope emitted by routeOperationError is fully attributed.
+func runExtractInner(kind string, ctx *jsonContext) error {
 	operation := "extract-" + kind
-	telemetrySetContext(jsonContext{Operation: operation})
+	telemetrySetContext(*ctx)
 	absFile, err := filepath.Abs(flagFile)
 	if err != nil {
 		return fmt.Errorf("resolving file path: %w", err)
 	}
+	*ctx = contextFromFile(operation, absFile)
 	sel, workspaceRoot, err := buildBackend(absFile)
 	if err != nil {
 		return err
@@ -76,34 +87,25 @@ func runExtract(kind string) error {
 		EndCol:    flagEndCol,
 	}
 
+	*ctx = contextFromSelection(operation, sel, workspaceRoot)
+	telemetrySetContext(*ctx)
+	refactorDone := telemetryPhase("backend-refactor-request")
+	var result *edit.WorkspaceEdit
 	switch kind {
 	case "function":
-		ctx := contextFromSelection("extract-function", sel, workspaceRoot)
-		telemetrySetContext(ctx)
-		refactorDone := telemetryPhase("backend-refactor-request")
-		result, err := sel.Backend.ExtractFunction(r, flagExtName)
-		refactorDone()
-		if err != nil {
-			return fmt.Errorf("extract-function failed: %w", err)
-		}
-		if len(result.FileEdits) == 0 {
-			return NoEditsError()
-		}
-		return applyOrPreview(result, ctx)
+		result, err = sel.Backend.ExtractFunction(r, flagExtName)
 	case "variable":
-		ctx := contextFromSelection("extract-variable", sel, workspaceRoot)
-		telemetrySetContext(ctx)
-		refactorDone := telemetryPhase("backend-refactor-request")
-		result, err := sel.Backend.ExtractVariable(r, flagExtName)
-		refactorDone()
-		if err != nil {
-			return fmt.Errorf("extract-variable failed: %w", err)
-		}
-		if len(result.FileEdits) == 0 {
-			return NoEditsError()
-		}
-		return applyOrPreview(result, ctx)
+		result, err = sel.Backend.ExtractVariable(r, flagExtName)
 	default:
+		refactorDone()
 		return fmt.Errorf("unknown extract kind %q", kind)
 	}
+	refactorDone()
+	if err != nil {
+		return fmt.Errorf("%s failed: %w", operation, err)
+	}
+	if len(result.FileEdits) == 0 {
+		return NoEditsError()
+	}
+	return applyOrPreview(result, *ctx)
 }
