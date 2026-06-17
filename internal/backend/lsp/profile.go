@@ -61,7 +61,20 @@ type languageProfile struct {
 	languageID string
 	engine     refactorEngine
 	priming    primingProfile
+	// operations is the list of refactoring operations this language's backend
+	// actually supports, in the same vocabulary as backend.Capability.Operation.
+	// Adapter.Capabilities() derives from this, so a language never advertises an
+	// operation its engine cannot perform. These must agree with the language's
+	// config.SupportMatrix Operations (guarded by a test).
+	operations []string
 }
+
+// Operation-support lists, named so they read at the registry call site. The
+// strings match backend.Capability.Operation and config.SupportMatrix.
+var (
+	fullOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
+	renameOnlyOps  = []string{"rename"}
+)
 
 // goSkipDirs and friends are the per-language directory skip sets, named so the
 // rationale stays close to the registry.
@@ -77,6 +90,7 @@ var languageProfiles = map[string]languageProfile{
 	"go": {
 		languageID: "go",
 		engine:     engineTitleMatch,
+		operations: fullOperations,
 		priming: primingProfile{
 			extensions:        map[string]string{".go": "go"},
 			skipDirs:          goSkipDirs,
@@ -88,6 +102,7 @@ var languageProfiles = map[string]languageProfile{
 	"rust": {
 		languageID: "rust",
 		engine:     engineAssist,
+		operations: fullOperations,
 		priming: primingProfile{
 			extensions:   map[string]string{".rs": "rust"},
 			skipDirs:     rustSkipDirs,
@@ -98,6 +113,7 @@ var languageProfiles = map[string]languageProfile{
 	"typescript": {
 		languageID: "typescript",
 		engine:     engineTitleMatch,
+		operations: renameOnlyOps,
 		priming: primingProfile{
 			extensions:   map[string]string{".ts": "typescript"},
 			skipDirs:     webSkipDirs,
@@ -108,6 +124,7 @@ var languageProfiles = map[string]languageProfile{
 	"typescriptreact": {
 		languageID: "typescriptreact",
 		engine:     engineTitleMatch,
+		operations: renameOnlyOps,
 		priming: primingProfile{
 			extensions:   map[string]string{".tsx": "typescriptreact"},
 			skipDirs:     webSkipDirs,
@@ -118,6 +135,7 @@ var languageProfiles = map[string]languageProfile{
 	"javascript": {
 		languageID: "javascript",
 		engine:     engineTitleMatch,
+		operations: renameOnlyOps,
 		priming: primingProfile{
 			extensions:   map[string]string{".js": "javascript"},
 			skipDirs:     webSkipDirs,
@@ -128,6 +146,7 @@ var languageProfiles = map[string]languageProfile{
 	"javascriptreact": {
 		languageID: "javascriptreact",
 		engine:     engineTitleMatch,
+		operations: renameOnlyOps,
 		priming: primingProfile{
 			extensions:   map[string]string{".jsx": "javascriptreact"},
 			skipDirs:     webSkipDirs,
@@ -141,15 +160,19 @@ var languageProfiles = map[string]languageProfile{
 	"python": {
 		languageID: "python",
 		engine:     engineTitleMatch,
+		operations: renameOnlyOps,
 		priming:    primingProfile{},
 	},
 }
 
 // profileFor returns the registered profile for a languageID, or a conservative
-// default (title-match engine, no priming) for an unregistered language.
+// default (title-match engine, no priming, rename-only) for an unregistered
+// language. Rename-only is the safe baseline: every LSP server implements
+// textDocument/rename, so an unknown language advertises rename without
+// claiming extract/inline it cannot perform.
 func profileFor(languageID string) languageProfile {
 	if p, ok := languageProfiles[languageID]; ok {
 		return p
 	}
-	return languageProfile{languageID: languageID, engine: engineTitleMatch}
+	return languageProfile{languageID: languageID, engine: engineTitleMatch, operations: renameOnlyOps}
 }
