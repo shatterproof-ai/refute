@@ -53,11 +53,10 @@ type primingProfile struct {
 
 // languageProfile is the per-language behavior the shared LSP adapter consults.
 //
-// Note: language-specific *symbol grammar* hooks (qualified-name parsing,
-// Rust trait/impl candidate filtering) currently live in the CLI layer
-// (internal/cli/rust_symbol.go) and are relocated alongside the per-operation
-// selector wiring under issue #68. This profile owns the LSP-backend behaviors
-// only.
+// Note: language-specific symbol grammar now lives outside this profile —
+// qualified-name parsing in internal/symbol (rust.go) and Rust trait/impl
+// candidate filtering in this package (rust_resolve.go, Adapter.FilterRustCandidates).
+// This profile owns the LSP-backend behaviors only.
 type languageProfile struct {
 	languageID string
 	engine     refactorEngine
