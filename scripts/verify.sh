@@ -1,36 +1,54 @@
 #!/usr/bin/env bash
-# Pre-release verification harness (issue #97).
+# Pre-release verification harness (issues #97, #120).
 #
 # Runs the full release-candidate check suite in one documented step:
 # static analysis, formatting, vulnerability scan, unit tests, a build,
 # a built-binary smoke test, and the optional integration and cross-shim
 # conformance suites. It prints the environment and backend versions up
-# front and marks every optional backend that is absent as SKIP (loudly,
-# never silently).
+# front and reports every check with one of four distinct outcomes (issue
+# #120), loudly and never silently:
+#
+#   PASS     the check ran and succeeded
+#   FAIL     the check ran and failed
+#   SKIP     the check was intentionally disabled (e.g. --no-integration)
+#   UNAVAIL  a required tool/backend is absent, so the check could not run
+#
+# By default the suite runs every gate to completion even when one fails
+# (keep-going), so a single failure never hides later checks — the use case
+# for a full audit. Pass --fail-fast to stop at the first failure instead.
 #
 # Exit codes distinguish the three outcomes the acceptance criteria require:
-#   0  every required check passed (skips are allowed)
+#   0  every required check passed (skips and unavailable tools are allowed)
 #   1  at least one required check FAILED
 #   2  the environment is unsupported (no Go toolchain, not a git checkout)
 #
-# A skipped optional backend never turns a passing run into a failure; it is
-# reported so the operator can decide whether the gap matters for the release.
+# Neither a SKIP nor an UNAVAIL turns a passing run into a failure; both are
+# reported (and counted separately) so the operator can decide whether the gap
+# matters for the release.
 set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-usage: scripts/verify.sh [--no-integration] [--no-conformance]
+usage: scripts/verify.sh [--keep-going|--fail-fast] [--no-integration] [--no-conformance]
 
 Verify a release candidate with one command. Runs, in order:
   go vet, gofmt, govulncheck, unit tests, build, binary smoke test,
   integration tests, cross-shim conformance, docs link check.
 
+Each check reports PASS, FAIL, SKIP (intentionally disabled), or UNAVAIL
+(required tool/backend absent). The exit code is 0 when every required check
+passed, 1 when any required check FAILED, 2 for an unsupported environment.
+
 Options:
+  --keep-going       run every gate to completion, even past a failure, then
+                     report a summary (default — use this for a full audit)
+  --fail-fast        stop at the first failing gate
   --no-integration   skip the tagged integration suite
   --no-conformance   skip the cross-shim conformance harness
   -h, --help         show this help
 
 Environment:
+  REFUTE_VERIFY_FAIL_FAST=1        same as --fail-fast
   REFUTE_VERIFY_NO_INTEGRATION=1   same as --no-integration
   REFUTE_VERIFY_NO_CONFORMANCE=1   same as --no-conformance
 USAGE
@@ -38,13 +56,23 @@ USAGE
 
 run_integration=1
 run_conformance=1
+fail_fast=0
+selftest=0
 [[ "${REFUTE_VERIFY_NO_INTEGRATION:-}" == "1" ]] && run_integration=0
 [[ "${REFUTE_VERIFY_NO_CONFORMANCE:-}" == "1" ]] && run_conformance=0
+[[ "${REFUTE_VERIFY_FAIL_FAST:-}" == "1" ]] && fail_fast=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --keep-going) fail_fast=0 ;;
+    --fail-fast) fail_fast=1 ;;
     --no-integration) run_integration=0 ;;
     --no-conformance) run_conformance=0 ;;
+    # Undocumented maintenance hook: exercise the reporting harness with a fixed
+    # set of synthetic checks (one each of pass/fail/skip/unavail) so the
+    # keep-going, fail-fast, and outcome-tally logic is testable without real
+    # tools or recursing into `go test`. See internal/verify_script_test.go.
+    --selftest) selftest=1 ;;
     -h | --help)
       usage
       exit 0
@@ -74,10 +102,26 @@ cd "${repo_root}"
 pass=0
 fail=0
 skip=0
+unavail=0
 failed_checks=()
+unavailable_checks=()
 
 hr() { printf '%s\n' "------------------------------------------------------------"; }
 note() { printf '%s\n' "$*"; }
+
+# print_summary — the pass/fail/skip/unavail tally plus the lists of failed and
+# unavailable checks. Shared by the fail-fast early exit and the normal end of
+# the run so both report identically.
+print_summary() {
+  hr
+  note "verification summary: ${pass} passed, ${fail} failed, ${skip} skipped, ${unavail} unavailable"
+  if [[ ${fail} -ne 0 ]]; then
+    note "failed checks: ${failed_checks[*]}"
+  fi
+  if [[ ${unavail} -ne 0 ]]; then
+    note "unavailable tools: ${unavailable_checks[*]}"
+  fi
+}
 
 # probe <label> <command...> — print "label: <version>" or a SKIP line when the
 # tool is absent. Used only for the informational version banner; absence here
@@ -116,15 +160,51 @@ run_check() {
     printf '%s\n' "${out}"
     fail=$((fail + 1))
     failed_checks+=("${name}")
+    if [[ ${fail_fast} -eq 1 ]]; then
+      note "fail-fast: stopping after the first failing gate (run with --keep-going for a full report)"
+      print_summary
+      note "result: FAIL"
+      exit 1
+    fi
   fi
 }
 
 skip_check() {
-  # skip_check <name> <reason>
+  # skip_check <name> <reason> — the check was intentionally disabled.
   hr
   note "SKIP ${1}: ${2}"
   skip=$((skip + 1))
 }
+
+unavailable_check() {
+  # unavailable_check <name> <reason> — a required tool or backend is absent, so
+  # the check could not run. Distinct from skip_check (a deliberate disable) so a
+  # full audit can tell "tool missing" apart from "turned off on purpose". Like a
+  # skip it never fails the run.
+  hr
+  note "UNAVAIL ${1}: ${2}"
+  unavail=$((unavail + 1))
+  unavailable_checks+=("${1}")
+}
+
+# Synthetic self-test of the reporting harness (see --selftest above). Runs one
+# check of each outcome through the real functions, honouring keep-going vs
+# fail-fast, then reports the summary. selftest-pass-2 runs only when keep-going
+# carried past the failing check.
+if [[ ${selftest} -eq 1 ]]; then
+  run_check "selftest-pass" true
+  run_check "selftest-fail" false
+  unavailable_check "selftest-unavail" "synthetic missing tool"
+  skip_check "selftest-skip" "synthetic disabled check"
+  run_check "selftest-pass-2" true
+  print_summary
+  if [[ ${fail} -ne 0 ]]; then
+    note "result: FAIL"
+    exit 1
+  fi
+  note "result: PASS"
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # Environment + backend version banner.
@@ -168,7 +248,7 @@ run_check "gofmt" gofmt_check
 if command -v govulncheck >/dev/null 2>&1; then
   run_check "govulncheck" govulncheck ./...
 else
-  skip_check "govulncheck" "govulncheck not on PATH (go install golang.org/x/vuln/cmd/govulncheck@latest)"
+  unavailable_check "govulncheck" "govulncheck not on PATH (go install golang.org/x/vuln/cmd/govulncheck@latest)"
 fi
 
 run_check "unit tests" go test ./...
@@ -200,7 +280,7 @@ if [[ ${run_integration} -eq 0 ]]; then
 elif command -v gopls >/dev/null 2>&1; then
   run_check "integration tests" go test -tags integration ./internal/...
 else
-  skip_check "integration tests" "gopls not on PATH; optional backends unavailable"
+  unavailable_check "integration tests" "gopls not on PATH; optional backends unavailable"
 fi
 
 # Cross-shim conformance harness. It self-skips per-toolchain and exits non-zero
@@ -210,7 +290,7 @@ if [[ ${run_conformance} -eq 0 ]]; then
 elif [[ -x scripts/shim-conformance.sh ]]; then
   run_check "shim conformance" scripts/shim-conformance.sh
 else
-  skip_check "shim conformance" "scripts/shim-conformance.sh not found"
+  unavailable_check "shim conformance" "scripts/shim-conformance.sh not found"
 fi
 
 # Docs check: every relative link in the documentation index must resolve to a
@@ -241,15 +321,13 @@ run_check "docs links" docs_link_check
 # ---------------------------------------------------------------------------
 # Summary.
 # ---------------------------------------------------------------------------
-hr
-note "verification summary: ${pass} passed, ${fail} failed, ${skip} skipped"
+print_summary
 if [[ ${fail} -ne 0 ]]; then
-  note "failed checks: ${failed_checks[*]}"
   note "result: FAIL"
   exit 1
 fi
-if [[ ${skip} -gt 0 ]]; then
-  note "result: PASS (with ${skip} skipped optional check(s))"
+if [[ ${skip} -gt 0 || ${unavail} -gt 0 ]]; then
+  note "result: PASS (with ${skip} skipped, ${unavail} unavailable optional check(s))"
 else
   note "result: PASS"
 fi
