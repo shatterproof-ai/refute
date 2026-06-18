@@ -92,12 +92,23 @@ func buildDoctorReport() DoctorReport {
 		Command:       "doctor",
 	}
 	cfg := doctorConfigFn()
+	// Probe the ts-morph adapter once; the same adapter and detection result
+	// applies to both TypeScript and JavaScript — only the language label differs.
+	var tsAdapterBase *DoctorBackendStatus
 	for _, entry := range config.SupportMatrix {
 		// The ts-morph adapter is the preferred backend for both TypeScript and
 		// JavaScript rename; surface it just before each language-server fallback
 		// row so JavaScript readiness reflects the adapter, not just the LSP.
 		if entry.Backend == "lsp/typescript-language-server" {
-			report.Backends = append(report.Backends, probeTSMorphAdapter(entry.Language))
+			if tsAdapterBase == nil {
+				r := probeTSMorphAdapter(entry.Language)
+				tsAdapterBase = &r
+				report.Backends = append(report.Backends, r)
+			} else {
+				row := *tsAdapterBase
+				row.Language = entry.Language
+				report.Backends = append(report.Backends, row)
+			}
 		}
 		report.Backends = append(report.Backends, probeSupportEntry(cfg, entry))
 	}

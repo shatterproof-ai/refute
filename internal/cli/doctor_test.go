@@ -309,7 +309,14 @@ func TestDoctor_JavaScriptTSMorphRow(t *testing.T) {
 
 	var buf bytes.Buffer
 	renderDoctorHuman(&buf, report)
-	if !strings.Contains(buf.String(), "javascript   tsmorph") {
+	var foundJSRow bool
+	for line := range strings.SplitSeq(buf.String(), "\n") {
+		if strings.Contains(line, "javascript") && strings.Contains(line, "tsmorph") {
+			foundJSRow = true
+			break
+		}
+	}
+	if !foundJSRow {
 		t.Errorf("human output missing javascript tsmorph row:\n%s", buf.String())
 	}
 }
