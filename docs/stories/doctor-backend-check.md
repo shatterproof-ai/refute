@@ -15,7 +15,7 @@ locked_sections: []
 The user runs `refute doctor` to learn which language backends are installed and ready on the current host.
 
 ## Story
-Before using `refute` refactoring commands, a developer or CI script needs to know whether the required language servers are present. `refute doctor` probes the `PATH` for each supported backend binary, checks for adapter dependencies (such as the tsmorph Node adapter), and reports the status of each backend along with install hints for anything missing. The command runs without modifying any source files and exits cleanly regardless of what is missing, making it safe to run in any environment.
+Before using `refute` refactoring commands, a developer or CI script needs to know whether the required language servers are present. `refute doctor` probes the `PATH` for each supported backend binary, checks for adapter dependencies (such as the tsmorph Node adapter), and reports the status of each backend along with install hints for anything missing. The ts-morph adapter is the preferred rename backend for both TypeScript and JavaScript, so doctor surfaces it as a separate row under each of those languages, above their language-server fallback row. The command runs without modifying any source files and exits cleanly regardless of what is missing, making it safe to run in any environment.
 
 ## Expected Behavior
 
@@ -30,6 +30,7 @@ This story does not validate that the detected binaries actually work correctly 
 - `--json` emits a JSON object with a `backends` array where each entry has at minimum `language`, `backend`, and `status` fields.
 - Status values are drawn from the defined set: `ok`, `missing`, `experimental`, `planned`, `not-claimed`.
 - When a backend binary is absent, `installHint` is populated in the JSON output.
+- The ts-morph adapter appears as its own row (`backend: tsmorph`) under both `language: typescript` and `language: javascript`, distinct from each language's `lsp/typescript-language-server` fallback row.
 - When a backend binary is present, doctor probes its version (e.g. `gopls version`, `rust-analyzer --version`) and reports it in the `version` field; the field is omitted when the version cannot be determined.
 
 ## Evidence

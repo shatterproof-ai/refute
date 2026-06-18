@@ -92,11 +92,23 @@ func buildDoctorReport() DoctorReport {
 		Command:       "doctor",
 	}
 	cfg := doctorConfigFn()
+	// Probe the ts-morph adapter once; the same adapter and detection result
+	// applies to both TypeScript and JavaScript — only the language label differs.
+	var tsAdapterBase *DoctorBackendStatus
 	for _, entry := range config.SupportMatrix {
-		// The ts-morph adapter is the preferred TypeScript backend; surface it
-		// just before the TypeScript language-server fallback row.
-		if entry.Language == "typescript" && entry.Backend == "lsp/typescript-language-server" {
-			report.Backends = append(report.Backends, probeTSMorphAdapter())
+		// The ts-morph adapter is the preferred backend for both TypeScript and
+		// JavaScript rename; surface it just before each language-server fallback
+		// row so JavaScript readiness reflects the adapter, not just the LSP.
+		if entry.Backend == "lsp/typescript-language-server" {
+			if tsAdapterBase == nil {
+				r := probeTSMorphAdapter(entry.Language)
+				tsAdapterBase = &r
+				report.Backends = append(report.Backends, r)
+			} else {
+				row := *tsAdapterBase
+				row.Language = entry.Language
+				report.Backends = append(report.Backends, row)
+			}
 		}
 		report.Backends = append(report.Backends, probeSupportEntry(cfg, entry))
 	}
@@ -104,10 +116,12 @@ func buildDoctorReport() DoctorReport {
 }
 
 // probeTSMorphAdapter checks whether the ts-morph adapter npm package is
-// discoverable on the current machine (global install or repo-relative dev path).
-func probeTSMorphAdapter() DoctorBackendStatus {
+// discoverable on the current machine (global install or repo-relative dev
+// path). The same adapter drives both TypeScript and JavaScript rename, so the
+// caller passes the language to report for this row.
+func probeTSMorphAdapter(language string) DoctorBackendStatus {
 	row := DoctorBackendStatus{
-		Language:    "typescript",
+		Language:    language,
 		Backend:     "tsmorph",
 		Operations:  []string{"rename"},
 		InstallHint: tsmorph.AdapterInstallHint(),
