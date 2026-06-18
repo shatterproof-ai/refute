@@ -884,8 +884,8 @@ func TestEndToEnd_FileNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected non-zero exit for nonexistent file, got success; output:\n%s", out)
 	}
-	if !strings.Contains(string(out), "no such file") {
-		t.Errorf("expected 'no such file' in output, got:\n%s", out)
+	if !strings.Contains(string(out), "does not exist") {
+		t.Errorf("expected 'does not exist' in output, got:\n%s", out)
 	}
 }
 
