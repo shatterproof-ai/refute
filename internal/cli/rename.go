@@ -147,6 +147,9 @@ func runRenameInner(kind symbol.SymbolKind, ctx *jsonContext) error {
 	if err != nil {
 		if flagJSON {
 			*ctx = contextFromFile("rename", loc.File)
+			if emitted, ok := emitLanguageUnsupportedError(*ctx, err); ok {
+				return emitted
+			}
 			return emitJSONError(*ctx, backendErrorStatus(err), "backend-unavailable", err.Error(), "Run `refute doctor` for backend setup details.")
 		}
 		return err

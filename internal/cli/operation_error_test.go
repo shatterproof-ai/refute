@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
+	"github.com/shatterproof-ai/refute/internal/backend/selector"
 	"github.com/shatterproof-ai/refute/internal/edit"
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
@@ -162,6 +164,13 @@ func TestEmitJSONOperationError_StatusRouting(t *testing.T) {
 			wantExit:   3,
 		},
 		{
+			name:       "language-unsupported",
+			err:        &selector.ErrLanguageUnsupported{Language: "java", Caveat: "Java/OpenRewrite support is not claimed for v0.1."},
+			wantStatus: edit.StatusUnsupported,
+			wantCode:   "language-unsupported",
+			wantExit:   1,
+		},
+		{
 			name:       "no-op",
 			err:        NoEditsError(),
 			wantStatus: edit.StatusNoOp,
@@ -202,6 +211,50 @@ func TestEmitJSONOperationError_StatusRouting(t *testing.T) {
 				t.Errorf("error code = %+v, want %q", got.Error, tc.wantCode)
 			}
 		})
+	}
+}
+
+// TestRename_UnsupportedLanguageReportsDocumentedStatus is the issue #110
+// end-to-end guard: a Java rename dry run must return the documented
+// language-unsupported envelope before any OpenRewrite setup, rather than
+// failing later with backend-missing/backend-unavailable. The fixture has no
+// language server configured, so reaching a backend at all would surface a
+// different status.
+func TestRename_UnsupportedLanguageReportsDocumentedStatus(t *testing.T) {
+	resetOperationFlagsForTest(t)
+	dir := t.TempDir()
+	javaFile := filepath.Join(dir, "Main.java")
+	if err := os.WriteFile(javaFile, []byte("public class Main {\n    int value = 1;\n    void hello() {}\n}\n"), 0o644); err != nil {
+		t.Fatalf("write java fixture: %v", err)
+	}
+
+	flagFile = javaFile
+	flagLine = 3
+	flagName = "hello"
+	flagNewName = "greet"
+	flagJSON = true
+
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = runRename(symbol.KindFunction)
+	})
+
+	var ec *ExitCodeError
+	if !errors.As(runErr, &ec) || ec.Code == 0 {
+		t.Fatalf("expected non-zero ExitCodeError, got %#v", runErr)
+	}
+	var got edit.JSONResult
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("unmarshal: %v\nraw:\n%s", err, out)
+	}
+	if got.Status != edit.StatusUnsupported {
+		t.Errorf("status = %q, want %q; envelope:\n%s", got.Status, edit.StatusUnsupported, out)
+	}
+	if got.Error == nil || got.Error.Code != "language-unsupported" {
+		t.Fatalf("error = %+v, want code language-unsupported", got.Error)
+	}
+	if !strings.Contains(got.Error.Message, "java is not supported") {
+		t.Errorf("message = %q, want it to mention java is not supported", got.Error.Message)
 	}
 }
 

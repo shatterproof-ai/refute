@@ -13,6 +13,25 @@ import (
 	"github.com/shatterproof-ai/refute/internal/language"
 )
 
+// ErrLanguageUnsupported is returned by ForFile when the detected language is
+// marked LevelUnsupported in the support matrix. Selection short-circuits with
+// this error before constructing any backend, so an operation on an unsupported
+// language reports the documented unsupported status instead of reaching a
+// backend that is not claimed for this release (issue #110).
+type ErrLanguageUnsupported struct {
+	// Language is the refute language key that is unsupported.
+	Language string
+	// Caveat is the support-matrix explanation shown to the user.
+	Caveat string
+}
+
+func (e *ErrLanguageUnsupported) Error() string {
+	if e.Caveat == "" {
+		return fmt.Sprintf("%s is not supported in this release", e.Language)
+	}
+	return fmt.Sprintf("%s is not supported in this release: %s", e.Language, e.Caveat)
+}
+
 // Selection describes the backend chosen for a file.
 type Selection struct {
 	Language    string
@@ -49,6 +68,15 @@ func ForFile(ctx context.Context, cfg *config.Config, workspaceRoot string, file
 	detected := language.Detect(filePath)
 	language := detected.Language
 	languageID := detected.LanguageID
+
+	// Gate unsupported languages before any backend routing or construction.
+	// The support matrix is the single source of truth for what refute claims;
+	// a row marked LevelUnsupported must never reach a backend (e.g. Java/Kotlin
+	// must not reach OpenRewrite setup), so callers can report the documented
+	// unsupported status instead of a backend-missing/backend-unavailable error.
+	if entry, ok := config.SupportFor(language); ok && entry.Level == config.LevelUnsupported {
+		return nil, &ErrLanguageUnsupported{Language: language, Caveat: entry.Caveats}
+	}
 
 	explicitAdapterPath := cfg.Tools.TSMorph.Adapter
 	if prefersTSMorph(language) && tsMorphAvailable(workspaceRoot, explicitAdapterPath) {

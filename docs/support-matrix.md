@@ -84,7 +84,10 @@ status from `internal/edit/json.go`: `backend-missing` when the language
 server is absent, `unsupported` for an operation the backend does not provide,
 `invalid-position` when a symbol cannot be resolved, and `backend-failed`
 (error code `apply-failed`) when applying edits fails after the preview is
-computed.
+computed. A file whose language is `unsupported` in this matrix (Java, Kotlin)
+is gated during backend selection: the command reports `unsupported` (error
+code `language-unsupported`) before any backend setup, rather than reaching the
+unclaimed backend and surfacing a misleading `backend-missing`.
 
 For Tier 1 rename (`refute rename --symbol pkg.Func --new-name New`) the
 backend is selected from the file's extension once the symbol is resolved,
