@@ -1,0 +1,107 @@
+{
+  "_comment": "Pinned real-world refactoring corpus (issue #96). Consumed by scripts/corpus-fetch.sh (materialization) and internal/corpus/corpus_test.go (the //go:build corpus lane). Each target pins a real upstream repository at a fixed commit, applies one verifiable refactoring through the refute CLI, and runs a build/typecheck/test command to prove the edit kept the project valid. Add a target by appending an entry; nothing else needs to change.",
+  "cacheDir": ".corpus-cache",
+  "targets": [
+    {
+      "name": "go-x-example-hello",
+      "language": "go",
+      "description": "golang.org/x/example hello module: cross-file rename of the exported reverse.String function, used from hello.go and the package tests.",
+      "repo": "https://github.com/golang/example",
+      "commit": "7f05d217867b2af52b0a28c6d1c91df97e1b5b39",
+      "subdir": "hello",
+      "backendTool": "gopls",
+      "rename": {
+        "command": "rename",
+        "file": "reverse/reverse.go",
+        "line": 9,
+        "name": "String",
+        "newName": "Reversed"
+      },
+      "expectRenamed": ["reverse/reverse.go", "hello.go"],
+      "verify": [
+        {"cmd": ["go", "build", "-buildvcs=false", "./..."], "needsTool": "go"}
+      ]
+    },
+    {
+      "name": "rust-itoa",
+      "language": "rust",
+      "description": "dtolnay/itoa: rename the public Buffer type. cargo check builds the lib target only, so the criterion bench dev-dependency is not fetched (offline-safe).",
+      "repo": "https://github.com/dtolnay/itoa",
+      "commit": "af77385d0daf4d0e949e81f2588be2e44f69f086",
+      "subdir": ".",
+      "backendTool": "rust-analyzer",
+      "rename": {
+        "command": "rename-type",
+        "file": "src/lib.rs",
+        "line": 72,
+        "name": "Buffer",
+        "newName": "ItoaBuffer"
+      },
+      "expectRenamed": ["src/lib.rs"],
+      "verify": [
+        {"cmd": ["cargo", "check"], "needsTool": "cargo"}
+      ]
+    },
+    {
+      "name": "ts-ky",
+      "language": "typescript",
+      "description": "sindresorhus/ky: rename the exported Ky class. The typecheck verify step needs an npm install and is network-gated (REFUTE_CORPUS_ALLOW_NETWORK_VERIFY=1).",
+      "repo": "https://github.com/sindresorhus/ky",
+      "commit": "61d6d66d27911001b9b4d57ab93139f9ad61384b",
+      "subdir": ".",
+      "backendTool": "typescript-language-server",
+      "rename": {
+        "command": "rename",
+        "file": "source/core/Ky.ts",
+        "line": 142,
+        "name": "Ky",
+        "newName": "KyClient"
+      },
+      "expectRenamed": ["source/core/Ky.ts"],
+      "verify": [
+        {"cmd": ["npm", "ci"], "needsTool": "npm", "network": true},
+        {"cmd": ["npx", "--no-install", "tsc", "--noEmit"], "needsTool": "npx", "network": true}
+      ]
+    },
+    {
+      "name": "python-six",
+      "language": "python",
+      "description": "benjaminp/six: rename the with_metaclass helper in the single-file module. py_compile is a dependency-free syntax verify.",
+      "repo": "https://github.com/benjaminp/six",
+      "commit": "c8e394065cd541a16c040515dc0afb85cf22a7c3",
+      "subdir": ".",
+      "backendTool": "pyright-langserver",
+      "rename": {
+        "command": "rename",
+        "file": "six.py",
+        "line": 861,
+        "name": "with_metaclass",
+        "newName": "with_meta_class"
+      },
+      "expectRenamed": ["six.py"],
+      "verify": [
+        {"cmd": ["python3", "-m", "py_compile", "six.py"], "needsTool": "python3"}
+      ]
+    },
+    {
+      "name": "java-json",
+      "language": "java",
+      "description": "stleary/JSON-java: rename the Property.toJSONObject method via OpenRewrite (a method rename, not a type rename, so no source file needs renaming to stay compilable). Requires the built OpenRewrite adapter JAR (REFUTE_OPENREWRITE_JAR); the maven compile verify is network-gated.",
+      "repo": "https://github.com/stleary/JSON-java",
+      "commit": "33a4698428c0155b91674cd87146cae9554cf468",
+      "subdir": ".",
+      "backendEnv": "REFUTE_OPENREWRITE_JAR",
+      "rename": {
+        "command": "rename-method",
+        "file": "src/main/java/org/json/Property.java",
+        "line": 29,
+        "name": "toJSONObject",
+        "newName": "toJsonObject"
+      },
+      "expectRenamed": ["src/main/java/org/json/Property.java"],
+      "verify": [
+        {"cmd": ["mvn", "-q", "-DskipTests", "compile"], "needsTool": "mvn", "network": true}
+      ]
+    }
+  ]
+}
