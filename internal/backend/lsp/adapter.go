@@ -219,6 +219,45 @@ func (a *Adapter) matchWorkspaceSymbols(leaf string, parts []string, query symbo
 // cannot stretch the worst-case wait without bound.
 const maxSymbolRetryDelay = 800 * time.Millisecond
 
+// retryConfig controls the timing of retryWithConfig: how many attempts to make
+// and how long to wait between them. When maxDelay is zero the wait is fixed at
+// delay for every retry; when maxDelay is positive the wait grows exponentially
+// (doubling after each attempt), starting at delay and capped at maxDelay.
+type retryConfig struct {
+	maxRetries int
+	delay      time.Duration
+	maxDelay   time.Duration
+}
+
+// retryWithConfig repeatedly invokes op until shouldRetry reports an attempt is
+// final (returns false) or the retry budget in cfg is exhausted. The first
+// attempt is immediate; subsequent attempts wait per cfg's backoff schedule.
+//
+// shouldRetry inspects each attempt's (result, err) and returns true to retry.
+// When it returns false the loop stops early and that attempt's result and err
+// are returned with ok == true. When the budget is exhausted the last attempt's
+// result and err are returned with ok == false, leaving the caller to choose the
+// appropriate exhaustion error.
+func retryWithConfig[T any](cfg retryConfig, op func() (T, error), shouldRetry func(T, error) bool) (result T, err error, ok bool) {
+	delay := cfg.delay
+	for attempt := 0; attempt < cfg.maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(delay)
+			if cfg.maxDelay > 0 {
+				delay *= 2
+				if delay > cfg.maxDelay {
+					delay = cfg.maxDelay
+				}
+			}
+		}
+		result, err = op()
+		if !shouldRetry(result, err) {
+			return result, err, true
+		}
+	}
+	return result, err, false
+}
+
 // resolveWithRetry repeatedly invokes query until it returns a non-empty match
 // set, exhausts the retry budget, or hits a hard error. An empty match set is
 // treated as a transient "index not ready yet" signal and retried after an
@@ -226,24 +265,19 @@ const maxSymbolRetryDelay = 800 * time.Millisecond
 // maxSymbolRetryDelay); a non-nil error is returned immediately. Exhausting
 // the budget without a match yields backend.ErrSymbolNotFound.
 func resolveWithRetry(query func() ([]symbol.Location, error), maxRetries int, baseDelay time.Duration) ([]symbol.Location, error) {
-	delay := baseDelay
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		if attempt > 0 {
-			time.Sleep(delay)
-			delay *= 2
-			if delay > maxSymbolRetryDelay {
-				delay = maxSymbolRetryDelay
-			}
-		}
-		matches, err := query()
-		if err != nil {
-			return nil, err
-		}
-		if len(matches) > 0 {
-			return matches, nil
-		}
+	cfg := retryConfig{maxRetries: maxRetries, delay: baseDelay, maxDelay: maxSymbolRetryDelay}
+	matches, err, ok := retryWithConfig(cfg, query, func(m []symbol.Location, err error) bool {
+		// Retry only on an empty match set; a hard error or a non-empty result
+		// is final.
+		return err == nil && len(m) == 0
+	})
+	if !ok {
+		return nil, backend.ErrSymbolNotFound
 	}
-	return nil, backend.ErrSymbolNotFound
+	if err != nil {
+		return nil, err
+	}
+	return matches, nil
 }
 
 func parseQualifiedName(name string) []string {
@@ -348,32 +382,35 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 	if a.renameRetryDelay > 0 {
 		retryDelay = a.renameRetryDelay
 	}
-	var fileEdits []edit.FileEdit
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		if attempt > 0 {
-			time.Sleep(retryDelay)
-		}
-		var err error
-		fileEdits, err = a.client.Rename(loc.File, lspLine, lspCharacter, newName)
-		if err == nil {
-			if len(fileEdits) > 0 {
-				break
+	cfg := retryConfig{maxRetries: maxRetries, delay: retryDelay}
+	fileEdits, renameErr, ok := retryWithConfig(cfg,
+		func() ([]edit.FileEdit, error) {
+			return a.client.Rename(loc.File, lspLine, lspCharacter, newName)
+		},
+		func(edits []edit.FileEdit, err error) bool {
+			// Retry while the server is still settling: a ContentModified or
+			// position-unavailable error, or a successful response with zero
+			// edits (the server may still be indexing). Any other error is
+			// fatal; a non-empty result is success.
+			if err != nil {
+				return errors.Is(err, ErrContentModified) || errors.Is(err, ErrRenamePositionUnavailable)
 			}
-			continue
-		}
-		if !errors.Is(err, ErrContentModified) && !errors.Is(err, ErrRenamePositionUnavailable) {
-			return nil, fmt.Errorf("rename: %w", err)
-		}
-		if attempt == maxRetries-1 {
-			return nil, fmt.Errorf("rename: server state did not settle after %d attempts: %w", maxRetries, err)
-		}
-	}
+			return len(edits) == 0
+		})
 
-	// Exhausting the retry budget with zero edits is a silent-failure trap:
-	// returning an empty WorkspaceEdit with a nil error would let the caller
-	// report a successful no-op that changed nothing. Surface a distinct error
-	// instead so the CLI reports a failure status.
-	if len(fileEdits) == 0 {
+	switch {
+	case ok && renameErr != nil:
+		// A non-retryable error stopped the loop early.
+		return nil, fmt.Errorf("rename: %w", renameErr)
+	case !ok && renameErr != nil:
+		// The budget was exhausted with the server still returning a retryable
+		// error: it never settled.
+		return nil, fmt.Errorf("rename: server state did not settle after %d attempts: %w", maxRetries, renameErr)
+	case len(fileEdits) == 0:
+		// The budget was exhausted with zero edits. Returning an empty
+		// WorkspaceEdit with a nil error would be a silent-failure trap: the
+		// caller would report a successful no-op that changed nothing. Surface
+		// a distinct error instead so the CLI reports a failure status.
 		return nil, fmt.Errorf("rename %q: %w", newName, ErrRenameNoEdits)
 	}
 
@@ -604,21 +641,23 @@ func (a *Adapter) runCodeAction(r symbol.SourceRange, name string, op rustAction
 		codeActionMaxRetries = 5
 		codeActionRetryDelay = 750 * time.Millisecond
 	)
-	var actions []CodeAction
-	for attempt := 0; attempt < codeActionMaxRetries; attempt++ {
-		if attempt > 0 {
-			time.Sleep(codeActionRetryDelay)
-		}
-		actions, err = a.client.CodeActions(r.File, startLine, startChar, endLine, endChar, kinds)
-		if err == nil {
-			break
-		}
-		if !isLSPError(err, lspContentModified) {
-			return nil, err
-		}
-		if attempt == codeActionMaxRetries-1 {
-			return nil, fmt.Errorf("code action: server state did not settle after %d attempts: %w", codeActionMaxRetries, err)
-		}
+	cfg := retryConfig{maxRetries: codeActionMaxRetries, delay: codeActionRetryDelay}
+	actions, err, ok := retryWithConfig(cfg,
+		func() ([]CodeAction, error) {
+			return a.client.CodeActions(r.File, startLine, startChar, endLine, endChar, kinds)
+		},
+		func(_ []CodeAction, err error) bool {
+			// Retry only while the server reports ContentModified; any other
+			// error is fatal and a nil error is success.
+			return err != nil && isLSPError(err, lspContentModified)
+		})
+	if !ok {
+		// Exhaustion here is only reachable after a retryable error on every
+		// attempt: the server never settled.
+		return nil, fmt.Errorf("code action: server state did not settle after %d attempts: %w", codeActionMaxRetries, err)
+	}
+	if err != nil {
+		return nil, err
 	}
 	chosen, err := a.matchAction(actions, op)
 	if err != nil {
