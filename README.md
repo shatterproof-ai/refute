@@ -175,6 +175,7 @@ real operations; informational commands such as `refute version` and
 | `refute extract-function` | Extract a selection into a new function. |
 | `refute extract-variable` | Extract a selection into a new variable. |
 | `refute inline` | Inline a variable or function call at the given position. Rust also supports `--symbol <qualified-name>` with `--call-site <file>:<line>:<col>` for single-call-site inline. |
+| `refute list-symbols` | Discover candidate symbols (file, line, column, kind, qualified name) before refactoring, resolved via the LSP `workspace/symbol` request. Filters with `--query`, `--file`, `--kind`, and `--lang`. Supports `--json`. |
 | `refute doctor` | Report which language backends are installed and ready. Supports `--json`. |
 | `refute version` | Print version, commit, and build date. |
 

@@ -41,6 +41,9 @@ global `--config`, `--dry-run`, and `--verbose` flags. Implemented subcommands:
 - `extract-function`;
 - `extract-variable`;
 - `inline`;
+- `list-symbols` — discovers candidate symbols via LSP `workspace/symbol`,
+  returning file, line, column, kind, and qualified name; filters by `--query`,
+  `--file`, `--kind`, and `--lang`; supports `--json`;
 - `doctor` — reports configured languages, backend availability, installed
   tools, and supported operations; supports `--json`.
 
@@ -220,7 +223,6 @@ installed.
 - MCP server transport and tool schemas.
 - Daemon process, socket protocol, backend lifecycle management, and backend
   pooling.
-- `list-symbols` CLI command backed by LSP `workspace/symbol`.
 - Comprehensive golden coverage and schema documentation for structured error
   JSON.
 - Backend-specific capability tests.
@@ -246,10 +248,10 @@ installed.
 
 3. **Agent safety depends on better introspection.**
 
-   Agents need `list_symbols`, `list_backends`, dry-run JSON, documented error
-   schemas, and stable MCP schemas before broad automated use is safe. `refute`
-   has started this with `doctor` and structured operation errors, but
-   `list-symbols`, complete schema docs, and MCP are still missing.
+   Agents need symbol discovery, backend introspection, dry-run JSON,
+   documented error schemas, and stable MCP schemas before broad automated use
+   is safe. `refute` now ships `doctor`, `list-symbols`, and structured
+   operation errors; complete golden schema coverage and MCP are still missing.
 
 4. **All-or-nothing editing is now safer but not fully proven.**
 
@@ -264,5 +266,4 @@ highest-leverage work is:
 
 - finish golden tests for all JSON output shapes (`--json --dry-run` coverage);
 - expand golden tests and docs for structured error outputs;
-- add a `list-symbols` command backed by LSP `workspace/symbol`;
 - then build the MCP layer on top of those contracts.
