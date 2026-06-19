@@ -37,7 +37,15 @@ go test -tags integration ./internal/...       # integration tests (need backend
 go vet ./...                                   # static checks
 gofmt -l .                                     # formatting; output must be empty
 govulncheck ./...                              # vulnerability scan
+make verify-report                             # full audit: every gate, keep-going summary
 ```
+
+For a full audit, run `make verify-report`: it runs every verification gate to
+completion even when one fails (so a single failure never hides later checks) and
+reports each as `PASS` / `FAIL` / `SKIP` / `UNAVAIL`. `make verify` is the
+fast-feedback variant that stops at the first failing gate. See
+[`docs/release-verification.md`](docs/release-verification.md) for the full
+contract.
 
 ## Integration Backend Prerequisites
 
