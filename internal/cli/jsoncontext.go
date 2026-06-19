@@ -147,7 +147,7 @@ func emitLanguageUnsupportedError(ctx jsonContext, err error) (error, bool) {
 	if !errors.As(err, &langUnsupported) {
 		return nil, false
 	}
-	return emitJSONError(ctx, edit.StatusUnsupported, "language-unsupported", err.Error(), languageUnsupportedHint), true
+	return emitJSONError(ctx, edit.StatusUnsupported, "unsupported-language", err.Error(), languageUnsupportedHint), true
 }
 
 func backendErrorStatus(err error) string {

@@ -167,7 +167,7 @@ func TestEmitJSONOperationError_StatusRouting(t *testing.T) {
 			name:       "language-unsupported",
 			err:        &selector.ErrLanguageUnsupported{Language: "java", Caveat: "Java/OpenRewrite support is not claimed for v0.1."},
 			wantStatus: edit.StatusUnsupported,
-			wantCode:   "language-unsupported",
+			wantCode:   "unsupported-language",
 			wantExit:   1,
 		},
 		{
@@ -250,8 +250,8 @@ func TestRename_UnsupportedLanguageReportsDocumentedStatus(t *testing.T) {
 	if got.Status != edit.StatusUnsupported {
 		t.Errorf("status = %q, want %q; envelope:\n%s", got.Status, edit.StatusUnsupported, out)
 	}
-	if got.Error == nil || got.Error.Code != "language-unsupported" {
-		t.Fatalf("error = %+v, want code language-unsupported", got.Error)
+	if got.Error == nil || got.Error.Code != "unsupported-language" {
+		t.Fatalf("error = %+v, want code unsupported-language", got.Error)
 	}
 	if !strings.Contains(got.Error.Message, "java is not supported") {
 		t.Errorf("message = %q, want it to mention java is not supported", got.Error.Message)
