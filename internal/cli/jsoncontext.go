@@ -133,6 +133,23 @@ func exitCodeForError(err error) int {
 	return 1
 }
 
+// languageUnsupportedHint is the remediation shown when an operation targets a
+// language the support matrix marks unsupported. It points at doctor and the
+// matrix doc rather than at backend installation, since no backend is claimed.
+const languageUnsupportedHint = "Run `refute doctor` to see which languages are supported. See " + supportMatrixURL + "."
+
+// emitLanguageUnsupportedError emits the documented unsupported envelope for a
+// language the support matrix marks unsupported (gated in selection before any
+// backend init). It returns false if err is not an ErrLanguageUnsupported so
+// callers can fall through to their existing classification.
+func emitLanguageUnsupportedError(ctx jsonContext, err error) (error, bool) {
+	var langUnsupported *selector.ErrLanguageUnsupported
+	if !errors.As(err, &langUnsupported) {
+		return nil, false
+	}
+	return emitJSONError(ctx, edit.StatusUnsupported, "unsupported-language", err.Error(), languageUnsupportedHint), true
+}
+
 func backendErrorStatus(err error) string {
 	if isBackendRuntimeMissing(err) {
 		return edit.StatusBackendMissing
@@ -178,6 +195,9 @@ func emitJSONBackendSetupError(ctx jsonContext, err error) error {
 // delegated to emitJSONBackendSetupError so the typed adapter/LSP/init
 // distinctions are honored regardless of which operation surfaced them.
 func emitJSONOperationError(ctx jsonContext, err error) error {
+	if emitted, ok := emitLanguageUnsupportedError(ctx, err); ok {
+		return emitted
+	}
 	var ec exitCoder
 	var symbolMissing *ErrSymbolNotFound
 	switch {

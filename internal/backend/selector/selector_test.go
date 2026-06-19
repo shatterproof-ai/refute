@@ -2,9 +2,11 @@ package selector
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/backend/lsp"
@@ -104,6 +106,73 @@ func TestForFile_JavaScriptJSXUsesBuiltinServer(t *testing.T) {
 	}
 	if _, ok := sel.Backend.(*lsp.Adapter); !ok {
 		t.Fatalf("Backend type: got %T, want *lsp.Adapter", sel.Backend)
+	}
+}
+
+// TestForFile_UnsupportedLanguageGatedBeforeBackendSetup proves that every
+// support-matrix row marked LevelUnsupported is short-circuited with a typed
+// ErrLanguageUnsupported before any backend constructor runs. This is the
+// regression guard for issue #110: a Java/Kotlin rename must report the
+// documented unsupported status instead of reaching OpenRewrite setup and
+// failing with backend-missing/backend-unavailable.
+func TestForFile_UnsupportedLanguageGatedBeforeBackendSetup(t *testing.T) {
+	cfg, err := config.Load("", "/nonexistent/workspace/root")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	// Spy on every backend constructor; none may run for an unsupported language.
+	var constructed bool
+	oldOR := newOpenRewriteBackend
+	oldTS := newTSMorphBackend
+	oldLSP := newLSPBackend
+	newOpenRewriteBackend = func() backend.RefactoringBackend { constructed = true; return fakeBackend{} }
+	newTSMorphBackend = func(context.Context, string) backend.RefactoringBackend { constructed = true; return fakeBackend{} }
+	newLSPBackend = func(context.Context, config.ServerConfig, string, time.Duration) backend.RefactoringBackend {
+		constructed = true
+		return fakeBackend{}
+	}
+	t.Cleanup(func() {
+		newOpenRewriteBackend = oldOR
+		newTSMorphBackend = oldTS
+		newLSPBackend = oldLSP
+	})
+
+	files := map[string]string{
+		"java":   "/tmp/Main.java",
+		"kotlin": "/tmp/Main.kt",
+	}
+
+	gated := 0
+	for _, entry := range config.SupportMatrix {
+		if entry.Level != config.LevelUnsupported {
+			continue
+		}
+		path, ok := files[entry.Language]
+		if !ok {
+			t.Fatalf("no test file mapped for unsupported language %q", entry.Language)
+		}
+		gated++
+
+		constructed = false
+		sel, err := ForFile(context.Background(), cfg, "/nonexistent/workspace/root", path)
+		if sel != nil {
+			t.Fatalf("%s: expected nil selection, got %#v", entry.Language, sel)
+		}
+		var unsupported *ErrLanguageUnsupported
+		if !errors.As(err, &unsupported) {
+			t.Fatalf("%s: got error %v, want *ErrLanguageUnsupported", entry.Language, err)
+		}
+		if unsupported.Language != entry.Language {
+			t.Fatalf("%s: error language = %q, want %q", entry.Language, unsupported.Language, entry.Language)
+		}
+		if constructed {
+			t.Fatalf("%s: a backend constructor ran for an unsupported language", entry.Language)
+		}
+	}
+
+	if gated == 0 {
+		t.Fatal("support matrix has no LevelUnsupported rows; nothing exercised")
 	}
 }
 
