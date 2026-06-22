@@ -3,8 +3,28 @@
 `refute` is a symbol-aware, multi-language refactoring tool. It drives language
 servers (LSP) and language-specific rewrite tools behind a single CLI so that
 operations like rename are computed by real backends rather than text
-substitution. Go is the primary implementation language; Java, TypeScript,
-Rust, and Python backends are invoked as subprocess adapters.
+substitution. Go is the primary implementation language.
+
+## Backend Support At A Glance
+
+Language backends sit at very different maturity levels — do not assume any
+non-Go language is a working subprocess adapter. The current high-level picture:
+
+- **Shipped (supported):** Go (`gopls`) is the primary, integration-tested,
+  installable-from-release backend.
+- **Experimental:** Rust (`rust-analyzer`), TypeScript, and JavaScript (ts-morph
+  adapter, with a `typescript-language-server` fallback) are implemented and
+  tested in development but may regress between releases.
+- **Planned:** Python (`pyright`) has language detection and an install hint but
+  no integration coverage yet.
+- **Not claimed (unsupported) for v0.1:** Java and Kotlin (OpenRewrite). Some
+  scaffolding exists, but these are explicitly out of scope and are gated to
+  return an `unsupported` status.
+
+These states are summaries, not a contract. Before relying on any non-Go
+support, run `refute doctor` to check local backend readiness and consult
+[`docs/support-matrix.md`](docs/support-matrix.md), which is the source of truth
+for per-language status, operations, and caveats.
 
 > Run shell commands prefixed with `rtk` for token-efficient output (a
 > maintainer's local tool; it passes commands through unchanged, so skip the
