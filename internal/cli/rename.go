@@ -295,6 +295,16 @@ func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
 	ctx := tier1RenameContext(language, workspaceRoot)
 	telemetrySetContext(ctx)
 
+	// Gate unsupported languages before any backend routing or construction,
+	// mirroring selector.ForFile for the Tier 2 path. A Tier 1 (--symbol) rename
+	// never reaches selector.ForFile, so without this check a row marked
+	// LevelUnsupported (e.g. Java/Kotlin) would fall through to backend setup and
+	// report backend-missing instead of the documented unsupported-language
+	// status (issue #124).
+	if entry, ok := config.SupportFor(language); ok && entry.Level == config.LevelUnsupported {
+		return nil, handleTier1BackendSetupError(ctx, &selector.ErrLanguageUnsupported{Language: language, Caveat: entry.Caveats})
+	}
+
 	selectDone := telemetryPhase("backend-selection")
 	cfg, err := config.Load(flagConfig, workspaceRoot)
 	if err != nil {
@@ -373,6 +383,17 @@ func tier1RenameContext(language, workspaceRoot string) jsonContext {
 }
 
 func handleTier1BackendSetupError(ctx jsonContext, err error) error {
+	// A language the support matrix marks unsupported reports the documented
+	// unsupported-language status, not a backend-unavailable error, in both JSON
+	// and human modes (matching the Tier 2 path in runRenameInner).
+	var langUnsupported *selector.ErrLanguageUnsupported
+	if errors.As(err, &langUnsupported) {
+		if flagJSON {
+			emitted, _ := emitLanguageUnsupportedError(ctx, err)
+			return emitted
+		}
+		return err
+	}
 	if flagJSON {
 		return emitJSONError(ctx, backendErrorStatus(err), "backend-unavailable", err.Error(), "Run `refute doctor` for backend setup details.")
 	}
