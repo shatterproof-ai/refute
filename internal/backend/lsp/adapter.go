@@ -765,14 +765,18 @@ func (a *Adapter) MoveToFile(_ symbol.Location, _ string) (*edit.WorkspaceEdit, 
 	return nil, backend.ErrUnsupported
 }
 
-// Capabilities returns the list of operations this adapter supports.
+// Capabilities returns the operations this adapter supports for its language,
+// derived from the language profile rather than a static list. A language whose
+// profile lists only "rename" (e.g. typescript-language-server or the python
+// skeleton) does not advertise extract/inline, so callers can refuse the
+// operation up front instead of failing with "no code-action matcher".
 func (a *Adapter) Capabilities() []backend.Capability {
-	return []backend.Capability{
-		{Operation: "rename"},
-		{Operation: "extract-function"},
-		{Operation: "extract-variable"},
-		{Operation: "inline"},
+	ops := profileFor(a.languageID).operations
+	caps := make([]backend.Capability, 0, len(ops))
+	for _, op := range ops {
+		caps = append(caps, backend.Capability{Operation: op})
 	}
+	return caps
 }
 
 // PrimeWorkspace explicitly primes the workspace for Tier 1 queries. Languages
