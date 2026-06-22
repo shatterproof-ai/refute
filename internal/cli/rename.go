@@ -312,10 +312,13 @@ func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
 	adapter, ctx, err := setupLSPBackend("rename", language, "", workspaceRoot)
 	if err != nil {
 		var setupErr *lspBackendSetupError
-		if errors.As(err, &setupErr) && setupErr.phase == "prime" {
-			return nil, handleTier1WorkspacePrimeError(ctx, setupErr.err)
+		if errors.As(err, &setupErr) {
+			if setupErr.phase == "prime" {
+				return nil, handleTier1WorkspacePrimeError(ctx, setupErr.err)
+			}
+			return nil, handleTier1BackendSetupError(ctx, setupErr.err)
 		}
-		return nil, handleTier1BackendSetupError(ctx, setupErr.err)
+		return nil, handleTier1BackendSetupError(ctx, err)
 	}
 	return &tier1RenameBackend{adapter: adapter, language: language, ctx: ctx}, nil
 }
