@@ -222,6 +222,59 @@ func TestTier1Rename_JSONNoServerConfigured(t *testing.T) {
 	}
 }
 
+// writeJavaFixture writes a minimal Java source file under a Go workspace so a
+// Tier 1 (--symbol) rename infers language "java" (an unsupported support-matrix
+// row) while still finding a workspace root. The go.mod marker only anchors the
+// workspace; the .java file drives language inference.
+func writeJavaFixture(t *testing.T, dir string) string {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/fix\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	javaFile := filepath.Join(dir, "Greeter.java")
+	if err := os.WriteFile(javaFile, []byte("class Greeter {\n    void greet() {}\n}\n"), 0o644); err != nil {
+		t.Fatalf("write Greeter.java: %v", err)
+	}
+	return javaFile
+}
+
+// TestTier1Rename_JSONUnsupportedLanguage guards issue #124: a Tier 1 (--symbol)
+// rename targeting a language the support matrix marks unsupported (Java) must
+// report the documented unsupported-language status instead of falling through
+// to backend setup and reporting backend-missing.
+func TestTier1Rename_JSONUnsupportedLanguage(t *testing.T) {
+	resetRenameFlagsForTest(t)
+	dir := t.TempDir()
+	javaFile := writeJavaFixture(t, dir)
+
+	flagFile = javaFile
+	flagSymbol = "Greeter.greet"
+	flagNewName = "hello"
+	flagJSON = true
+
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = runRename(symbol.KindMethod)
+	})
+	var ec *ExitCodeError
+	if !errors.As(runErr, &ec) || ec.Code == 0 {
+		t.Fatalf("expected non-zero ExitCodeError, got %#v", runErr)
+	}
+	var got edit.JSONResult
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("unmarshal: %v\nraw:\n%s", err, out)
+	}
+	if got.Status != edit.StatusUnsupported {
+		t.Errorf("status = %q, want %q; envelope:\n%s", got.Status, edit.StatusUnsupported, out)
+	}
+	if got.Error == nil || got.Error.Code != "unsupported-language" {
+		t.Fatalf("error = %+v, want code unsupported-language; envelope:\n%s", got.Error, out)
+	}
+	if got.Language != "java" {
+		t.Errorf("language = %q, want %q; envelope:\n%s", got.Language, "java", out)
+	}
+}
+
 // TestRename_JSONBackendMissing covers the non-tier-1 path where the resolved
 // position triggers buildBackend() and the configured server is missing.
 func TestRename_JSONBackendMissing(t *testing.T) {
