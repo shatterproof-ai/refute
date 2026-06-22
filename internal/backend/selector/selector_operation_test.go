@@ -43,8 +43,16 @@ func TestSelectForOperation_TypeScriptExtractRefused(t *testing.T) {
 }
 
 // TestSelectForOperation_RenameSupported verifies rename resolves to the LSP
-// backend for a rename-only language.
+// backend for a rename-only language when no ts-morph adapter is present.
+// tsMorphAvailable is mocked to false because the dev-fallback path in
+// resolveAdapterPaths (step 4: repo-relative via runtime.Caller) finds the
+// built adapter regardless of workspaceRoot, causing the test to return
+// "tsmorph" instead of "lsp" when the adapter is installed locally (#128).
 func TestSelectForOperation_RenameSupported(t *testing.T) {
+	oldAvail := tsMorphAvailable
+	tsMorphAvailable = func(_, _ string) bool { return false }
+	t.Cleanup(func() { tsMorphAvailable = oldAvail })
+
 	sel, err := SelectForOperation(context.Background(), &config.Config{}, "/ws", "/ws/app.ts", "rename")
 	if err != nil {
 		t.Fatalf("SelectForOperation(rename): %v", err)
