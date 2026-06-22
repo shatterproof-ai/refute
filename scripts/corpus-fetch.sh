@@ -41,7 +41,11 @@ with open(sys.argv[1]) as f:
 # Emit "name<TAB>repo<TAB>commit<TAB>subdir" for the requested targets (all when
 # no names are given). Unknown names are a hard error so a typo cannot silently
 # fetch nothing.
-mapfile -t rows < <(python3 -c '
+# Write to a temp file so python3's non-zero exit propagates through set -e
+# (process substitution in `mapfile < <(...)` swallows the subprocess exit code).
+_rows_tmp=$(mktemp)
+trap 'rm -f "$_rows_tmp"' EXIT
+python3 -c '
 import json, sys
 manifest, *want = sys.argv[1:]
 with open(manifest) as f:
@@ -55,7 +59,8 @@ if missing:
 for n in names:
     t = targets[n]
     print("\t".join([t["name"], t["repo"], t["commit"], t.get("subdir", ".")]))
-' "$manifest" "$@")
+' "$manifest" "$@" > "$_rows_tmp"
+mapfile -t rows < "$_rows_tmp"
 
 mkdir -p "$cache_dir"
 
@@ -82,11 +87,14 @@ for row in "${rows[@]}"; do
     exit 1
   fi
   git -C "$dest" checkout -q FETCH_HEAD
-  echo "$commit" >"$stamp"
 
   if [[ "$subdir" != "." && ! -d "$dest/$subdir" ]]; then
+    rm -rf "$dest"
     echo "corpus-fetch: subdir '$subdir' missing in $name @ $commit (stale pin?)" >&2
     exit 1
   fi
+  # Write stamp only after all validation passes so a failed materialization
+  # does not cache a corrupt state and cause future runs to silently skip.
+  echo "$commit" >"$stamp"
   echo "corpus-fetch: $name ready"
 done
