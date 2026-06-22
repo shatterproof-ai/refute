@@ -2,9 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,7 +14,6 @@ import (
 	"github.com/shatterproof-ai/refute/internal/backend/lsp"
 	"github.com/shatterproof-ai/refute/internal/config"
 	"github.com/shatterproof-ai/refute/internal/edit"
-	"github.com/shatterproof-ai/refute/internal/language"
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
@@ -180,59 +179,22 @@ func resolveListLanguage(fileScope string) (string, error) {
 }
 
 func setupListSymbolsBackend(lang, fileScope, workspaceRoot string) (*lsp.Adapter, jsonContext, error) {
-	ctx := jsonContext{Operation: "list-symbols", Language: lang, Backend: "lsp", WorkspaceRoot: workspaceRoot}
-	telemetrySetContext(ctx)
-
-	selectDone := telemetryPhase("backend-selection")
-	cfg, err := config.Load(flagConfig, workspaceRoot)
+	adapter, ctx, err := setupLSPBackend("list-symbols", lang, fileScope, workspaceRoot)
 	if err != nil {
-		selectDone()
-		return nil, ctx, fmt.Errorf("loading config: %w", err)
-	}
-	serverCfg := cfg.Server(lang)
-	if serverCfg.Command == "" {
-		selectDone()
-		return nil, ctx, fmt.Errorf("no server configured for language %q", lang)
-	}
-	if _, lookErr := exec.LookPath(serverCfg.Command); lookErr != nil {
-		selectDone()
-		return nil, ctx, &ErrLSPServerMissing{
-			Language:    lang,
-			Command:     serverCfg.Command,
-			InstallHint: config.InstallHint(lang),
+		// Preserve list-symbols' phase-specific error wrapping. Selection-phase
+		// errors already carry their final form and are returned as-is.
+		var setupErr *lspBackendSetupError
+		if errors.As(err, &setupErr) {
+			switch setupErr.phase {
+			case "initialize":
+				return nil, ctx, fmt.Errorf("initializing backend: %w", setupErr.err)
+			case "prime":
+				return nil, ctx, fmt.Errorf("priming workspace: %w", setupErr.err)
+			}
+			return nil, ctx, setupErr.err
 		}
+		return nil, ctx, err
 	}
-	selectDone()
-
-	languageID := lang
-	if fileScope != "" {
-		if id := language.Detect(fileScope).LanguageID; id != "" {
-			languageID = id
-		}
-	}
-
-	adapter := lsp.NewAdapter(serverCfg, languageID, nil)
-	adapter.SetContext(commandContext())
-	adapter.SetRequestTimeout(cfg.RequestTimeout())
-	ctx.BackendVersion = backendVersionForLanguageServer(lang, serverCfg.Command)
-
-	initDone := telemetryPhase("backend-initialization")
-	if err := adapter.Initialize(workspaceRoot); err != nil {
-		initDone()
-		return nil, ctx, fmt.Errorf("initializing backend: %w", err)
-	}
-	initDone()
-
-	// Prime so workspace/symbol sees the whole module rather than only files
-	// the server has already opened.
-	primeDone := telemetryPhase("workspace-priming")
-	if _, err := adapter.PrimeWorkspace(workspaceRoot); err != nil {
-		primeDone()
-		_ = adapter.Shutdown()
-		return nil, ctx, fmt.Errorf("priming workspace: %w", err)
-	}
-	primeDone()
-
 	return adapter, ctx, nil
 }
 
