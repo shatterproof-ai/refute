@@ -31,7 +31,13 @@ This story does not cover extracting to a different file or package. It does not
 
 ## Evidence
 ### Tests
-- (integration tests consuming fixtures under `testdata/`)
+- `internal/cli/validate_test.go` — `TestValidateExtractFlags` (required flags / range validation) and `TestCommandsRejectPositionalArgs` (extract-function rejects stray args).
+- `internal/cli/operation_error_test.go` — `TestOperationCommands_JSONBackendMissing` ("extract-function" case) exercises `--json` structured output; `TestEmitJSONOperationError_StatusRouting` ("no-op" case) covers `NoEditsError` mapping to exit code 2.
+- `internal/cli/ux_polish_test.go` — verifies extract-function marks `--file`, `--start-line`, `--start-col`, `--end-line`, `--end-col` as required.
+- `internal/integration_test.go` (build tag `integration`) — `TestEndToEnd_ExtractFunction` (Go via gopls) and `TestEndToEnd_ExtractRustFunction` (Rust via rust-analyzer) run the real end-to-end extraction against fixtures under `testdata/fixtures/`.
+- `internal/golden_test.go` (build tag `integration`) — `TestGolden` runs the `testdata/golden/extract-go-function/` golden case.
+
+Missing coverage: no test exercises `--name` being optional by omitting it and asserting success (the integration tests always pass `--name`), and `NoEditsError` is only reached through the shared router test, not via an extract backend that returns zero edits. Adding a unit/integration case that omits `--name` and one that drives an empty-edit backend response would close these gaps.
 ### Surface
 - `cli: refute extract-function --file <path> --start-line <n> --start-col <c> --end-line <m> --end-col <d>`
 ### Docs
