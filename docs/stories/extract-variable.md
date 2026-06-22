@@ -31,7 +31,11 @@ This story does not cover hoisting a variable beyond the immediately enclosing s
 
 ## Evidence
 ### Tests
-- (integration tests consuming fixtures under `testdata/`)
+- `internal/cli/validate_test.go` — `TestValidateExtractFlags` (required flags / range validation, shared by both extract commands) and `TestCommandsRejectPositionalArgs` (extract-variable rejects stray args).
+- `internal/cli/operation_error_test.go` — `TestOperationCommands_JSONBackendMissing` ("extract-variable" case) exercises `--json` structured output; `TestEmitJSONOperationError_StatusRouting` ("no-op" case) covers `NoEditsError` mapping to exit code 2.
+- `internal/integration_test.go` (build tag `integration`) — `TestEndToEnd_ExtractRustVariable` (Rust via rust-analyzer) and `TestEndToEnd_RustSnippetPlaceholderStripped` run the real end-to-end extraction against fixtures under `testdata/fixtures/`.
+
+Missing coverage: there is no Go end-to-end extract-variable test (only Rust is exercised end-to-end), no test asserts `--name` is optional by omitting it and expecting success, and `NoEditsError` is only reached through the shared router test rather than via an extract backend returning zero edits. Adding a Go integration case, a `--name`-omitted case, and an empty-edit backend case would close these gaps.
 ### Surface
 - `cli: refute extract-variable --file <path> --start-line <n> --start-col <c> --end-line <m> --end-col <d>`
 ### Docs
