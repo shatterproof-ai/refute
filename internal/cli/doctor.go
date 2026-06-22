@@ -99,7 +99,7 @@ func buildDoctorReport() DoctorReport {
 		// The ts-morph adapter is the preferred backend for both TypeScript and
 		// JavaScript rename; surface it just before each language-server fallback
 		// row so JavaScript readiness reflects the adapter, not just the LSP.
-		if entry.Backend == "lsp/typescript-language-server" {
+		if entry.Backend == config.BackendTSLanguageServer {
 			if tsAdapterBase == nil {
 				r := probeTSMorphAdapter(entry.Language)
 				tsAdapterBase = &r

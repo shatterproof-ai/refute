@@ -124,7 +124,7 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 				},
 				{
 					Language:    "typescript",
-					Backend:     "lsp/typescript-language-server",
+					Backend:     config.BackendTSLanguageServer,
 					Status:      DoctorStatusExperimental,
 					Binary:      "/fake/bin/typescript-language-server",
 					InstallHint: "npm install -g typescript-language-server typescript",
@@ -137,7 +137,7 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 				},
 				{
 					Language:    "javascript",
-					Backend:     "lsp/typescript-language-server",
+					Backend:     config.BackendTSLanguageServer,
 					Status:      DoctorStatusExperimental,
 					Binary:      "/fake/bin/typescript-language-server",
 					InstallHint: "npm install -g typescript-language-server typescript",
@@ -184,7 +184,7 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 				},
 				{
 					Language:          "typescript",
-					Backend:           "lsp/typescript-language-server",
+					Backend:           config.BackendTSLanguageServer,
 					Status:            DoctorStatusMissing,
 					MissingDependency: "typescript-language-server",
 					InstallHint:       "npm install -g typescript-language-server typescript",
@@ -198,7 +198,7 @@ func TestDoctor_BackendStatusesReflectSupportAndDependencies(t *testing.T) {
 				},
 				{
 					Language:          "javascript",
-					Backend:           "lsp/typescript-language-server",
+					Backend:           config.BackendTSLanguageServer,
 					Status:            DoctorStatusMissing,
 					MissingDependency: "typescript-language-server",
 					InstallHint:       "npm install -g typescript-language-server typescript",
@@ -296,7 +296,7 @@ func TestDoctor_JavaScriptTSMorphRow(t *testing.T) {
 		switch b.Backend {
 		case "tsmorph":
 			adapterIdx = i
-		case "lsp/typescript-language-server":
+		case config.BackendTSLanguageServer:
 			lspIdx = i
 		}
 	}

@@ -10,6 +10,15 @@ const (
 	LevelUnsupported  = "unsupported"
 )
 
+// Backend keys identify the driver behind a support-matrix row. Use these
+// constants instead of bare string literals so the runtime comparison in
+// `refute doctor` and the matrix definition cannot drift apart.
+const (
+	// BackendTSLanguageServer is the LSP fallback backend shared by the
+	// TypeScript and JavaScript rows.
+	BackendTSLanguageServer = "lsp/typescript-language-server"
+)
+
 // LanguageSupport is one row of refute's support matrix. SupportMatrix is the
 // single source of truth that feeds `refute doctor` rows, install hints, and
 // missing-server errors, so the runtime can never drift from the documented
@@ -57,7 +66,7 @@ var SupportMatrix = []LanguageSupport{
 	},
 	{
 		Language:    "typescript",
-		Backend:     "lsp/typescript-language-server",
+		Backend:     BackendTSLanguageServer,
 		Binary:      "typescript-language-server",
 		VersionArgs: []string{"--version"},
 		Level:       LevelExperimental,
@@ -67,7 +76,7 @@ var SupportMatrix = []LanguageSupport{
 	},
 	{
 		Language:    "javascript",
-		Backend:     "lsp/typescript-language-server",
+		Backend:     BackendTSLanguageServer,
 		Binary:      "typescript-language-server",
 		VersionArgs: []string{"--version"},
 		Level:       LevelExperimental,
