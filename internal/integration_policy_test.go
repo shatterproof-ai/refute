@@ -8,7 +8,7 @@ import (
 
 func TestIntegrationLanePolicy(t *testing.T) {
 	workflow := readRepoFile(t, ".github/workflows/ci.yml")
-	integrationTests := readRepoFile(t, "internal/integration_test.go")
+	integrationTests := readRepoFile(t, "internal/integration_helpers_test.go")
 
 	assertContains(t, workflow, "name: Run supported Go integration tests")
 	assertContains(t, workflow, "go test -tags integration ./internal/")
