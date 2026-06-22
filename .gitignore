@@ -13,4 +13,6 @@ adapters/cargo/target/
 shatter-artifacts/
 shatter-report/
 
+.corpus-cache/
+
 docs/stories/drift-todo.md

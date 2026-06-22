@@ -3,7 +3,7 @@ REFUTE_BIN ?= $(BIN_DIR)/refute
 SHATTER_BIN ?= shatter
 
 .PHONY: build test vet fmt shatter shatter-clean
-.PHONY: verify verify-report
+.PHONY: verify verify-report corpus corpus-clean
 
 build:
 	mkdir -p $(BIN_DIR)
@@ -39,3 +39,16 @@ shatter:
 
 shatter-clean:
 	rm -rf .shatter-cache .shatter/seeds shatter-artifacts shatter-report
+
+# Pinned real-world refactoring corpus (issue #96). Materializes upstream repos
+# at fixed commits and runs refute renames against them, then verifies the
+# project still builds/tests. Network-dependent and separated from `make test`;
+# targets whose backend or toolchain is absent skip with a reason. Set
+# REFUTE_CORPUS_ALLOW_NETWORK_VERIFY=1 to also run dependency-installing verify
+# steps (npm ci, mvn compile).
+corpus:
+	scripts/corpus-fetch.sh
+	go test -tags corpus ./internal/corpus/ -v
+
+corpus-clean:
+	rm -rf .corpus-cache
