@@ -74,8 +74,9 @@ func TestCorpus(t *testing.T) {
 		t.Run(tgt.Name, func(t *testing.T) {
 			requireBackend(t, tgt)
 			projectDir := materialize(t, root, m.CacheDir, tgt)
+			before := snapshotNewNameCounts(t, projectDir, tgt)
 			applyRename(t, refuteBin, projectDir, tgt)
-			assertRenamed(t, projectDir, tgt)
+			assertRenamed(t, projectDir, tgt, before)
 			runVerify(t, projectDir, tgt)
 		})
 	}
@@ -157,12 +158,50 @@ func applyRename(t *testing.T, refuteBin, projectDir string, tgt target) {
 	}
 }
 
-// assertRenamed checks that the new identifier is present in every file the
-// rename was expected to touch — proving cross-file propagation reached each
-// one. The old identifier is intentionally not asserted absent: common tokens
-// (e.g. "String") legitimately survive in unrelated references and doc
-// comments, so the build/typecheck verify below is the real correctness gate.
-func assertRenamed(t *testing.T, projectDir string, tgt target) {
+// snapshotNewNameCounts records, for every file the rename is expected to touch,
+// how many times the new identifier already appears before the rename runs. This
+// baseline is what lets assertRenamed demand a strict increase rather than mere
+// presence (see its doc comment for why presence alone is too weak). Files that
+// do not yet exist count as zero. The snapshot must be taken after materialize
+// and before applyRename, while projectDir still holds the original sources.
+func snapshotNewNameCounts(t *testing.T, projectDir string, tgt target) map[string]int {
+	t.Helper()
+	counts := make(map[string]int, len(tgt.ExpectRenamed))
+	for _, rel := range tgt.ExpectRenamed {
+		data, err := os.ReadFile(filepath.Join(projectDir, rel))
+		if err != nil {
+			if os.IsNotExist(err) {
+				counts[rel] = 0
+				continue
+			}
+			t.Fatalf("snapshotting expected-renamed file %s for %s: %v", rel, tgt.Name, err)
+		}
+		counts[rel] = strings.Count(string(data), tgt.Rename.NewName)
+	}
+	return counts
+}
+
+// assertRenamed checks that the rename strictly increased the number of new-name
+// occurrences in every file it was expected to touch, using the pre-rename
+// baseline captured by snapshotNewNameCounts. Requiring an increase — rather than
+// mere presence — is what makes this a real propagation gate: a backend that
+// no-ops a file leaves its new-name count unchanged and now fails here.
+//
+// This specifically closes the substring/pre-existing false positive that a bare
+// strings.Contains check suffers. When the new name contains the old name
+// (rust-itoa renames Buffer -> ItoaBuffer) a no-op file may still literally
+// contain "ItoaBuffer" in a comment, and an unrelated file may already contain
+// the new name for other reasons; in both cases Contains passes green even
+// though nothing was rewritten. A strict count increase does not.
+//
+// What this still does NOT guarantee: that the increase came from renaming the
+// intended symbol rather than some incidental text rewrite, nor that the old
+// identifier is gone — common tokens legitimately survive in unrelated
+// references and doc comments, and when the old name is a substring of the new
+// name (Buffer inside ItoaBuffer) its literal count need not drop at all. The
+// old name is therefore intentionally not asserted absent; the build/typecheck
+// verify below remains the real semantic correctness gate.
+func assertRenamed(t *testing.T, projectDir string, tgt target, before map[string]int) {
 	t.Helper()
 	for _, rel := range tgt.ExpectRenamed {
 		path := filepath.Join(projectDir, rel)
@@ -170,9 +209,10 @@ func assertRenamed(t *testing.T, projectDir string, tgt target) {
 		if err != nil {
 			t.Fatalf("reading expected-renamed file %s for %s: %v", rel, tgt.Name, err)
 		}
-		if !strings.Contains(string(data), tgt.Rename.NewName) {
-			t.Fatalf("%s: %s does not contain new name %q after rename; the backend did not propagate the edit there",
-				tgt.Name, rel, tgt.Rename.NewName)
+		after := strings.Count(string(data), tgt.Rename.NewName)
+		if after <= before[rel] {
+			t.Fatalf("%s: %s new-name %q count did not increase after rename (before=%d, after=%d); the backend did not propagate the edit there",
+				tgt.Name, rel, tgt.Rename.NewName, before[rel], after)
 		}
 	}
 }
