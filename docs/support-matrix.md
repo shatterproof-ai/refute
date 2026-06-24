@@ -1,8 +1,11 @@
 # Support Matrix
 
-This document is the source of truth for what `refute` supports in the
-current release. The runtime `refute doctor` command reflects the same data;
-if the two ever disagree, the discrepancy is a bug.
+This document is the prose mirror of the runtime support matrix. The normative
+source of truth is `internal/config.SupportMatrix` (in `internal/config/support.go`)
+as surfaced by `refute doctor --json`; this file is **checked against** it. If
+the two ever disagree, the discrepancy is a bug — fix the doc, not the runtime
+table. See the [Drift-Control Policy](drift-control.md) for the reconciliation
+rule and the pre-landing checklist.
 
 ## Status definitions
 

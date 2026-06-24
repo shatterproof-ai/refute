@@ -4,6 +4,11 @@ This index separates current contracts from historical artifacts. Historical
 plans, logs, and handoffs are retained for context only; do not execute them
 unless a current tracker issue explicitly reactivates them.
 
+Before changing any user-facing or support-matrix surface, read the
+[Drift-Control Policy](drift-control.md): it names the normative source of truth
+for each kind of capability, status, and roadmap claim and gives a pre-landing
+checklist for keeping docs, stories, and tests in sync.
+
 ## Current Contracts
 
 - [README](../README.md) -- user-facing install, support, and command overview.
@@ -12,6 +17,7 @@ unless a current tracker issue explicitly reactivates them.
 - [Project Goals](project-goals.md) -- project direction and intended outcomes.
 - [Roadmap](roadmap.md) -- planned work and sequencing.
 - [Support Matrix](support-matrix.md) -- canonical language/backend support table.
+- [Drift-Control Policy](drift-control.md) -- normative sources and pre-landing checklist that keep capability, status, and roadmap docs in sync with runtime.
 - [JSON Output and Exit Codes](json-schema.md) -- normative `--json`, `doctor --json`, coordinate, versioning, and exit-code reference.
 - [Release Process](release.md) -- repeatable v0.1 release commands and artifacts.
 - [Release Verification](release-verification.md) -- one-command pre-release check suite (`make verify`).
