@@ -26,6 +26,14 @@ support, run `refute doctor` to check local backend readiness and consult
 [`docs/support-matrix.md`](docs/support-matrix.md), which is the source of truth
 for per-language status, operations, and caveats.
 
+Before changing any user-facing surface or support claim, read the
+[Drift-Control Policy](docs/drift-control.md). It names the normative source of
+truth for backend support, the CLI command inventory, the JSON schema, stories,
+and roadmap/current-state status, and gives a pre-landing checklist for keeping
+docs, stories, and tests in sync. The runtime source of truth for backend
+support is `internal/config.SupportMatrix` as surfaced by `refute doctor --json`;
+`docs/support-matrix.md` must be reconciled against it.
+
 > Run shell commands prefixed with `rtk` for token-efficient output (a
 > maintainer's local tool; it passes commands through unchanged, so skip the
 > prefix if `rtk` is unavailable).
