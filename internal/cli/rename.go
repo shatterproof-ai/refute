@@ -101,7 +101,7 @@ func runRename(kind symbol.SymbolKind) error {
 // runRenameInner performs the rename and returns terminal errors for the shared
 // wrapper to route. It updates *ctx as it resolves language/backend metadata so
 // an envelope emitted by routeOperationError is fully attributed. Paths that
-// produce a specialized status (invalid-position, backend-unavailable) emit
+// produce a specialized status (invalid-position, backend setup) emit
 // their envelope inline; the wrapper recognizes the resulting jsonEmitted error
 // and passes it through without a second envelope.
 func runRenameInner(kind symbol.SymbolKind, ctx *jsonContext) error {
@@ -150,7 +150,7 @@ func runRenameInner(kind symbol.SymbolKind, ctx *jsonContext) error {
 			if emitted, ok := emitLanguageUnsupportedError(*ctx, err); ok {
 				return emitted
 			}
-			return emitJSONError(*ctx, backendErrorStatus(err), "backend-unavailable", err.Error(), "Run `refute doctor` for backend setup details.")
+			return emitJSONBackendSetupError(*ctx, err)
 		}
 		return err
 	}
@@ -192,7 +192,7 @@ func buildBackend(filePath string) (*selector.Selection, string, error) {
 	initDone := telemetryPhase("backend-initialization")
 	if err := sel.Backend.Initialize(workspaceRoot); err != nil {
 		initDone()
-		return nil, "", fmt.Errorf("initializing backend: %w", err)
+		return nil, "", NewBackendInitFailure(sel.BackendName, err)
 	}
 	initDone()
 	return sel, workspaceRoot, nil
@@ -313,7 +313,10 @@ func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
 	if err != nil {
 		var setupErr *lspBackendSetupError
 		if errors.As(err, &setupErr) {
-			if setupErr.phase == "prime" {
+			switch setupErr.phase {
+			case "initialize":
+				return nil, handleTier1BackendSetupError(ctx, NewBackendInitFailure("lsp", setupErr.err))
+			case "prime":
 				return nil, handleTier1WorkspacePrimeError(ctx, setupErr.err)
 			}
 			return nil, handleTier1BackendSetupError(ctx, setupErr.err)
@@ -360,7 +363,7 @@ func tier1RenameContext(language, workspaceRoot string) jsonContext {
 
 func handleTier1BackendSetupError(ctx jsonContext, err error) error {
 	// A language the support matrix marks unsupported reports the documented
-	// unsupported-language status, not a backend-unavailable error, in both JSON
+	// unsupported-language status, not a backend setup error, in both JSON
 	// and human modes (matching the Tier 2 path in runRenameInner).
 	var langUnsupported *selector.ErrLanguageUnsupported
 	if errors.As(err, &langUnsupported) {
@@ -371,14 +374,18 @@ func handleTier1BackendSetupError(ctx jsonContext, err error) error {
 		return err
 	}
 	if flagJSON {
-		return emitJSONError(ctx, backendErrorStatus(err), "backend-unavailable", err.Error(), "Run `refute doctor` for backend setup details.")
+		return emitJSONBackendSetupError(ctx, err)
+	}
+	var initFail *ErrBackendInitFailure
+	if errors.As(err, &initFail) {
+		return err
 	}
 	return fmt.Errorf("initializing backend: %w", err)
 }
 
 func handleTier1WorkspacePrimeError(ctx jsonContext, err error) error {
 	if flagJSON {
-		return emitJSONError(ctx, edit.StatusBackendFailed, "backend-failed", err.Error(), "")
+		return emitJSONBackendSetupError(ctx, fmt.Errorf("priming workspace: %w", err))
 	}
 	return fmt.Errorf("priming workspace: %w", err)
 }

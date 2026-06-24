@@ -128,7 +128,7 @@ func runListSymbols() error {
 	adapter, ctx, err := setupListSymbolsBackend(lang, fileScope, workspaceRoot)
 	if err != nil {
 		if flagJSON {
-			return emitJSONError(ctx, backendErrorStatus(err), "backend-unavailable", err.Error(), "Run `refute doctor` for backend setup details.")
+			return emitJSONBackendSetupError(ctx, err)
 		}
 		return err
 	}
@@ -187,7 +187,7 @@ func setupListSymbolsBackend(lang, fileScope, workspaceRoot string) (*lsp.Adapte
 		if errors.As(err, &setupErr) {
 			switch setupErr.phase {
 			case "initialize":
-				return nil, ctx, fmt.Errorf("initializing backend: %w", setupErr.err)
+				return nil, ctx, NewBackendInitFailure("lsp", setupErr.err)
 			case "prime":
 				return nil, ctx, fmt.Errorf("priming workspace: %w", setupErr.err)
 			}

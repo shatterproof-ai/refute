@@ -26,7 +26,7 @@ func TestRunExitCodes_HumanAndJSON(t *testing.T) {
 		{name: "json generic failure", mode: "json-generic", wantCode: 1, wantStatus: edit.StatusBackendFailed, wantErr: "operation-failed"},
 		{name: "json no edits", mode: "json-no-edits", wantCode: 2, wantStatus: edit.StatusNoOp, wantErr: "no-op"},
 		{name: "json no match", mode: "json-symbol-not-found", wantCode: 2, wantStatus: edit.StatusInvalidPosition, wantErr: "symbol-not-found"},
-		{name: "json backend missing", mode: "json-backend-missing", wantCode: 3, wantStatus: edit.StatusBackendMissing, wantErr: "backend-unavailable"},
+		{name: "json backend missing", mode: "json-backend-missing", wantCode: 3, wantStatus: edit.StatusBackendMissing, wantErr: "backend-missing"},
 	}
 
 	for _, tt := range tests {
@@ -91,7 +91,7 @@ func runExitCodeHelperError(mode string) error {
 	case "json-backend-missing":
 		flagJSON = true
 		err := backendMissingForTest()
-		return emitJSONError(ctx, backendErrorStatus(err), "backend-unavailable", err.Error(), "Run `refute doctor` for backend setup details.")
+		return emitJSONBackendSetupError(ctx, err)
 	default:
 		return errors.New("unknown test helper mode: " + mode)
 	}

@@ -119,8 +119,14 @@ func TestOperationCommands_JSONBackendMissing(t *testing.T) {
 			if got.Status != edit.StatusBackendMissing {
 				t.Errorf("status = %q, want %q; envelope:\n%s", got.Status, edit.StatusBackendMissing, out)
 			}
-			if got.Error == nil || got.Error.Code == "" {
-				t.Fatalf("missing error object: %+v", got.Error)
+			if got.Error == nil {
+				t.Fatalf("missing error object")
+			}
+			if got.Error.Code != "backend-missing" {
+				t.Fatalf("error code = %q, want backend-missing; envelope:\n%s", got.Error.Code, out)
+			}
+			if got.Error.Hint == "" {
+				t.Fatalf("hint is empty; envelope:\n%s", out)
 			}
 		})
 	}
@@ -162,6 +168,20 @@ func TestEmitJSONOperationError_StatusRouting(t *testing.T) {
 			wantStatus: edit.StatusBackendMissing,
 			wantCode:   "backend-missing",
 			wantExit:   3,
+		},
+		{
+			name:       "adapter-runtime-missing",
+			err:        tsMorphRuntimeMissing(),
+			wantStatus: edit.StatusBackendMissing,
+			wantCode:   "adapter-runtime-missing",
+			wantExit:   3,
+		},
+		{
+			name:       "backend-init-failed",
+			err:        NewBackendInitFailure("lsp", errors.New("handshake timed out")),
+			wantStatus: edit.StatusBackendFailed,
+			wantCode:   "backend-init-failed",
+			wantExit:   1,
 		},
 		{
 			name:       "language-unsupported",
@@ -217,7 +237,7 @@ func TestEmitJSONOperationError_StatusRouting(t *testing.T) {
 // TestRename_UnsupportedLanguageReportsDocumentedStatus is the issue #110
 // end-to-end guard: a Java rename dry run must return the documented
 // language-unsupported envelope before any OpenRewrite setup, rather than
-// failing later with backend-missing/backend-unavailable. The fixture has no
+// failing later with a backend setup error. The fixture has no
 // language server configured, so reaching a backend at all would surface a
 // different status.
 func TestRename_UnsupportedLanguageReportsDocumentedStatus(t *testing.T) {
