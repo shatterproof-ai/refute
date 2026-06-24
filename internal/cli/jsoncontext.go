@@ -138,6 +138,10 @@ func exitCodeForError(err error) int {
 // matrix doc rather than at backend installation, since no backend is claimed.
 const languageUnsupportedHint = "Run `refute doctor` to see which languages are supported. See " + supportMatrixURL + "."
 
+// unsupportedOperationHint is shown when a language/backend exists but none of
+// its configured candidates supports the requested operation.
+const unsupportedOperationHint = "Run `refute doctor` to see supported operations for each backend. See " + supportMatrixURL + "."
+
 // emitLanguageUnsupportedError emits the documented unsupported envelope for a
 // language the support matrix marks unsupported (gated in selection before any
 // backend init). It returns false if err is not an ErrLanguageUnsupported so
@@ -208,8 +212,13 @@ func emitJSONOperationError(ctx jsonContext, err error) error {
 	switch {
 	case isBackendSetupError(err):
 		return emitJSONBackendSetupError(ctx, err)
+	// SelectForOperation refuses unsupported operations before backend setup;
+	// backend.ErrUnsupported is the equivalent refusal from a backend that was
+	// already selected. Consumers see the same JSON contract for both.
+	case errors.Is(err, selector.ErrOperationUnsupported):
+		return emitJSONError(ctx, edit.StatusUnsupported, "unsupported-operation", err.Error(), unsupportedOperationHint)
 	case errors.Is(err, backend.ErrUnsupported):
-		return emitJSONError(ctx, edit.StatusUnsupported, "unsupported-operation", err.Error(), "")
+		return emitJSONError(ctx, edit.StatusUnsupported, "unsupported-operation", err.Error(), unsupportedOperationHint)
 	case errors.Is(err, backend.ErrSymbolNotFound):
 		return emitJSONError(ctx, edit.StatusInvalidPosition, "symbol-not-found", err.Error(), "", 2)
 	case errors.As(err, &symbolMissing):

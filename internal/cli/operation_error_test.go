@@ -132,6 +132,86 @@ func TestOperationCommands_JSONBackendMissing(t *testing.T) {
 	}
 }
 
+func TestOperationCommands_JSONUnsupportedOperationBeforeBackendSetup(t *testing.T) {
+	cases := []struct {
+		name string
+		run  func(tsFile string) error
+	}{
+		{
+			name: "extract-function",
+			run: func(tsFile string) error {
+				flagFile = tsFile
+				flagStartLine, flagStartCol = 1, 1
+				flagEndLine, flagEndCol = 1, 31
+				return runExtract("function")
+			},
+		},
+		{
+			name: "extract-variable",
+			run: func(tsFile string) error {
+				flagFile = tsFile
+				flagStartLine, flagStartCol = 2, 10
+				flagEndLine, flagEndCol = 2, 18
+				return runExtract("variable")
+			},
+		},
+		{
+			name: "inline",
+			run: func(tsFile string) error {
+				flagFile = tsFile
+				flagLine = 1
+				flagName = "add"
+				return runInline()
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resetOperationFlagsForTest(t)
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte("{}\n"), 0o644); err != nil {
+				t.Fatalf("write package.json: %v", err)
+			}
+			tsFile := filepath.Join(dir, "math.ts")
+			if err := os.WriteFile(tsFile, []byte("export function add() {\n  return left + right;\n}\n"), 0o644); err != nil {
+				t.Fatalf("write TS fixture: %v", err)
+			}
+			flagConfig = writeServerConfig(t, dir, "typescript", "refute-nonexistent-lsp-binary-xyz")
+			flagJSON = true
+
+			var runErr error
+			out := captureStdout(t, func() {
+				runErr = tc.run(tsFile)
+			})
+
+			var ec *ExitCodeError
+			if !errors.As(runErr, &ec) || ec.Code != 1 {
+				t.Fatalf("expected exit code 1, got %#v", runErr)
+			}
+			var got edit.JSONResult
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatalf("unmarshal: %v\nraw:\n%s", err, out)
+			}
+			if got.Status != edit.StatusUnsupported {
+				t.Fatalf("status = %q, want %q; envelope:\n%s", got.Status, edit.StatusUnsupported, out)
+			}
+			if got.Error == nil || got.Error.Code != "unsupported-operation" {
+				t.Fatalf("error = %+v, want code unsupported-operation; envelope:\n%s", got.Error, out)
+			}
+			if got.Error.Hint == "" {
+				t.Fatalf("hint is empty; envelope:\n%s", out)
+			}
+			if got.Language != "typescript" {
+				t.Fatalf("language = %q, want typescript; envelope:\n%s", got.Language, out)
+			}
+			if got.WorkspaceRoot != dir {
+				t.Fatalf("workspaceRoot = %q, want %q; envelope:\n%s", got.WorkspaceRoot, dir, out)
+			}
+		})
+	}
+}
+
 // TestEmitJSONOperationError_StatusRouting is a table-driven check that the
 // shared router maps each error category to the correct envelope status and
 // code for any operation context. This covers unsupported-operation and
@@ -151,6 +231,13 @@ func TestEmitJSONOperationError_StatusRouting(t *testing.T) {
 		{
 			name:       "unsupported",
 			err:        fmt.Errorf("extract-variable failed: %w", backend.ErrUnsupported),
+			wantStatus: edit.StatusUnsupported,
+			wantCode:   "unsupported-operation",
+			wantExit:   1,
+		},
+		{
+			name:       "selector-operation-unsupported",
+			err:        fmt.Errorf("extract-variable: %w", selector.ErrOperationUnsupported),
 			wantStatus: edit.StatusUnsupported,
 			wantCode:   "unsupported-operation",
 			wantExit:   1,
@@ -229,6 +316,9 @@ func TestEmitJSONOperationError_StatusRouting(t *testing.T) {
 			}
 			if got.Error == nil || got.Error.Code != tc.wantCode {
 				t.Errorf("error code = %+v, want %q", got.Error, tc.wantCode)
+			}
+			if tc.wantCode == "unsupported-operation" && got.Error.Hint == "" {
+				t.Errorf("hint is empty for unsupported-operation")
 			}
 		})
 	}

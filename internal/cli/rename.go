@@ -95,7 +95,8 @@ func init() {
 
 func runRename(kind symbol.SymbolKind) error {
 	ctx := jsonContext{Operation: "rename"}
-	return routeOperationError(ctx, runRenameInner(kind, &ctx))
+	err := runRenameInner(kind, &ctx)
+	return routeOperationError(ctx, err)
 }
 
 // runRenameInner performs the rename and returns terminal errors for the shared
@@ -143,12 +144,18 @@ func runRenameInner(kind symbol.SymbolKind, ctx *jsonContext) error {
 		return fmt.Errorf("symbol resolution: %w", err)
 	}
 
-	sel, workspaceRoot, err := buildBackend(loc.File)
+	sel, workspaceRoot, err := buildBackend(loc.File, "rename")
 	if err != nil {
 		if flagJSON {
 			*ctx = contextFromFile("rename", loc.File)
 			if emitted, ok := emitLanguageUnsupportedError(*ctx, err); ok {
 				return emitted
+			}
+			// Rename is supported by every current backend profile, but keep
+			// future profile changes from falling through to backend setup
+			// classification if a language ever lacks rename support.
+			if errors.Is(err, selector.ErrOperationUnsupported) {
+				return emitJSONOperationError(*ctx, err)
 			}
 			return emitJSONBackendSetupError(*ctx, err)
 		}
@@ -160,8 +167,9 @@ func runRenameInner(kind symbol.SymbolKind, ctx *jsonContext) error {
 	return finishRename(sel.Backend, *ctx, loc, flagNewName)
 }
 
-// buildBackend selects and initializes a refactoring backend for the given file.
-func buildBackend(filePath string) (*selector.Selection, string, error) {
+// buildBackend selects and initializes a refactoring backend for the given file
+// and operation.
+func buildBackend(filePath, operation string) (*selector.Selection, string, error) {
 	selectDone := telemetryPhase("backend-selection")
 	workspaceRoot, err := FindWorkspaceRootFromFile(filePath)
 	if err != nil {
@@ -173,7 +181,7 @@ func buildBackend(filePath string) (*selector.Selection, string, error) {
 		selectDone()
 		return nil, "", fmt.Errorf("loading config: %w", err)
 	}
-	sel, err := selector.ForFile(commandContext(), cfg, workspaceRoot, filePath)
+	sel, err := selector.SelectForOperation(commandContext(), cfg, workspaceRoot, filePath, operation)
 	if err != nil {
 		selectDone()
 		return nil, "", err
@@ -297,8 +305,9 @@ func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
 	telemetrySetContext(ctx)
 
 	// Gate unsupported languages before any backend routing or construction,
-	// mirroring selector.ForFile for the Tier 2 path. A Tier 1 (--symbol) rename
-	// never reaches selector.ForFile, so without this check a row marked
+	// mirroring selector.SelectForOperation for the Tier 2 path. A Tier 1
+	// (--symbol) rename never reaches SelectForOperation, so without this check
+	// a row marked
 	// LevelUnsupported (e.g. Java/Kotlin) would fall through to backend setup and
 	// report backend-missing instead of the documented unsupported-language
 	// status (issue #124).

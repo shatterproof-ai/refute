@@ -130,7 +130,7 @@ func SelectForOperation(ctx context.Context, cfg *config.Config, workspaceRoot, 
 			return &sel, nil
 		}
 	}
-	return nil, fmt.Errorf("%q: %w", operation, ErrOperationUnsupported)
+	return nil, fmt.Errorf("%s: %w", operation, ErrOperationUnsupported)
 }
 
 // backendLadder builds the preference-ordered backend candidates for a file.
