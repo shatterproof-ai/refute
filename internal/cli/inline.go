@@ -43,7 +43,8 @@ func init() {
 
 func runInline() error {
 	ctx := jsonContext{Operation: "inline"}
-	return routeOperationError(ctx, runInlineInner(&ctx))
+	err := runInlineInner(&ctx)
+	return routeOperationError(ctx, err)
 }
 
 // runInlineInner performs the inline and returns terminal errors for the shared
@@ -104,7 +105,7 @@ func runInlineInner(ctx *jsonContext) error {
 	}
 
 	*ctx = contextFromFile("inline", loc.File)
-	sel, workspaceRoot, err := buildBackend(loc.File)
+	sel, workspaceRoot, err := buildBackend(loc.File, "inline")
 	if err != nil {
 		return err
 	}

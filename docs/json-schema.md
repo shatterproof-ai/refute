@@ -108,6 +108,13 @@ When present, `error` has this shape:
 Scripts should use `status` for high-level routing and `error.code` for a more
 specific branch inside an error status.
 
+Common unsupported error codes:
+
+| `status` | `error.code` | Exit | Cause |
+| --- | --- | --- | --- |
+| `unsupported` | `unsupported-operation` | `1` | The selected language/backend exists, but none of its configured backend candidates supports the requested operation; `error.hint` points to `refute doctor` and the support matrix. |
+| `unsupported` | `unsupported-language` | `1` | The requested language is outside the current support boundary for the command. |
+
 Common backend setup error codes:
 
 | `status` | `error.code` | Exit | Cause |

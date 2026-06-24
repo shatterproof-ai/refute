@@ -66,7 +66,8 @@ func init() {
 
 func runExtract(kind string) error {
 	ctx := jsonContext{Operation: "extract-" + kind}
-	return routeOperationError(ctx, runExtractInner(kind, &ctx))
+	err := runExtractInner(kind, &ctx)
+	return routeOperationError(ctx, err)
 }
 
 // runExtractInner performs the extraction and returns terminal errors for the
@@ -81,7 +82,7 @@ func runExtractInner(kind string, ctx *jsonContext) error {
 		return fmt.Errorf("resolving file path: %w", err)
 	}
 	*ctx = contextFromFile(operation, absFile)
-	sel, workspaceRoot, err := buildBackend(absFile)
+	sel, workspaceRoot, err := buildBackend(absFile, operation)
 	if err != nil {
 		return err
 	}
