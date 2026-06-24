@@ -17,6 +17,7 @@ package corpus_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -80,23 +81,38 @@ func TestCorpus(t *testing.T) {
 	}
 }
 
-// requireBackend skips the target when the refactoring backend it needs is not
-// available: a PATH binary (backendTool) or a required environment variable
-// pointing at a built adapter (backendEnv, used by the OpenRewrite Java path).
+// requireBackend skips the target when any refactoring backend it needs is not
+// available. A target may declare more than one prerequisite — a required
+// environment variable pointing at a built adapter (backendEnv, used by the
+// OpenRewrite Java path) and/or a PATH binary (backendTool) — and every declared
+// prerequisite must be satisfied. When several are missing the skip reason names
+// all of them so the gap is obvious in one pass.
 func requireBackend(t *testing.T, tgt target) {
 	t.Helper()
-	if tgt.BackendEnv != "" {
-		if os.Getenv(tgt.BackendEnv) == "" {
-			t.Skipf("%s backend unavailable: set %s to the built adapter to run the %s target",
-				tgt.Language, tgt.BackendEnv, tgt.Name)
-		}
-		return
+	if reason := backendSkipReason(tgt); reason != "" {
+		t.Skip(reason)
+	}
+}
+
+// backendSkipReason returns a human-readable reason to skip tgt when one or more
+// of its declared backends is unavailable, or "" when every declared backend is
+// present. It checks all declared backends (backendEnv and backendTool),
+// accumulating a combined reason rather than stopping at the first one.
+func backendSkipReason(tgt target) string {
+	var missing []string
+	if tgt.BackendEnv != "" && os.Getenv(tgt.BackendEnv) == "" {
+		missing = append(missing, fmt.Sprintf("set %s to the built adapter", tgt.BackendEnv))
 	}
 	if tgt.BackendTool != "" {
 		if _, err := exec.LookPath(tgt.BackendTool); err != nil {
-			t.Skipf("%s backend unavailable: %q not on PATH", tgt.Language, tgt.BackendTool)
+			missing = append(missing, fmt.Sprintf("%q not on PATH", tgt.BackendTool))
 		}
 	}
+	if len(missing) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s backend unavailable for %s target: %s",
+		tgt.Language, tgt.Name, strings.Join(missing, "; "))
 }
 
 // materialize fetches the target at its pinned commit (via the shared
