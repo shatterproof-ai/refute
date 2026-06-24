@@ -220,6 +220,47 @@ func TestTier1Rename_JSONNoServerConfigured(t *testing.T) {
 	if got.Error == nil {
 		t.Fatalf("missing error object")
 	}
+	if got.Error.Code != "backend-missing" {
+		t.Fatalf("error code = %q, want backend-missing; envelope:\n%s", got.Error.Code, out)
+	}
+}
+
+// TestTier1Rename_JSONBackendInitFailed exercises the Tier 1 setup path where
+// the LSP binary exists but exits before initialization can complete. It must
+// use the same backend-init-failed envelope as file/position rename.
+func TestTier1Rename_JSONBackendInitFailed(t *testing.T) {
+	resetRenameFlagsForTest(t)
+	dir := t.TempDir()
+	mainFile := writeGoFixture(t, dir)
+	failingServer := filepath.Join(dir, "failing-lsp")
+	if err := os.WriteFile(failingServer, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("write failing lsp: %v", err)
+	}
+	flagConfig = writeServerConfig(t, dir, "go", failingServer)
+
+	flagFile = mainFile
+	flagSymbol = "hello"
+	flagNewName = "hi"
+	flagJSON = true
+
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = runRename(symbol.KindFunction)
+	})
+	var ec *ExitCodeError
+	if !errors.As(runErr, &ec) || ec.Code != 1 {
+		t.Fatalf("expected exit code 1, got %#v", runErr)
+	}
+	var got edit.JSONResult
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("unmarshal: %v\nraw:\n%s", err, out)
+	}
+	if got.Status != edit.StatusBackendFailed {
+		t.Errorf("status = %q, want %q; envelope:\n%s", got.Status, edit.StatusBackendFailed, out)
+	}
+	if got.Error == nil || got.Error.Code != "backend-init-failed" {
+		t.Fatalf("error = %+v, want code backend-init-failed; envelope:\n%s", got.Error, out)
+	}
 }
 
 // writeJavaFixture writes a minimal Java source file under a Go workspace so a

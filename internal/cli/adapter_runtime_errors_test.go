@@ -3,7 +3,6 @@ package cli
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -41,13 +40,12 @@ func (s *stubBackend) MoveToFile(symbol.Location, string) (*edit.WorkspaceEdit, 
 }
 func (s *stubBackend) Capabilities() []backend.Capability { return nil }
 
-// initThroughStub mimics how the rename path wraps a backend's Initialize error
-// (fmt.Errorf("initializing backend: %w", err)) so tests cover the wrapped form
-// the CLI actually sees.
+// initThroughStub mimics how buildBackend wraps a backend's Initialize error
+// so tests cover the wrapped form the CLI actually sees.
 func initThroughStub(initErr error) error {
 	b := &stubBackend{initErr: initErr}
 	if err := b.Initialize("/workspace"); err != nil {
-		return fmt.Errorf("initializing backend: %w", err)
+		return NewBackendInitFailure("stub", err)
 	}
 	return nil
 }
@@ -136,7 +134,7 @@ func TestEmitJSONBackendSetupError_AdapterRuntimeMissing(t *testing.T) {
 // backend-init-failed code and exit 1 — distinct from "install this tool".
 func TestEmitJSONBackendSetupError_InitFailure(t *testing.T) {
 	ctx := jsonContext{Operation: "rename", Language: "go", Backend: "lsp", WorkspaceRoot: "/workspace"}
-	wrapped := initThroughStub(NewBackendInitFailure("lsp", errors.New("handshake timed out")))
+	wrapped := initThroughStub(errors.New("handshake timed out"))
 
 	var emitErr error
 	out := captureStdout(t, func() {
@@ -163,6 +161,66 @@ func TestEmitJSONBackendSetupError_InitFailure(t *testing.T) {
 	}
 }
 
+// TestEmitJSONBackendSetupError_Fallback verifies the deliberately generic
+// backend-unavailable code remains the fallback for setup errors that are not
+// one of the typed missing-runtime or initialization-failure categories.
+func TestEmitJSONBackendSetupError_Fallback(t *testing.T) {
+	ctx := jsonContext{Operation: "list-symbols", Language: "go", Backend: "lsp", WorkspaceRoot: "/workspace"}
+
+	var emitErr error
+	out := captureStdout(t, func() {
+		emitErr = emitJSONBackendSetupError(ctx, errors.New("priming workspace: workspace/symbol failed"))
+	})
+
+	var ec *ExitCodeError
+	if !errors.As(emitErr, &ec) || ec.Code != 1 {
+		t.Fatalf("expected exit code 1, got %#v", emitErr)
+	}
+
+	var got edit.JSONResult
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("unmarshal: %v\nraw:\n%s", err, out)
+	}
+	if got.Status != edit.StatusBackendFailed {
+		t.Errorf("status = %q, want %q", got.Status, edit.StatusBackendFailed)
+	}
+	if got.Error == nil || got.Error.Code != "backend-unavailable" {
+		t.Fatalf("error code = %+v, want backend-unavailable", got.Error)
+	}
+	if got.Error.Hint == "" {
+		t.Fatalf("hint is empty; envelope:\n%s", out)
+	}
+}
+
+func TestHandleTier1WorkspacePrimeError_JSON(t *testing.T) {
+	resetOperationFlagsForTest(t)
+	flagJSON = true
+	ctx := jsonContext{Operation: "rename", Language: "go", Backend: "lsp", WorkspaceRoot: "/workspace"}
+
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = handleTier1WorkspacePrimeError(ctx, errors.New("workspace/symbol failed"))
+	})
+
+	var ec *ExitCodeError
+	if !errors.As(runErr, &ec) || ec.Code != 1 {
+		t.Fatalf("expected exit code 1, got %#v", runErr)
+	}
+	var got edit.JSONResult
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("unmarshal: %v\nraw:\n%s", err, out)
+	}
+	if got.Status != edit.StatusBackendFailed {
+		t.Errorf("status = %q, want %q", got.Status, edit.StatusBackendFailed)
+	}
+	if got.Error == nil || got.Error.Code != "backend-unavailable" {
+		t.Fatalf("error code = %+v, want backend-unavailable", got.Error)
+	}
+	if got.Error.Hint == "" {
+		t.Fatalf("hint is empty; envelope:\n%s", out)
+	}
+}
+
 // TestExitDetails_AdapterRuntimeMissing verifies the human-readable (non-JSON)
 // path: a wrapped adapter-runtime-missing error exits 3 and the message carries
 // the install hint so the user knows the next action.
@@ -184,7 +242,7 @@ func TestExitDetails_AdapterRuntimeMissing(t *testing.T) {
 // TestExitDetails_BackendInitFailure verifies a wrapped generic init failure
 // exits 1 (not the backend-missing code) and reports backend-failed status.
 func TestExitDetails_BackendInitFailure(t *testing.T) {
-	wrapped := initThroughStub(NewBackendInitFailure("openrewrite", errors.New("JVM crashed")))
+	wrapped := initThroughStub(errors.New("JVM crashed"))
 
 	code, _ := exitDetails(wrapped)
 	if code != 1 {
@@ -200,7 +258,7 @@ func TestExitDetails_BackendInitFailure(t *testing.T) {
 // backend-missing (exit 3) — the more specific "install this" wins over the
 // generic "backend crashed".
 func TestBackendInitFailure_UnwrapsToRuntimeMissing(t *testing.T) {
-	wrapped := initThroughStub(NewBackendInitFailure("ts-morph", tsMorphRuntimeMissing()))
+	wrapped := initThroughStub(tsMorphRuntimeMissing())
 
 	if !isBackendRuntimeMissing(wrapped) {
 		t.Fatalf("expected wrapped error to classify as backend runtime missing")

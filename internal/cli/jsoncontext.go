@@ -184,7 +184,12 @@ func emitJSONBackendSetupError(ctx jsonContext, err error) error {
 		return emitJSONError(ctx, edit.StatusBackendFailed, "backend-init-failed",
 			err.Error(), "Run `refute doctor` for backend setup details.")
 	}
-	return emitJSONError(ctx, backendErrorStatus(err), "backend-unavailable",
+	status := backendErrorStatus(err)
+	code := "backend-unavailable"
+	if status == edit.StatusBackendMissing {
+		code = "backend-missing"
+	}
+	return emitJSONError(ctx, status, code,
 		err.Error(), "Run `refute doctor` for backend setup details.")
 }
 

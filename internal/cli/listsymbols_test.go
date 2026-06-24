@@ -3,6 +3,8 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -297,5 +299,97 @@ func TestSetupListSymbolsBackend_ServerBinaryMissing(t *testing.T) {
 	}
 	if missing.Language != "go" {
 		t.Errorf("missing.Language = %q, want %q", missing.Language, "go")
+	}
+}
+
+func TestListSymbolsCommand_JSONBackendMissing(t *testing.T) {
+	resetListFlagsForTest(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/list\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	flagConfig = writeServerConfig(t, dir, "go", "refute-nonexistent-lsp-binary-xyz")
+	flagJSON = true
+
+	prevWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir temp workspace: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(prevWD); err != nil {
+			t.Fatalf("restore wd: %v", err)
+		}
+	})
+
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = runListSymbols()
+	})
+	var ec *ExitCodeError
+	if !errors.As(runErr, &ec) || ec.Code != backendMissingExitCode {
+		t.Fatalf("exit error = %#v, want code %d", runErr, backendMissingExitCode)
+	}
+
+	var res edit.JSONResult
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("unmarshal: %v\nraw:\n%s", err, out)
+	}
+	if res.Status != edit.StatusBackendMissing {
+		t.Errorf("status = %q, want %q", res.Status, edit.StatusBackendMissing)
+	}
+	if res.Error == nil || res.Error.Code != "backend-missing" {
+		t.Fatalf("error = %+v, want code backend-missing", res.Error)
+	}
+	if res.Error.Hint == "" {
+		t.Fatalf("hint is empty; envelope:\n%s", out)
+	}
+}
+
+func TestListSymbolsCommand_JSONNoServerConfigured(t *testing.T) {
+	resetListFlagsForTest(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/list\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	flagConfig = writeServerConfig(t, dir, "go", "")
+	flagJSON = true
+
+	prevWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir temp workspace: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(prevWD); err != nil {
+			t.Fatalf("restore wd: %v", err)
+		}
+	})
+
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = runListSymbols()
+	})
+	var ec *ExitCodeError
+	if !errors.As(runErr, &ec) || ec.Code != backendMissingExitCode {
+		t.Fatalf("exit error = %#v, want code %d", runErr, backendMissingExitCode)
+	}
+
+	var res edit.JSONResult
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("unmarshal: %v\nraw:\n%s", err, out)
+	}
+	if res.Status != edit.StatusBackendMissing {
+		t.Errorf("status = %q, want %q", res.Status, edit.StatusBackendMissing)
+	}
+	if res.Error == nil || res.Error.Code != "backend-missing" {
+		t.Fatalf("error = %+v, want code backend-missing", res.Error)
+	}
+	if res.Error.Hint == "" {
+		t.Fatalf("hint is empty; envelope:\n%s", out)
 	}
 }

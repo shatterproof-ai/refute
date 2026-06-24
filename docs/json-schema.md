@@ -108,6 +108,15 @@ When present, `error` has this shape:
 Scripts should use `status` for high-level routing and `error.code` for a more
 specific branch inside an error status.
 
+Common backend setup error codes:
+
+| `status` | `error.code` | Exit | Cause |
+| --- | --- | --- | --- |
+| `backend-missing` | `backend-missing` | `3` | A configured LSP server binary is missing; `error.hint` carries the install hint when one is known. |
+| `backend-missing` | `adapter-runtime-missing` | `3` | A subprocess adapter or adapter runtime dependency is missing, such as the ts-morph package or OpenRewrite adapter JAR; `error.hint` carries the adapter install/build command. |
+| `backend-failed` | `backend-init-failed` | `1` | A backend was selected but failed during initialization for a reason other than a missing dependency. |
+| `backend-failed` | `backend-unavailable` | `1` | Backend setup failed before the operation could run, but the failure did not match a more specific typed setup category. |
+
 ## list-symbols Result
 
 `refute list-symbols --json` is a read-only discovery query rather than an edit,
@@ -149,9 +158,12 @@ Entries are sorted by `file`, then `line`, then `column`.
 | `status` | `error.code` | Exit | Cause |
 | --- | --- | --- | --- |
 | `ok` | — | `0` | Listing succeeded. An empty `symbols` array is still `ok`, not an error. |
-| `backend-missing` | `backend-unavailable` | `3` | The language server for the resolved language is not installed; `error.hint` points to `refute doctor`. |
+| `backend-missing` | `backend-missing` | `3` | The language server for the resolved language is not installed; `error.hint` carries the install hint when one is known. |
+| `backend-missing` | `adapter-runtime-missing` | `3` | A selected adapter runtime dependency is missing; `error.hint` carries the adapter install/build command. |
 | `unsupported` | `unsupported-language` | `1` | The language has no LSP backend (e.g. Java, Kotlin); `error.hint` lists the supported languages. |
 | `backend-failed` | `invalid-request` | `1` | An invalid `--kind` value was supplied. |
+| `backend-failed` | `backend-init-failed` | `1` | The language backend was selected but failed during initialization for a reason other than a missing dependency. |
+| `backend-failed` | `backend-unavailable` | `1` | Backend setup failed before symbol discovery could run, but the failure did not match a more specific typed setup category. |
 | `backend-failed` | `operation-failed` | `1` | The backend was reachable but the `workspace/symbol` query failed. |
 
 A successful listing example:
