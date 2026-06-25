@@ -9,33 +9,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// resetValidationFlags clears every flag the validation paths read so each
-// table case runs against a clean invocation.
-func resetValidationFlags() {
-	flagFile = ""
-	flagLine = 0
-	flagCol = 0
-	flagName = ""
-	flagNewName = ""
-	flagSymbol = ""
-	flagJSON = false
-	flagStartLine = 0
-	flagStartCol = 0
-	flagEndLine = 0
-	flagEndCol = 0
-	flagExtName = ""
-	callSiteFlag = ""
-}
-
 // addInlineTestFlags mirrors the inline command's flag registration so tests can
 // drive validateLocationFlags without the global command tree.
-func addInlineTestFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&flagFile, "file", "", "")
-	cmd.Flags().IntVar(&flagLine, "line", 0, "")
-	cmd.Flags().IntVar(&flagCol, "col", 0, "")
-	cmd.Flags().StringVar(&flagName, "name", "", "")
-	cmd.Flags().StringVar(&flagSymbol, "symbol", "", "")
-	cmd.Flags().StringVar(&callSiteFlag, "call-site", "", "")
+func addInlineTestFlags(cmd *cobra.Command, flags *inlineFlags) {
+	cmd.Flags().StringVar(&flags.File, "file", "", "")
+	cmd.Flags().IntVar(&flags.Line, "line", 0, "")
+	cmd.Flags().IntVar(&flags.Col, "col", 0, "")
+	cmd.Flags().StringVar(&flags.Name, "name", "", "")
+	cmd.Flags().StringVar(&flags.Symbol, "symbol", "", "")
+	cmd.Flags().StringVar(&flags.CallSite, "call-site", "", "")
 	cmd.Flags().BoolVar(&flagJSON, "json", false, "")
 }
 
@@ -43,17 +25,33 @@ func addInlineTestFlags(cmd *cobra.Command) {
 // supplied flag values (which marks them Changed), and runs the mode's
 // validator. existingFile, when non-empty, is substituted for the literal
 // "<EXISTING>" placeholder so a real on-disk path can be injected per case.
-func validateWith(t *testing.T, mode locationMode, register func(*cobra.Command), set map[string]string) error {
+func validateWith(t *testing.T, mode locationMode, set map[string]string) error {
 	t.Helper()
-	resetValidationFlags()
+	flagJSON = false
 	cmd := &cobra.Command{Use: "test"}
-	register(cmd)
+	var flags any
+	switch mode {
+	case modeRename:
+		rename := &renameFlags{}
+		addRenameFlags(cmd, rename)
+		flags = rename
+	case modeExtract:
+		extract := &extractFlags{}
+		addExtractFlags(cmd, extract)
+		flags = extract
+	case modeInline:
+		inline := &inlineFlags{}
+		addInlineTestFlags(cmd, inline)
+		flags = inline
+	default:
+		t.Fatalf("unknown validation mode %d", mode)
+	}
 	for k, v := range set {
 		if err := cmd.Flags().Set(k, v); err != nil {
 			t.Fatalf("set --%s=%q: %v", k, v, err)
 		}
 	}
-	return validateLocationFlags(cmd, mode)
+	return validateLocationFlags(cmd, mode, flags)
 }
 
 func TestValidateRenameFlags(t *testing.T) {
@@ -80,7 +78,7 @@ func TestValidateRenameFlags(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := validateWith(t, modeRename, addRenameFlags, c.set)
+			err := validateWith(t, modeRename, c.set)
 			assertErrContains(t, err, c.wantErr)
 		})
 	}
@@ -113,7 +111,7 @@ func TestValidateExtractFlags(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := validateWith(t, modeExtract, addExtractFlags, c.set)
+			err := validateWith(t, modeExtract, c.set)
 			assertErrContains(t, err, c.wantErr)
 		})
 	}
@@ -142,8 +140,27 @@ func TestValidateInlineFlags(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := validateWith(t, modeInline, addInlineTestFlags, c.set)
+			err := validateWith(t, modeInline, c.set)
 			assertErrContains(t, err, c.wantErr)
+		})
+	}
+}
+
+func TestValidateLocationFlags_WrongFlagTypeReturnsError(t *testing.T) {
+	cases := []struct {
+		name string
+		mode locationMode
+		got  any
+		want string
+	}{
+		{"rename", modeRename, &extractFlags{}, "rename validator received"},
+		{"extract", modeExtract, &inlineFlags{}, "extract validator received"},
+		{"inline", modeInline, &renameFlags{}, "inline validator received"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := validateLocationFlags(&cobra.Command{Use: "test"}, c.mode, c.got)
+			assertErrContains(t, err, c.want)
 		})
 	}
 }

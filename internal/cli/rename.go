@@ -18,15 +18,14 @@ import (
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
-var (
-	flagFile    string
-	flagLine    int
-	flagCol     int
-	flagName    string
-	flagNewName string
-	flagSymbol  string
-	flagJSON    bool
-)
+type renameFlags struct {
+	File    string
+	Line    int
+	Col     int
+	Name    string
+	NewName string
+	Symbol  string
+}
 
 // renameAddressingHelp explains how to point rename at a symbol. The same text
 // is appended to every rename command's Long so the addressing modes are
@@ -38,18 +37,19 @@ const renameAddressingHelp = `Address the symbol in one of two ways:
 --name finds an identifier on a line; --symbol is a fully qualified name;
 --new-name is the replacement identifier.`
 
-func addRenameFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&flagFile, "file", "", "source file path (with --line)")
-	cmd.Flags().IntVar(&flagLine, "line", 0, "line number, 1-indexed (with --file)")
-	cmd.Flags().IntVar(&flagCol, "col", 0, "column number, 1-indexed (optional; alternative to --name)")
-	cmd.Flags().StringVar(&flagName, "name", "", "identifier to find on the line (alternative to --col)")
-	cmd.Flags().StringVar(&flagNewName, "new-name", "", "new name for the symbol (required)")
-	cmd.Flags().StringVar(&flagSymbol, "symbol", "", "qualified symbol name, e.g. pkg.Func or Type.Method (alternative to --file/--line)")
+func addRenameFlags(cmd *cobra.Command, flags *renameFlags) {
+	cmd.Flags().StringVar(&flags.File, "file", "", "source file path (with --line)")
+	cmd.Flags().IntVar(&flags.Line, "line", 0, "line number, 1-indexed (with --file)")
+	cmd.Flags().IntVar(&flags.Col, "col", 0, "column number, 1-indexed (optional; alternative to --name)")
+	cmd.Flags().StringVar(&flags.Name, "name", "", "identifier to find on the line (alternative to --col)")
+	cmd.Flags().StringVar(&flags.NewName, "new-name", "", "new name for the symbol (required)")
+	cmd.Flags().StringVar(&flags.Symbol, "symbol", "", "qualified symbol name, e.g. pkg.Func or Type.Method (alternative to --file/--line)")
 	cmd.Flags().BoolVar(&flagJSON, "json", false, "emit structured JSON instead of human-readable output")
 	_ = cmd.MarkFlagRequired("new-name")
 }
 
 func makeRenameCmd(use string, kind symbol.SymbolKind) *cobra.Command {
+	flags := &renameFlags{}
 	cmd := &cobra.Command{
 		Use:   use,
 		Short: fmt.Sprintf("Rename a %s (Go, Rust, TypeScript)", kind),
@@ -57,17 +57,18 @@ func makeRenameCmd(use string, kind symbol.SymbolKind) *cobra.Command {
 			kind, renameAddressingHelp, supportMatrixURL),
 		Args: cobra.NoArgs,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			return validateLocationFlags(cmd, modeRename)
+			return validateLocationFlags(cmd, modeRename, flags)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRename(kind)
+			return runRename(kind, flags)
 		},
 	}
-	addRenameFlags(cmd)
+	addRenameFlags(cmd, flags)
 	return cmd
 }
 
 func init() {
+	flags := &renameFlags{}
 	renameCmd := &cobra.Command{
 		Use:   "rename",
 		Short: "Rename a symbol across the workspace (Go, Rust, TypeScript)",
@@ -75,13 +76,13 @@ func init() {
 			renameAddressingHelp + "\n\nSee " + supportMatrixURL + ".",
 		Args: cobra.NoArgs,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			return validateLocationFlags(cmd, modeRename)
+			return validateLocationFlags(cmd, modeRename, flags)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRename(symbol.KindUnknown)
+			return runRename(symbol.KindUnknown, flags)
 		},
 	}
-	addRenameFlags(renameCmd)
+	addRenameFlags(renameCmd, flags)
 
 	RootCmd.AddCommand(renameCmd)
 	RootCmd.AddCommand(makeRenameCmd("rename-function", symbol.KindFunction))
@@ -93,9 +94,9 @@ func init() {
 	RootCmd.AddCommand(makeRenameCmd("rename-method", symbol.KindMethod))
 }
 
-func runRename(kind symbol.SymbolKind) error {
+func runRename(kind symbol.SymbolKind, flags *renameFlags) error {
 	ctx := jsonContext{Operation: "rename"}
-	err := runRenameInner(kind, &ctx)
+	err := runRenameInner(kind, flags, &ctx)
 	return routeOperationError(ctx, err)
 }
 
@@ -105,14 +106,14 @@ func runRename(kind symbol.SymbolKind) error {
 // produce a specialized status (invalid-position, backend setup) emit
 // their envelope inline; the wrapper recognizes the resulting jsonEmitted error
 // and passes it through without a second envelope.
-func runRenameInner(kind symbol.SymbolKind, ctx *jsonContext) error {
+func runRenameInner(kind symbol.SymbolKind, flags *renameFlags, ctx *jsonContext) error {
 	telemetrySetContext(*ctx)
 	query := symbol.Query{
-		QualifiedName: flagSymbol,
-		File:          flagFile,
-		Line:          flagLine,
-		Column:        flagCol,
-		Name:          flagName,
+		QualifiedName: flags.Symbol,
+		File:          flags.File,
+		Line:          flags.Line,
+		Column:        flags.Col,
+		Name:          flags.Name,
 		Kind:          kind,
 	}
 
@@ -125,7 +126,7 @@ func runRenameInner(kind symbol.SymbolKind, ctx *jsonContext) error {
 	}
 
 	if query.Tier() == 1 {
-		return runRenameTier1(query)
+		return runRenameTier1(query, flags.NewName)
 	}
 
 	resolveDone := telemetryPhase("symbol-resolution")
@@ -164,7 +165,7 @@ func runRenameInner(kind symbol.SymbolKind, ctx *jsonContext) error {
 	defer func() { _ = sel.Backend.Shutdown() }()
 
 	*ctx = contextFromSelection("rename", sel, workspaceRoot)
-	return finishRename(sel.Backend, *ctx, loc, flagNewName)
+	return finishRename(sel.Backend, *ctx, loc, flags.NewName)
 }
 
 // buildBackend selects and initializes a refactoring backend for the given file
@@ -254,7 +255,7 @@ func cleanBackendErrorMessage(msg string) string {
 	return msg
 }
 
-func runRenameTier1(query symbol.Query) error {
+func runRenameTier1(query symbol.Query, newName string) error {
 	setup, err := setupTier1RenameBackend(query)
 	if err != nil {
 		return err
@@ -265,14 +266,14 @@ func runRenameTier1(query symbol.Query) error {
 	if err != nil {
 		return handleTier1RenameError(setup.ctx, err)
 	}
-	return handleTier1RenameError(setup.ctx, finishRename(setup.adapter, setup.ctx, loc, flagNewName))
+	return handleTier1RenameError(setup.ctx, finishRename(setup.adapter, setup.ctx, loc, newName))
 }
 
 // tier1WorkspaceRoot resolves the workspace root for a Tier 1 query.
 // If --file is provided, walk up from it; otherwise walk up from cwd.
-func tier1WorkspaceRoot() (string, error) {
-	if flagFile != "" {
-		abs, err := filepath.Abs(flagFile)
+func tier1WorkspaceRoot(file string) (string, error) {
+	if file != "" {
+		abs, err := filepath.Abs(file)
 		if err != nil {
 			return "", err
 		}
@@ -292,7 +293,7 @@ type tier1RenameBackend struct {
 }
 
 func setupTier1RenameBackend(query symbol.Query) (*tier1RenameBackend, error) {
-	workspaceRoot, err := tier1WorkspaceRoot()
+	workspaceRoot, err := tier1WorkspaceRoot(query.File)
 	if err != nil {
 		return nil, err
 	}

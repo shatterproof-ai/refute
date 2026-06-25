@@ -15,24 +15,12 @@ import (
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
-// resetOperationFlagsForTest clears every package-level flag the operation
-// commands read so each table case runs against a clean invocation.
+// resetOperationFlagsForTest clears the shared invocation flags each operation
+// command still reads so table cases run against a clean invocation.
 func resetOperationFlagsForTest(t *testing.T) {
 	t.Helper()
 	prevConfig := flagConfig
 	clear := func() {
-		flagFile = ""
-		flagLine = 0
-		flagCol = 0
-		flagName = ""
-		flagNewName = ""
-		flagSymbol = ""
-		flagExtName = ""
-		flagStartLine = 0
-		flagStartCol = 0
-		flagEndLine = 0
-		flagEndCol = 0
-		callSiteFlag = ""
 		flagJSON = false
 		flagDryRun = false
 	}
@@ -56,38 +44,46 @@ func TestOperationCommands_JSONBackendMissing(t *testing.T) {
 		{
 			name: "rename",
 			run: func(mainFile string) error {
-				flagFile = mainFile
-				flagLine = 3
-				flagName = "hello"
-				flagNewName = "hi"
-				return runRename(symbol.KindFunction)
+				return runRename(symbol.KindFunction, &renameFlags{
+					File:    mainFile,
+					Line:    3,
+					Name:    "hello",
+					NewName: "hi",
+				})
 			},
 		},
 		{
 			name: "extract-function",
 			run: func(mainFile string) error {
-				flagFile = mainFile
-				flagStartLine, flagStartCol = 3, 1
-				flagEndLine, flagEndCol = 3, 16
-				return runExtract("function")
+				return runExtract("function", &extractFlags{
+					File:      mainFile,
+					StartLine: 3,
+					StartCol:  1,
+					EndLine:   3,
+					EndCol:    16,
+				})
 			},
 		},
 		{
 			name: "extract-variable",
 			run: func(mainFile string) error {
-				flagFile = mainFile
-				flagStartLine, flagStartCol = 3, 1
-				flagEndLine, flagEndCol = 3, 16
-				return runExtract("variable")
+				return runExtract("variable", &extractFlags{
+					File:      mainFile,
+					StartLine: 3,
+					StartCol:  1,
+					EndLine:   3,
+					EndCol:    16,
+				})
 			},
 		},
 		{
 			name: "inline",
 			run: func(mainFile string) error {
-				flagFile = mainFile
-				flagLine = 3
-				flagName = "hello"
-				return runInline()
+				return runInline(&inlineFlags{
+					File: mainFile,
+					Line: 3,
+					Name: "hello",
+				})
 			},
 		},
 	}
@@ -140,28 +136,35 @@ func TestOperationCommands_JSONUnsupportedOperationBeforeBackendSetup(t *testing
 		{
 			name: "extract-function",
 			run: func(tsFile string) error {
-				flagFile = tsFile
-				flagStartLine, flagStartCol = 1, 1
-				flagEndLine, flagEndCol = 1, 31
-				return runExtract("function")
+				return runExtract("function", &extractFlags{
+					File:      tsFile,
+					StartLine: 1,
+					StartCol:  1,
+					EndLine:   1,
+					EndCol:    31,
+				})
 			},
 		},
 		{
 			name: "extract-variable",
 			run: func(tsFile string) error {
-				flagFile = tsFile
-				flagStartLine, flagStartCol = 2, 10
-				flagEndLine, flagEndCol = 2, 18
-				return runExtract("variable")
+				return runExtract("variable", &extractFlags{
+					File:      tsFile,
+					StartLine: 2,
+					StartCol:  10,
+					EndLine:   2,
+					EndCol:    18,
+				})
 			},
 		},
 		{
 			name: "inline",
 			run: func(tsFile string) error {
-				flagFile = tsFile
-				flagLine = 1
-				flagName = "add"
-				return runInline()
+				return runInline(&inlineFlags{
+					File: tsFile,
+					Line: 1,
+					Name: "add",
+				})
 			},
 		},
 	}
@@ -338,15 +341,17 @@ func TestRename_UnsupportedLanguageReportsDocumentedStatus(t *testing.T) {
 		t.Fatalf("write java fixture: %v", err)
 	}
 
-	flagFile = javaFile
-	flagLine = 3
-	flagName = "hello"
-	flagNewName = "greet"
 	flagJSON = true
+	flags := &renameFlags{
+		File:    javaFile,
+		Line:    3,
+		Name:    "hello",
+		NewName: "greet",
+	}
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runRename(symbol.KindFunction)
+		runErr = runRename(symbol.KindFunction, flags)
 	})
 
 	var ec *ExitCodeError

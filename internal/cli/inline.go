@@ -12,9 +12,17 @@ import (
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
-var callSiteFlag string
+type inlineFlags struct {
+	File     string
+	Line     int
+	Col      int
+	Name     string
+	Symbol   string
+	CallSite string
+}
 
 func init() {
+	flags := &inlineFlags{}
 	inlineCmd := &cobra.Command{
 		Use:   "inline",
 		Short: "Inline a symbol at the given position (Go, Rust)",
@@ -23,27 +31,27 @@ func init() {
 			"For Rust: use --symbol with --call-site <file>:<line>:<column>. See " + supportMatrixURL + ".",
 		Args: cobra.NoArgs,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			return validateLocationFlags(cmd, modeInline)
+			return validateLocationFlags(cmd, modeInline, flags)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInline()
+			return runInline(flags)
 		},
 	}
-	inlineCmd.Flags().StringVar(&flagFile, "file", "", "source file path")
-	inlineCmd.Flags().IntVar(&flagLine, "line", 0, "line number (1-indexed)")
-	inlineCmd.Flags().IntVar(&flagCol, "col", 0, "column number (1-indexed)")
-	inlineCmd.Flags().StringVar(&flagName, "name", "", "symbol name to find on the line")
-	inlineCmd.Flags().StringVar(&flagSymbol, "symbol", "", "qualified symbol name (e.g. Greeter::greet)")
-	inlineCmd.Flags().StringVar(&callSiteFlag, "call-site", "",
+	inlineCmd.Flags().StringVar(&flags.File, "file", "", "source file path")
+	inlineCmd.Flags().IntVar(&flags.Line, "line", 0, "line number (1-indexed)")
+	inlineCmd.Flags().IntVar(&flags.Col, "col", 0, "column number (1-indexed)")
+	inlineCmd.Flags().StringVar(&flags.Name, "name", "", "symbol name to find on the line")
+	inlineCmd.Flags().StringVar(&flags.Symbol, "symbol", "", "qualified symbol name (e.g. Greeter::greet)")
+	inlineCmd.Flags().StringVar(&flags.CallSite, "call-site", "",
 		"When --symbol is used, specifies a call-site location file:line:column for inline")
 	inlineCmd.Flags().BoolVar(&flagJSON, "json", false, "emit structured JSON instead of human-readable output")
 
 	RootCmd.AddCommand(inlineCmd)
 }
 
-func runInline() error {
+func runInline(flags *inlineFlags) error {
 	ctx := jsonContext{Operation: "inline"}
-	err := runInlineInner(&ctx)
+	err := runInlineInner(flags, &ctx)
 	return routeOperationError(ctx, err)
 }
 
@@ -52,43 +60,43 @@ func runInline() error {
 // error envelope emitted by routeOperationError is fully attributed. A symbol
 // resolution failure emits an invalid-position envelope inline; the wrapper
 // passes the resulting jsonEmitted error through unchanged.
-func runInlineInner(ctx *jsonContext) error {
+func runInlineInner(flags *inlineFlags, ctx *jsonContext) error {
 	telemetrySetContext(*ctx)
-	if flagSymbol != "" && callSiteFlag == "" {
+	if flags.Symbol != "" && flags.CallSite == "" {
 		return fmt.Errorf("inline: --symbol requires --call-site <file>:<line>:<column> " +
 			"to disambiguate which call site to inline")
 	}
 
 	var loc symbol.Location
-	if callSiteFlag != "" {
-		parsed, err := parseCallSite(callSiteFlag)
+	if flags.CallSite != "" {
+		parsed, err := parseCallSite(flags.CallSite)
 		if err != nil {
 			return fmt.Errorf("parse --call-site: %w", err)
 		}
-		if flagSymbol != "" {
-			_, _, name, err := symbol.ParseRustQualifiedName(flagSymbol)
+		if flags.Symbol != "" {
+			_, _, name, err := symbol.ParseRustQualifiedName(flags.Symbol)
 			if err != nil {
-				return fmt.Errorf("invalid --symbol %q: %w", flagSymbol, err)
+				return fmt.Errorf("invalid --symbol %q: %w", flags.Symbol, err)
 			}
 			parsed.Name = name
 		}
 		loc = parsed
 	} else {
-		if flagFile == "" {
+		if flags.File == "" {
 			return fmt.Errorf("inline: --file is required when --call-site is not provided")
 		}
-		if flagLine == 0 {
+		if flags.Line == 0 {
 			return fmt.Errorf("inline: --line is required when --call-site is not provided")
 		}
-		absFile, err := filepath.Abs(flagFile)
+		absFile, err := filepath.Abs(flags.File)
 		if err != nil {
 			return fmt.Errorf("resolving file path: %w", err)
 		}
 		query := symbol.Query{
 			File:   absFile,
-			Line:   flagLine,
-			Column: flagCol,
-			Name:   flagName,
+			Line:   flags.Line,
+			Column: flags.Col,
+			Name:   flags.Name,
 		}
 		resolveDone := telemetryPhase("symbol-resolution")
 		resolved, err := symbol.Resolve(query)

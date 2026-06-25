@@ -10,21 +10,22 @@ import (
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
-var (
-	flagStartLine int
-	flagStartCol  int
-	flagEndLine   int
-	flagEndCol    int
-	flagExtName   string
-)
+type extractFlags struct {
+	File      string
+	StartLine int
+	StartCol  int
+	EndLine   int
+	EndCol    int
+	Name      string
+}
 
-func addExtractFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&flagFile, "file", "", "source file path (required)")
-	cmd.Flags().IntVar(&flagStartLine, "start-line", 0, "start line, 1-indexed (required)")
-	cmd.Flags().IntVar(&flagStartCol, "start-col", 0, "start column, 1-indexed (required)")
-	cmd.Flags().IntVar(&flagEndLine, "end-line", 0, "end line, 1-indexed (required)")
-	cmd.Flags().IntVar(&flagEndCol, "end-col", 0, "end column, 1-indexed (required)")
-	cmd.Flags().StringVar(&flagExtName, "name", "", "name for the extracted symbol (optional; gopls default used if empty)")
+func addExtractFlags(cmd *cobra.Command, flags *extractFlags) {
+	cmd.Flags().StringVar(&flags.File, "file", "", "source file path (required)")
+	cmd.Flags().IntVar(&flags.StartLine, "start-line", 0, "start line, 1-indexed (required)")
+	cmd.Flags().IntVar(&flags.StartCol, "start-col", 0, "start column, 1-indexed (required)")
+	cmd.Flags().IntVar(&flags.EndLine, "end-line", 0, "end line, 1-indexed (required)")
+	cmd.Flags().IntVar(&flags.EndCol, "end-col", 0, "end column, 1-indexed (required)")
+	cmd.Flags().StringVar(&flags.Name, "name", "", "name for the extracted symbol (optional; gopls default used if empty)")
 	cmd.Flags().BoolVar(&flagJSON, "json", false, "emit structured JSON instead of human-readable output")
 	for _, f := range []string{"file", "start-line", "start-col", "end-line", "end-col"} {
 		_ = cmd.MarkFlagRequired(f)
@@ -32,41 +33,43 @@ func addExtractFlags(cmd *cobra.Command) {
 }
 
 func init() {
+	funcFlags := &extractFlags{}
 	extractFuncCmd := &cobra.Command{
 		Use:   "extract-function",
 		Short: "Extract a selection into a new function (Go, Rust)",
 		Long:  "Extract the selected code range into a new named function. The selection is given by --file with --start-line/--start-col and --end-line/--end-col. Supports Go (gopls) and Rust (rust-analyzer). See " + supportMatrixURL + ".",
 		Args:  cobra.NoArgs,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			return validateLocationFlags(cmd, modeExtract)
+			return validateLocationFlags(cmd, modeExtract, funcFlags)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runExtract("function")
+			return runExtract("function", funcFlags)
 		},
 	}
-	addExtractFlags(extractFuncCmd)
+	addExtractFlags(extractFuncCmd, funcFlags)
 
+	varFlags := &extractFlags{}
 	extractVarCmd := &cobra.Command{
 		Use:   "extract-variable",
 		Short: "Extract a selection into a new variable (Go, Rust)",
 		Long:  "Extract the selected code range into a new named variable. The selection is given by --file with --start-line/--start-col and --end-line/--end-col. Supports Go (gopls) and Rust (rust-analyzer). See " + supportMatrixURL + ".",
 		Args:  cobra.NoArgs,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			return validateLocationFlags(cmd, modeExtract)
+			return validateLocationFlags(cmd, modeExtract, varFlags)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runExtract("variable")
+			return runExtract("variable", varFlags)
 		},
 	}
-	addExtractFlags(extractVarCmd)
+	addExtractFlags(extractVarCmd, varFlags)
 
 	RootCmd.AddCommand(extractFuncCmd)
 	RootCmd.AddCommand(extractVarCmd)
 }
 
-func runExtract(kind string) error {
+func runExtract(kind string, flags *extractFlags) error {
 	ctx := jsonContext{Operation: "extract-" + kind}
-	err := runExtractInner(kind, &ctx)
+	err := runExtractInner(kind, flags, &ctx)
 	return routeOperationError(ctx, err)
 }
 
@@ -74,10 +77,10 @@ func runExtract(kind string) error {
 // shared wrapper to route. It populates *ctx with best-available metadata
 // (language/workspace from the file, then backend once selected) so an error
 // envelope emitted by routeOperationError is fully attributed.
-func runExtractInner(kind string, ctx *jsonContext) error {
+func runExtractInner(kind string, flags *extractFlags, ctx *jsonContext) error {
 	operation := "extract-" + kind
 	telemetrySetContext(*ctx)
-	absFile, err := filepath.Abs(flagFile)
+	absFile, err := filepath.Abs(flags.File)
 	if err != nil {
 		return fmt.Errorf("resolving file path: %w", err)
 	}
@@ -90,10 +93,10 @@ func runExtractInner(kind string, ctx *jsonContext) error {
 
 	r := symbol.SourceRange{
 		File:      absFile,
-		StartLine: flagStartLine,
-		StartCol:  flagStartCol,
-		EndLine:   flagEndLine,
-		EndCol:    flagEndCol,
+		StartLine: flags.StartLine,
+		StartCol:  flags.StartCol,
+		EndLine:   flags.EndLine,
+		EndCol:    flags.EndCol,
 	}
 
 	*ctx = contextFromSelection(operation, sel, workspaceRoot)
@@ -102,9 +105,9 @@ func runExtractInner(kind string, ctx *jsonContext) error {
 	var result *edit.WorkspaceEdit
 	switch kind {
 	case "function":
-		result, err = sel.Backend.ExtractFunction(r, flagExtName)
+		result, err = sel.Backend.ExtractFunction(r, flags.Name)
 	case "variable":
-		result, err = sel.Backend.ExtractVariable(r, flagExtName)
+		result, err = sel.Backend.ExtractVariable(r, flags.Name)
 	default:
 		refactorDone()
 		return fmt.Errorf("unknown extract kind %q", kind)
