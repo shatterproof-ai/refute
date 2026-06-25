@@ -6,9 +6,12 @@ command ships while docs still call it future, support claims disagree between
 files, adapter docs go stale — so this document names the normative source for
 each kind of claim and the rules that keep dependent docs honest.
 
-This is governance, not automation. Automated drift checks are tracked
-separately by issue #119; this policy defines the contract those checks would
-enforce and the manual discipline that applies until they exist.
+This is primarily governance, backed by a growing set of automated guardrails.
+A handful of low-noise consistency checks now enforce the most drift-prone parts
+of this contract at `go test ./...` time (and therefore in `make verify`); the
+[Automated drift guardrails](#automated-drift-guardrails) section lists them.
+Everything not yet covered by a check remains manual discipline governed by the
+rules below.
 
 ## Normative sources
 
@@ -90,6 +93,34 @@ agent) do not mistake target architecture for shipped behavior:
   section of the index.
 - `docs/plans/` follows the lifecycle-status convention in
   `docs/plans/README.md`.
+
+## Automated drift guardrails
+
+The following checks are part of `go test ./...` (and so run in `make verify` via
+the unit-test gate — no separate gate is added). They are deliberately
+low-noise: each fails only on a genuine runtime/docs mismatch, keyed off the
+normative source so it cannot be satisfied by editing the doc alone.
+
+- **CLI inventory vs. docs** — `internal/cli/command_doc_drift_test.go`.
+  Enumerates the registered cobra commands (`RootCmd.Commands()`, the normative
+  CLI inventory) and asserts every non-hidden command appears in the `README.md`
+  "## Operations" table and the `docs/current-state.md` "### CLI Surface"
+  section. This catches a command that shipped without a doc entry, and the
+  historical drift of a shipped command still being described only in a
+  planned/future section.
+- **Support matrix vs. backend routing** —
+  `internal/backend/selector/matrix_routing_test.go`. Iterates
+  `config.SupportMatrix` and asserts the support level and the selector agree
+  both directions: every `LevelUnsupported` row is gated with
+  `ErrLanguageUnsupported` before any backend constructor runs (an unsupported
+  language is never routed to active backend setup), and every non-unsupported
+  row is routable rather than gated. The complementary
+  `TestForFile_UnsupportedLanguageGatedBeforeBackendSetup` adds
+  constructor-spying for the unsupported rows.
+
+When a guardrail fails, fix the drift it reports — do not weaken the check to
+match stale prose. When a new drift-prone surface is identified, prefer adding a
+check here over relying on the manual checklist below.
 
 ## Pre-landing checklist for drift-sensitive changes
 
