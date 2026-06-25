@@ -77,8 +77,8 @@ func readDocSection(t *testing.T, repo, relPath, heading string) string {
 	if err != nil {
 		t.Fatalf("read %s: %v", relPath, err)
 	}
-	level := strings.IndexByte(heading, ' ')
-	if level <= 0 || strings.Trim(heading[:level], "#") != "" {
+	level := countLeadingHashes(heading)
+	if level == 0 {
 		t.Fatalf("heading %q must start with one or more '#' followed by a space", heading)
 	}
 
@@ -105,9 +105,6 @@ func readDocSection(t *testing.T, repo, relPath, heading string) string {
 	return b.String()
 }
 
-// countLeadingHashes returns the heading level of a Markdown line (the number of
-// leading '#' immediately followed by a space), or 0 if the line is not a
-// heading.
 func countLeadingHashes(line string) int {
 	n := 0
 	for n < len(line) && line[n] == '#' {
@@ -119,6 +116,28 @@ func countLeadingHashes(line string) int {
 	return 0
 }
 
+// containsCommandName reports whether s contains name as a complete command
+// token — not as a substring of a longer name. Command names consist of
+// letters, digits, and hyphens; a match is valid only when not flanked by
+// those characters. This prevents "rename" from matching inside "rename-function".
+func containsCommandName(s, name string) bool {
+	for i := 0; i <= len(s)-len(name); i++ {
+		if s[i:i+len(name)] != name {
+			continue
+		}
+		before := i == 0 || !isCmdNameChar(s[i-1])
+		after := i+len(name) == len(s) || !isCmdNameChar(s[i+len(name)])
+		if before && after {
+			return true
+		}
+	}
+	return false
+}
+
+func isCmdNameChar(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '-'
+}
+
 // TestCommandInventoryDocumentedInReadme verifies every registered command
 // appears in the README "## Operations" table. A command shipped without a
 // README entry — or a README that still omits a renamed command — fails here.
@@ -126,7 +145,7 @@ func TestCommandInventoryDocumentedInReadme(t *testing.T) {
 	repo := repoRoot(t)
 	section := readDocSection(t, repo, "README.md", "## Operations")
 	for _, name := range inventoryCommands(t) {
-		if !strings.Contains(section, name) {
+		if !containsCommandName(section, name) {
 			t.Errorf("command %q is registered but absent from README.md \"## Operations\"; "+
 				"update the command table (see docs/drift-control.md CLI-inventory rule)", name)
 		}
@@ -143,7 +162,7 @@ func TestCommandInventoryDocumentedInCurrentState(t *testing.T) {
 	repo := repoRoot(t)
 	section := readDocSection(t, repo, "docs/current-state.md", "### CLI Surface")
 	for _, name := range inventoryCommands(t) {
-		if !strings.Contains(section, name) {
+		if !containsCommandName(section, name) {
 			t.Errorf("command %q is registered but absent from docs/current-state.md \"### CLI Surface\"; "+
 				"a shipped command must be listed as implemented, not left in a planned/future section "+
 				"(see docs/drift-control.md status-freshness rule)", name)
