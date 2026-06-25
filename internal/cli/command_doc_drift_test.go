@@ -134,6 +134,9 @@ func containsCommandName(s, name string) bool {
 	return false
 }
 
+// isCmdNameChar uses byte ranges deliberately — command names are ASCII-only.
+// Using unicode.IsLetter/IsDigit would silently expand the class to non-ASCII
+// and mis-classify multibyte UTF-8 sequences as cmd-name chars.
 func isCmdNameChar(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '-'
 }
