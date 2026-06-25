@@ -1,6 +1,6 @@
 # Current State
 
-This assessment reflects the repository state on `main` as of 2026-05-09.
+This assessment reflects the repository state on `main` as of 2026-06-24.
 Review this file before each release candidate; update stale status claims or
 mark historical sections explicitly before tagging.
 
@@ -91,9 +91,18 @@ backend expansion decisions instead of duplicating language tables here.
 
 `internal/backend/selector` maps file extensions to backend choices:
 
-- TypeScript/JavaScript prefer ts-morph when available;
-- Java/Kotlin prefer OpenRewrite;
+- a language whose `internal/config.SupportMatrix` row is `unsupported`
+  (currently Java and Kotlin) is gated with `ErrLanguageUnsupported` before any
+  backend is constructed, so it never reaches active setup;
+- TypeScript/JavaScript prefer ts-morph when available, falling back to the LSP
+  server;
+- the OpenRewrite rung remains wired for Java/Kotlin but is unreachable while
+  those rows are `unsupported`;
 - other configured languages use the generic LSP adapter.
+
+The matrix/selector alignment is enforced by
+`internal/backend/selector/matrix_routing_test.go` (see
+[`docs/drift-control.md`](drift-control.md)).
 
 Built-in language-server defaults live in `internal/config/config.go` for Go,
 Rust, TypeScript, JavaScript, Python, Java, and Kotlin. Project and user config
