@@ -4,9 +4,10 @@ package internal_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/shatterproof-ai/refute/internal/testutil"
 )
 
 const experimentalIntegrationEnv = "REFUTE_EXPERIMENTAL_INTEGRATION"
@@ -19,15 +20,10 @@ func requireExperimentalIntegration(t *testing.T, area string) {
 }
 
 // buildRefute compiles the refute binary into a temp dir and returns its path.
+// The integration package runs from internal/, so the module root is "..".
 func buildRefute(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "refute")
-	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", bin, "./cmd/refute")
-	cmd.Dir = ".."
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build refute: %v\n%s", err, out)
-	}
-	return bin
+	return testutil.BuildRefute(t, "..")
 }
 
 func requireFixtureTypeScriptLanguageServer(t *testing.T, fixtureDir string) string {
@@ -56,28 +52,8 @@ func linkFixtureNodeModules(t *testing.T, fixtureDir string, workspaceDir string
 	}
 }
 
-// copyDir recursively copies a directory tree.
+// copyDir recursively copies a directory tree, skipping .git and node_modules.
 func copyDir(t *testing.T, src, dst string) {
 	t.Helper()
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		t.Fatalf("reading %s: %v", src, err)
-	}
-	for _, e := range entries {
-		if e.Name() == "node_modules" {
-			continue
-		}
-		srcPath := filepath.Join(src, e.Name())
-		dstPath := filepath.Join(dst, e.Name())
-		if e.IsDir() {
-			os.MkdirAll(dstPath, 0755)
-			copyDir(t, srcPath, dstPath)
-		} else {
-			data, err := os.ReadFile(srcPath)
-			if err != nil {
-				t.Fatalf("reading %s: %v", srcPath, err)
-			}
-			os.WriteFile(dstPath, data, 0644)
-		}
-	}
+	testutil.CopyDir(t, src, dst)
 }

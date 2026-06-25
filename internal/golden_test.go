@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/pmezard/go-difflib/difflib"
+	"github.com/shatterproof-ai/refute/internal/testutil"
 )
 
 var updateGolden = flag.Bool("update", false, "update golden expected output")
@@ -58,9 +59,10 @@ func TestGolden(t *testing.T) {
 
 			expectedDir := filepath.Join(caseDir, "expected")
 			if *updateGolden {
-				if err := replaceDir(expectedDir, tmpDir); err != nil {
+				if err := os.RemoveAll(expectedDir); err != nil {
 					t.Fatalf("update expected: %v", err)
 				}
+				testutil.CopyDir(t, tmpDir, expectedDir)
 				return
 			}
 
@@ -187,42 +189,4 @@ func readTree(root string) (map[string][]byte, error) {
 		return nil
 	})
 	return files, err
-}
-
-func replaceDir(dst, src string) error {
-	if err := os.RemoveAll(dst); err != nil {
-		return err
-	}
-	return copyTree(dst, src)
-}
-
-func copyTree(dst, src string) error {
-	return filepath.WalkDir(src, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		if rel == "." {
-			return os.MkdirAll(dst, 0o755)
-		}
-		target := filepath.Join(dst, rel)
-		if entry.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(target, data, info.Mode().Perm())
-	})
 }

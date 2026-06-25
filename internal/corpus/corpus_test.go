@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/shatterproof-ai/refute/internal/testutil"
 )
 
 // allowNetworkVerifyEnv opts in to verify steps that need to install
@@ -68,7 +70,7 @@ type verifyStep struct {
 func TestCorpus(t *testing.T) {
 	root := repoRoot(t)
 	m := loadManifest(t, filepath.Join(root, "testdata", "corpus", "manifest.json"))
-	refuteBin := buildRefute(t, root)
+	refuteBin := testutil.BuildRefute(t, root)
 
 	for _, tgt := range m.Targets {
 		t.Run(tgt.Name, func(t *testing.T) {
@@ -135,7 +137,7 @@ func materialize(t *testing.T, root, cacheDir string, tgt target) string {
 		src = filepath.Join(src, tgt.Subdir)
 	}
 	dst := t.TempDir()
-	copyTree(t, src, dst)
+	testutil.CopyDir(t, src, dst)
 	return dst
 }
 
@@ -266,18 +268,6 @@ func loadManifest(t *testing.T, path string) manifest {
 	return m
 }
 
-// buildRefute compiles the refute CLI once and returns the binary path.
-func buildRefute(t *testing.T, root string) string {
-	t.Helper()
-	bin := filepath.Join(t.TempDir(), "refute")
-	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", bin, "./cmd/refute")
-	cmd.Dir = root
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("building refute binary:\n%s", out)
-	}
-	return bin
-}
-
 // repoRoot walks up from the test's working directory to the module root.
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -294,38 +284,5 @@ func repoRoot(t *testing.T) string {
 			t.Fatalf("could not locate repo root (go.mod) above %s", dir)
 		}
 		dir = parent
-	}
-}
-
-// copyTree recursively copies src into dst, skipping any .git directory so the
-// materialized copy is a clean working tree.
-func copyTree(t *testing.T, src, dst string) {
-	t.Helper()
-	err := filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if d.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			return os.MkdirAll(filepath.Join(dst, rel), 0o755)
-		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(filepath.Join(dst, rel), data, info.Mode().Perm())
-	})
-	if err != nil {
-		t.Fatalf("copying corpus target %s -> %s: %v", src, dst, err)
 	}
 }
