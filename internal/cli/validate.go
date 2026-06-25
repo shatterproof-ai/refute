@@ -28,21 +28,33 @@ const (
 // extract range, mutually-exclusive addressing flags used together, and a
 // malformed or unroutable --symbol. Every rejection is a plain error (exit 1);
 // in --json mode Execute wraps it into an invalid-request envelope.
-func validateLocationFlags(cmd *cobra.Command, mode locationMode) error {
+func validateLocationFlags(cmd *cobra.Command, mode locationMode, flags any) error {
 	switch mode {
 	case modeRename:
-		return validateRenameFlags(cmd)
+		rename, ok := flags.(*renameFlags)
+		if !ok {
+			return fmt.Errorf("internal error: rename validator received %T flags", flags)
+		}
+		return validateRenameFlags(cmd, rename)
 	case modeExtract:
-		return validateExtractFlags(cmd)
+		extract, ok := flags.(*extractFlags)
+		if !ok {
+			return fmt.Errorf("internal error: extract validator received %T flags", flags)
+		}
+		return validateExtractFlags(cmd, extract)
 	case modeInline:
-		return validateInlineFlags(cmd)
+		inline, ok := flags.(*inlineFlags)
+		if !ok {
+			return fmt.Errorf("internal error: inline validator received %T flags", flags)
+		}
+		return validateInlineFlags(cmd, inline)
 	default:
 		return nil
 	}
 }
 
-func validateRenameFlags(cmd *cobra.Command) error {
-	symbolSet := flagSymbol != ""
+func validateRenameFlags(cmd *cobra.Command, flags *renameFlags) error {
+	symbolSet := flags.Symbol != ""
 	positionSet := anyChanged(cmd, "file", "line", "col", "name")
 
 	if symbolSet && positionSet {
@@ -53,63 +65,63 @@ func validateRenameFlags(cmd *cobra.Command) error {
 	}
 
 	if symbolSet {
-		if err := validateSymbolValue(flagSymbol); err != nil {
+		if err := validateSymbolValue(flags.Symbol); err != nil {
 			return err
 		}
 		// --symbol reaches here only without position flags (the mutual-exclusion
 		// check above already rejected the combination), so this is always a
 		// naked symbol that must be routable to a language backend.
-		if _, err := inferTier1Language(flagSymbol, ""); err != nil {
+		if _, err := inferTier1Language(flags.Symbol, ""); err != nil {
 			return err
 		}
 		return nil
 	}
 
 	// Position addressing: --file with --line, then --col or --name.
-	if flagFile == "" {
+	if flags.File == "" {
 		return fmt.Errorf("--file is required for position addressing")
 	}
 	if !cmd.Flags().Changed("line") {
 		return fmt.Errorf("--line is required with --file")
 	}
-	if err := validateFileExists(flagFile); err != nil {
+	if err := validateFileExists(flags.File); err != nil {
 		return err
 	}
-	if err := validatePositiveCoord(cmd, "line", flagLine); err != nil {
+	if err := validatePositiveCoord(cmd, "line", flags.Line); err != nil {
 		return err
 	}
-	return validatePositiveCoord(cmd, "col", flagCol)
+	return validatePositiveCoord(cmd, "col", flags.Col)
 }
 
-func validateExtractFlags(cmd *cobra.Command) error {
-	if err := validateFileExists(flagFile); err != nil {
+func validateExtractFlags(cmd *cobra.Command, flags *extractFlags) error {
+	if err := validateFileExists(flags.File); err != nil {
 		return err
 	}
 	for _, c := range []struct {
 		flag string
 		val  int
 	}{
-		{"start-line", flagStartLine},
-		{"start-col", flagStartCol},
-		{"end-line", flagEndLine},
-		{"end-col", flagEndCol},
+		{"start-line", flags.StartLine},
+		{"start-col", flags.StartCol},
+		{"end-line", flags.EndLine},
+		{"end-col", flags.EndCol},
 	} {
 		if err := validatePositiveCoord(cmd, c.flag, c.val); err != nil {
 			return err
 		}
 	}
 	// The selection start must not come after its end.
-	if flagStartLine > flagEndLine ||
-		(flagStartLine == flagEndLine && flagStartCol > flagEndCol) {
+	if flags.StartLine > flags.EndLine ||
+		(flags.StartLine == flags.EndLine && flags.StartCol > flags.EndCol) {
 		return fmt.Errorf("selection start %d:%d is after end %d:%d",
-			flagStartLine, flagStartCol, flagEndLine, flagEndCol)
+			flags.StartLine, flags.StartCol, flags.EndLine, flags.EndCol)
 	}
 	return nil
 }
 
-func validateInlineFlags(cmd *cobra.Command) error {
-	symbolSet := flagSymbol != ""
-	callSiteSet := callSiteFlag != ""
+func validateInlineFlags(cmd *cobra.Command, flags *inlineFlags) error {
+	symbolSet := flags.Symbol != ""
+	callSiteSet := flags.CallSite != ""
 	positionSet := anyChanged(cmd, "file", "line", "col", "name")
 
 	if symbolSet && !callSiteSet {
@@ -121,30 +133,30 @@ func validateInlineFlags(cmd *cobra.Command) error {
 
 	if callSiteSet {
 		if symbolSet {
-			if err := validateSymbolValue(flagSymbol); err != nil {
+			if err := validateSymbolValue(flags.Symbol); err != nil {
 				return err
 			}
 		}
-		if _, err := parseCallSite(callSiteFlag); err != nil {
+		if _, err := parseCallSite(flags.CallSite); err != nil {
 			return fmt.Errorf("invalid --call-site: %w", err)
 		}
 		return nil
 	}
 
 	// Position addressing requires --file and --line.
-	if flagFile == "" {
+	if flags.File == "" {
 		return fmt.Errorf("--file is required when --call-site is not provided")
 	}
 	if !cmd.Flags().Changed("line") {
 		return fmt.Errorf("--line is required when --call-site is not provided")
 	}
-	if err := validateFileExists(flagFile); err != nil {
+	if err := validateFileExists(flags.File); err != nil {
 		return err
 	}
-	if err := validatePositiveCoord(cmd, "line", flagLine); err != nil {
+	if err := validatePositiveCoord(cmd, "line", flags.Line); err != nil {
 		return err
 	}
-	return validatePositiveCoord(cmd, "col", flagCol)
+	return validatePositiveCoord(cmd, "col", flags.Col)
 }
 
 // validateFileExists confirms --file names an existing regular file.

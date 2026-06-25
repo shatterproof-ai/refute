@@ -100,7 +100,7 @@ func unmarshalListResult(t *testing.T, data []byte) listSymbolsResult {
 
 func TestRenderListSymbolsJSON_Empty(t *testing.T) {
 	ctx := jsonContext{Operation: "list-symbols", Language: "go", Backend: "lsp", WorkspaceRoot: "/ws"}
-	data, err := renderListSymbolsJSON(ctx, nil, nil)
+	data, err := renderListSymbolsJSON(ctx, nil, nil, "")
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestRenderListSymbolsJSON_Empty(t *testing.T) {
 
 func TestRenderListSymbolsJSON_Single(t *testing.T) {
 	ctx := jsonContext{Operation: "list-symbols", Language: "go", Backend: "lsp", WorkspaceRoot: "/ws"}
-	data, err := renderListSymbolsJSON(ctx, sampleSymbols()[1:2], nil)
+	data, err := renderListSymbolsJSON(ctx, sampleSymbols()[1:2], nil, "")
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestRenderListSymbolsJSON_Single(t *testing.T) {
 
 func TestRenderListSymbolsJSON_Ambiguous(t *testing.T) {
 	ctx := jsonContext{Operation: "list-symbols", Language: "go", Backend: "lsp", WorkspaceRoot: "/ws"}
-	data, err := renderListSymbolsJSON(ctx, sampleSymbols(), nil)
+	data, err := renderListSymbolsJSON(ctx, sampleSymbols(), nil, "")
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -153,32 +153,26 @@ func TestRenderListSymbolsJSON_Ambiguous(t *testing.T) {
 	}
 }
 
-func resetListFlagsForTest(t *testing.T) {
+func resetListFlagsForTest(t *testing.T) *listSymbolsFlags {
 	t.Helper()
+	flags := &listSymbolsFlags{}
 	flagJSON = false
-	flagFile = ""
-	flagListQuery = ""
-	flagListKind = ""
-	flagListLang = ""
 	flagConfig = ""
 	t.Cleanup(func() {
 		flagJSON = false
-		flagFile = ""
-		flagListQuery = ""
-		flagListKind = ""
-		flagListLang = ""
 		flagConfig = ""
 	})
+	return flags
 }
 
 func TestListSymbolsCommand_UnsupportedLanguageJSON(t *testing.T) {
-	resetListFlagsForTest(t)
-	flagListLang = "java"
+	flags := resetListFlagsForTest(t)
+	flags.Lang = "java"
 	flagJSON = true
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runListSymbols()
+		runErr = runListSymbols(flags)
 	})
 	var ec *ExitCodeError
 	if !errors.As(runErr, &ec) || ec.Code == 0 {
@@ -204,10 +198,10 @@ func TestListSymbolsCommand_UnsupportedLanguageJSON(t *testing.T) {
 }
 
 func TestListSymbolsCommand_UnsupportedLanguageHuman(t *testing.T) {
-	resetListFlagsForTest(t)
-	flagListLang = "kotlin"
+	flags := resetListFlagsForTest(t)
+	flags.Lang = "kotlin"
 
-	err := runListSymbols()
+	err := runListSymbols(flags)
 	var ec *ExitCodeError
 	if !errors.As(err, &ec) || ec.Code == 0 {
 		t.Fatalf("expected non-zero ExitCodeError, got %#v", err)
@@ -219,51 +213,51 @@ func TestListSymbolsCommand_UnsupportedLanguageHuman(t *testing.T) {
 
 func TestResolveListLanguage(t *testing.T) {
 	t.Run("explicit lang wins", func(t *testing.T) {
-		resetListFlagsForTest(t)
-		flagListLang = "rust"
-		got, err := resolveListLanguage("/ws/main.go")
+		flags := resetListFlagsForTest(t)
+		flags.Lang = "rust"
+		got, err := resolveListLanguage("/ws/main.go", flags)
 		if err != nil || got != "rust" {
 			t.Fatalf("got (%q, %v), want (rust, nil)", got, err)
 		}
 	})
 	t.Run("detect from file", func(t *testing.T) {
-		resetListFlagsForTest(t)
-		got, err := resolveListLanguage("/ws/main.go")
+		flags := resetListFlagsForTest(t)
+		got, err := resolveListLanguage("/ws/main.go", flags)
 		if err != nil || got != "go" {
 			t.Fatalf("got (%q, %v), want (go, nil)", got, err)
 		}
 	})
 	t.Run("default go without file or lang", func(t *testing.T) {
-		resetListFlagsForTest(t)
-		got, err := resolveListLanguage("")
+		flags := resetListFlagsForTest(t)
+		got, err := resolveListLanguage("", flags)
 		if err != nil || got != "go" {
 			t.Fatalf("got (%q, %v), want (go, nil)", got, err)
 		}
 	})
 	t.Run("undetected extension errors instead of defaulting to go", func(t *testing.T) {
-		resetListFlagsForTest(t)
-		flagFile = "/ws/notes.txt"
-		if _, err := resolveListLanguage("/ws/notes.txt"); err == nil {
+		flags := resetListFlagsForTest(t)
+		flags.File = "/ws/notes.txt"
+		if _, err := resolveListLanguage("/ws/notes.txt", flags); err == nil {
 			t.Fatal("expected error for undetected file extension, got nil")
 		}
 	})
 }
 
 func TestListSymbolsCommand_UndetectedFileExtension(t *testing.T) {
-	resetListFlagsForTest(t)
-	flagFile = "/ws/notes.txt"
+	flags := resetListFlagsForTest(t)
+	flags.File = "/ws/notes.txt"
 
-	if err := runListSymbols(); err == nil {
+	if err := runListSymbols(flags); err == nil {
 		t.Fatal("expected error for --file with undetected extension")
 	}
 }
 
 func TestListSymbolsCommand_InvalidKind(t *testing.T) {
-	resetListFlagsForTest(t)
-	flagListLang = "go"
-	flagListKind = "bogus"
+	flags := resetListFlagsForTest(t)
+	flags.Lang = "go"
+	flags.Kind = "bogus"
 
-	if err := runListSymbols(); err == nil {
+	if err := runListSymbols(flags); err == nil {
 		t.Fatal("expected error for invalid --kind")
 	}
 }
@@ -303,7 +297,7 @@ func TestSetupListSymbolsBackend_ServerBinaryMissing(t *testing.T) {
 }
 
 func TestListSymbolsCommand_JSONBackendMissing(t *testing.T) {
-	resetListFlagsForTest(t)
+	flags := resetListFlagsForTest(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/list\n\ngo 1.22\n"), 0o644); err != nil {
 		t.Fatalf("write go.mod: %v", err)
@@ -326,7 +320,7 @@ func TestListSymbolsCommand_JSONBackendMissing(t *testing.T) {
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runListSymbols()
+		runErr = runListSymbols(flags)
 	})
 	var ec *ExitCodeError
 	if !errors.As(runErr, &ec) || ec.Code != backendMissingExitCode {
@@ -349,7 +343,7 @@ func TestListSymbolsCommand_JSONBackendMissing(t *testing.T) {
 }
 
 func TestListSymbolsCommand_JSONNoServerConfigured(t *testing.T) {
-	resetListFlagsForTest(t)
+	flags := resetListFlagsForTest(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/list\n\ngo 1.22\n"), 0o644); err != nil {
 		t.Fatalf("write go.mod: %v", err)
@@ -372,7 +366,7 @@ func TestListSymbolsCommand_JSONNoServerConfigured(t *testing.T) {
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runListSymbols()
+		runErr = runListSymbols(flags)
 	})
 	var ec *ExitCodeError
 	if !errors.As(runErr, &ec) || ec.Code != backendMissingExitCode {

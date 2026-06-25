@@ -11,31 +11,21 @@ import (
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
-// resetRenameFlagsForTest clears the package-level rename flags so individual
-// test cases can configure a fresh invocation without bleed-through.
-func resetRenameFlagsForTest(t *testing.T) {
+// resetRenameFlagsForTest clears the shared invocation flags and returns a
+// fresh rename flag set for each test case.
+func resetRenameFlagsForTest(t *testing.T) *renameFlags {
 	t.Helper()
+	flags := &renameFlags{}
 	prevConfig := flagConfig
-	flagFile = ""
-	flagLine = 0
-	flagCol = 0
-	flagName = ""
-	flagNewName = ""
-	flagSymbol = ""
 	flagJSON = false
 	flagDryRun = false
 	flagConfig = ""
 	t.Cleanup(func() {
-		flagFile = ""
-		flagLine = 0
-		flagCol = 0
-		flagName = ""
-		flagNewName = ""
-		flagSymbol = ""
 		flagJSON = false
 		flagDryRun = false
 		flagConfig = prevConfig
 	})
+	return flags
 }
 
 // writeGoFixture writes a minimal Go module under dir so tier-1 setup can find
@@ -80,20 +70,20 @@ func writeJSFixture(t *testing.T, dir string) string {
 // TypeScript config/server key internally, but the user-facing JSON metadata
 // must report language "javascript", not the config key "typescript".
 func TestRunRename_JSJSONErrorReportsJavaScriptLanguage(t *testing.T) {
-	resetRenameFlagsForTest(t)
+	flags := resetRenameFlagsForTest(t)
 	dir := t.TempDir()
 	jsFile := writeJSFixture(t, dir)
 
-	flagFile = jsFile
-	flagLine = 1
-	flagName = "add"
-	flagNewName = "total"
+	flags.File = jsFile
+	flags.Line = 1
+	flags.Name = "add"
+	flags.NewName = "total"
 	flagJSON = true
 	flagDryRun = true
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runRename(symbol.KindFunction)
+		runErr = runRename(symbol.KindFunction, flags)
 	})
 	var ec *ExitCodeError
 	if !errors.As(runErr, &ec) || ec.Code == 0 {
@@ -117,23 +107,23 @@ func TestRunRename_JSJSONErrorReportsJavaScriptLanguage(t *testing.T) {
 // TestRunRename_TSJSONErrorReportsTypeScriptLanguage guards the symmetric
 // TypeScript case so the JavaScript fix does not regress .ts metadata.
 func TestRunRename_TSJSONErrorReportsTypeScriptLanguage(t *testing.T) {
-	resetRenameFlagsForTest(t)
+	flags := resetRenameFlagsForTest(t)
 	dir := t.TempDir()
 	tsFile := filepath.Join(dir, "math.ts")
 	if err := os.WriteFile(tsFile, []byte("export function sum(left: number, right: number) {\n    return left + right;\n}\n"), 0o644); err != nil {
 		t.Fatalf("write math.ts: %v", err)
 	}
 
-	flagFile = tsFile
-	flagLine = 1
-	flagName = "add"
-	flagNewName = "total"
+	flags.File = tsFile
+	flags.Line = 1
+	flags.Name = "add"
+	flags.NewName = "total"
 	flagJSON = true
 	flagDryRun = true
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runRename(symbol.KindFunction)
+		runErr = runRename(symbol.KindFunction, flags)
 	})
 	var ec *ExitCodeError
 	if !errors.As(runErr, &ec) || ec.Code == 0 {
@@ -152,19 +142,19 @@ func TestRunRename_TSJSONErrorReportsTypeScriptLanguage(t *testing.T) {
 // non-existent LSP binary configured. The CLI must emit a JSON envelope with
 // status backend-missing rather than a plain stderr error.
 func TestTier1Rename_JSONBackendMissing(t *testing.T) {
-	resetRenameFlagsForTest(t)
+	flags := resetRenameFlagsForTest(t)
 	dir := t.TempDir()
 	mainFile := writeGoFixture(t, dir)
 	flagConfig = writeServerConfig(t, dir, "go", "refute-nonexistent-lsp-binary-xyz")
 
-	flagFile = mainFile
-	flagSymbol = "hello"
-	flagNewName = "hi"
+	flags.File = mainFile
+	flags.Symbol = "hello"
+	flags.NewName = "hi"
 	flagJSON = true
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runRename(symbol.KindFunction)
+		runErr = runRename(symbol.KindFunction, flags)
 	})
 	var ec *ExitCodeError
 	if !errors.As(runErr, &ec) || ec.Code == 0 {
@@ -192,19 +182,19 @@ func TestTier1Rename_JSONBackendMissing(t *testing.T) {
 // an empty server.command, which historically returned a plain error. Must
 // emit a backend-missing JSON envelope under --json.
 func TestTier1Rename_JSONNoServerConfigured(t *testing.T) {
-	resetRenameFlagsForTest(t)
+	flags := resetRenameFlagsForTest(t)
 	dir := t.TempDir()
 	mainFile := writeGoFixture(t, dir)
 	flagConfig = writeServerConfig(t, dir, "go", "")
 
-	flagFile = mainFile
-	flagSymbol = "hello"
-	flagNewName = "hi"
+	flags.File = mainFile
+	flags.Symbol = "hello"
+	flags.NewName = "hi"
 	flagJSON = true
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runRename(symbol.KindFunction)
+		runErr = runRename(symbol.KindFunction, flags)
 	})
 	var ec *ExitCodeError
 	if !errors.As(runErr, &ec) || ec.Code == 0 {
@@ -229,7 +219,7 @@ func TestTier1Rename_JSONNoServerConfigured(t *testing.T) {
 // the LSP binary exists but exits before initialization can complete. It must
 // use the same backend-init-failed envelope as file/position rename.
 func TestTier1Rename_JSONBackendInitFailed(t *testing.T) {
-	resetRenameFlagsForTest(t)
+	flags := resetRenameFlagsForTest(t)
 	dir := t.TempDir()
 	mainFile := writeGoFixture(t, dir)
 	failingServer := filepath.Join(dir, "failing-lsp")
@@ -238,14 +228,14 @@ func TestTier1Rename_JSONBackendInitFailed(t *testing.T) {
 	}
 	flagConfig = writeServerConfig(t, dir, "go", failingServer)
 
-	flagFile = mainFile
-	flagSymbol = "hello"
-	flagNewName = "hi"
+	flags.File = mainFile
+	flags.Symbol = "hello"
+	flags.NewName = "hi"
 	flagJSON = true
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runRename(symbol.KindFunction)
+		runErr = runRename(symbol.KindFunction, flags)
 	})
 	var ec *ExitCodeError
 	if !errors.As(runErr, &ec) || ec.Code != 1 {
@@ -284,18 +274,18 @@ func writeJavaFixture(t *testing.T, dir string) string {
 // report the documented unsupported-language status instead of falling through
 // to backend setup and reporting backend-missing.
 func TestTier1Rename_JSONUnsupportedLanguage(t *testing.T) {
-	resetRenameFlagsForTest(t)
+	flags := resetRenameFlagsForTest(t)
 	dir := t.TempDir()
 	javaFile := writeJavaFixture(t, dir)
 
-	flagFile = javaFile
-	flagSymbol = "Greeter.greet"
-	flagNewName = "hello"
+	flags.File = javaFile
+	flags.Symbol = "Greeter.greet"
+	flags.NewName = "hello"
 	flagJSON = true
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runRename(symbol.KindMethod)
+		runErr = runRename(symbol.KindMethod, flags)
 	})
 	var ec *ExitCodeError
 	if !errors.As(runErr, &ec) || ec.Code == 0 {
@@ -319,20 +309,20 @@ func TestTier1Rename_JSONUnsupportedLanguage(t *testing.T) {
 // TestRename_JSONBackendMissing covers the non-tier-1 path where the resolved
 // position triggers buildBackend() and the configured server is missing.
 func TestRename_JSONBackendMissing(t *testing.T) {
-	resetRenameFlagsForTest(t)
+	flags := resetRenameFlagsForTest(t)
 	dir := t.TempDir()
 	mainFile := writeGoFixture(t, dir)
 	flagConfig = writeServerConfig(t, dir, "go", "refute-nonexistent-lsp-binary-xyz")
 
-	flagFile = mainFile
-	flagLine = 3
-	flagName = "hello"
-	flagNewName = "hi"
+	flags.File = mainFile
+	flags.Line = 3
+	flags.Name = "hello"
+	flags.NewName = "hi"
 	flagJSON = true
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runRename(symbol.KindFunction)
+		runErr = runRename(symbol.KindFunction, flags)
 	})
 	var ec *ExitCodeError
 	if !errors.As(runErr, &ec) || ec.Code == 0 {

@@ -14,6 +14,9 @@ import (
 )
 
 var (
+	// Invocation-wide output/session flags are intentionally shared across
+	// commands. Operation addressing flags live in per-command structs.
+	flagJSON    bool
 	flagConfig  string
 	flagDryRun  bool
 	flagVerbose bool

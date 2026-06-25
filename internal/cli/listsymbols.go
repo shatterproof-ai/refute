@@ -17,11 +17,12 @@ import (
 	"github.com/shatterproof-ai/refute/internal/symbol"
 )
 
-var (
-	flagListQuery string
-	flagListKind  string
-	flagListLang  string
-)
+type listSymbolsFlags struct {
+	Query string
+	File  string
+	Kind  string
+	Lang  string
+}
 
 // listStatusOK is the JSON status for a successful listing. list-symbols is a
 // read-only discovery query rather than an edit, so the edit-oriented status
@@ -60,6 +61,7 @@ type listSymbolsResult struct {
 }
 
 func init() {
+	flags := &listSymbolsFlags{}
 	cmd := &cobra.Command{
 		Use:   "list-symbols",
 		Short: "Discover candidate symbols before refactoring (Go, Rust, TypeScript)",
@@ -74,28 +76,28 @@ The target language is taken from --lang, else detected from --file, else
 defaults to Go. Languages without an LSP backend (e.g. Java, Kotlin) return a
 structured unsupported result. See ` + supportMatrixURL + `.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runListSymbols()
+			return runListSymbols(flags)
 		},
 	}
-	cmd.Flags().StringVar(&flagListQuery, "query", "", "symbol name query passed to workspace/symbol (empty lists all primed symbols)")
-	cmd.Flags().StringVar(&flagFile, "file", "", "limit results to symbols declared in this file (also selects the language)")
-	cmd.Flags().StringVar(&flagListKind, "kind", "", "filter by kind: function, class, method, field, variable, type, parameter")
-	cmd.Flags().StringVar(&flagListLang, "lang", "", "language to query (overrides detection from --file; defaults to go)")
+	cmd.Flags().StringVar(&flags.Query, "query", "", "symbol name query passed to workspace/symbol (empty lists all primed symbols)")
+	cmd.Flags().StringVar(&flags.File, "file", "", "limit results to symbols declared in this file (also selects the language)")
+	cmd.Flags().StringVar(&flags.Kind, "kind", "", "filter by kind: function, class, method, field, variable, type, parameter")
+	cmd.Flags().StringVar(&flags.Lang, "lang", "", "language to query (overrides detection from --file; defaults to go)")
 	cmd.Flags().BoolVar(&flagJSON, "json", false, "emit structured JSON instead of human-readable output")
 	RootCmd.AddCommand(cmd)
 }
 
-func runListSymbols() error {
+func runListSymbols(flags *listSymbolsFlags) error {
 	telemetrySetContext(jsonContext{Operation: "list-symbols"})
 
-	kind, ok := parseSymbolKindFilter(flagListKind)
+	kind, ok := parseSymbolKindFilter(flags.Kind)
 	if !ok {
-		return fmt.Errorf("invalid --kind %q (want one of: function, class, method, field, variable, type, parameter)", flagListKind)
+		return fmt.Errorf("invalid --kind %q (want one of: function, class, method, field, variable, type, parameter)", flags.Kind)
 	}
 
 	var fileScope string
-	if flagFile != "" {
-		abs, err := filepath.Abs(flagFile)
+	if flags.File != "" {
+		abs, err := filepath.Abs(flags.File)
 		if err != nil {
 			return fmt.Errorf("resolving file path: %w", err)
 		}
@@ -109,12 +111,12 @@ func runListSymbols() error {
 		fileScope = abs
 	}
 
-	lang, err := resolveListLanguage(fileScope)
+	lang, err := resolveListLanguage(fileScope, flags)
 	if err != nil {
 		return err
 	}
 
-	workspaceRoot, err := tier1WorkspaceRoot()
+	workspaceRoot, err := tier1WorkspaceRoot("")
 	if err != nil {
 		return err
 	}
@@ -135,7 +137,7 @@ func runListSymbols() error {
 	defer func() { _ = adapter.Shutdown() }()
 
 	queryDone := telemetryPhase("symbol-discovery")
-	syms, err := adapter.ListSymbols(flagListQuery)
+	syms, err := adapter.ListSymbols(flags.Query)
 	queryDone()
 	if err != nil {
 		if flagJSON {
@@ -154,24 +156,24 @@ func runListSymbols() error {
 	if fileScope != "" && len(syms) > 0 && len(filterListSymbols(syms, fileScope, symbol.KindUnknown)) == 0 {
 		warnings = append(warnings, fmt.Sprintf(
 			"no symbols matched file scope %s, though the server reported %d symbol(s) elsewhere; check the --file path",
-			flagFile, len(syms)))
+			flags.File, len(syms)))
 	}
 
-	return emitListSymbols(ctx, filtered, warnings)
+	return emitListSymbols(ctx, filtered, warnings, flags)
 }
 
 // resolveListLanguage picks the language key: explicit --lang wins, then
 // detection from the scoped file. It falls back to the Go primary target only
 // when neither --lang nor --file is given; an unrecognized --file extension is
 // an explicit error so the caller is not silently switched to Go.
-func resolveListLanguage(fileScope string) (string, error) {
-	if flagListLang != "" {
-		return flagListLang, nil
+func resolveListLanguage(fileScope string, flags *listSymbolsFlags) (string, error) {
+	if flags.Lang != "" {
+		return flags.Lang, nil
 	}
 	if fileScope != "" {
 		key := DetectServerKey(fileScope)
 		if key == "" {
-			return "", fmt.Errorf("cannot determine language for %q; pass --lang explicitly", flagFile)
+			return "", fmt.Errorf("cannot determine language for %q; pass --lang explicitly", flags.File)
 		}
 		return key, nil
 	}
@@ -280,11 +282,11 @@ func qualifiedSymbolName(loc symbol.Location) string {
 	return loc.Container + "." + loc.Name
 }
 
-func emitListSymbols(ctx jsonContext, syms []symbol.Location, warnings []string) error {
+func emitListSymbols(ctx jsonContext, syms []symbol.Location, warnings []string, flags *listSymbolsFlags) error {
 	telemetrySetContext(ctx)
 	telemetrySetStatus(listStatusOK)
 	if flagJSON {
-		data, err := renderListSymbolsJSON(ctx, syms, warnings)
+		data, err := renderListSymbolsJSON(ctx, syms, warnings, flags.Query)
 		if err != nil {
 			return fmt.Errorf("marshalling JSON: %w", err)
 		}
@@ -305,7 +307,7 @@ func emitListSymbols(ctx jsonContext, syms []symbol.Location, warnings []string)
 	return nil
 }
 
-func renderListSymbolsJSON(ctx jsonContext, syms []symbol.Location, warnings []string) ([]byte, error) {
+func renderListSymbolsJSON(ctx jsonContext, syms []symbol.Location, warnings []string, query string) ([]byte, error) {
 	sorted := append([]symbol.Location(nil), syms...)
 	sort.SliceStable(sorted, func(i, j int) bool {
 		if sorted[i].File != sorted[j].File {
@@ -325,7 +327,7 @@ func renderListSymbolsJSON(ctx jsonContext, syms []symbol.Location, warnings []s
 		Backend:        ctx.Backend,
 		BackendVersion: ctx.BackendVersion,
 		WorkspaceRoot:  ctx.WorkspaceRoot,
-		Query:          flagListQuery,
+		Query:          query,
 		Symbols:        make([]listSymbol, 0, len(sorted)),
 		Warnings:       warnings,
 	}

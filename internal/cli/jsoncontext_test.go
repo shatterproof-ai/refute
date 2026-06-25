@@ -56,18 +56,13 @@ func TestEmitJSONError_Golden(t *testing.T) {
 
 func TestRunRename_JSONSymbolResolutionError(t *testing.T) {
 	resetRenameFlags := func() {
-		flagFile = ""
-		flagLine = 0
-		flagCol = 0
-		flagName = ""
-		flagNewName = ""
-		flagSymbol = ""
 		flagJSON = false
 		flagDryRun = false
 		flagConfig = ""
 	}
 	resetRenameFlags()
 	t.Cleanup(resetRenameFlags)
+	flags := &renameFlags{}
 
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "main.go")
@@ -75,15 +70,15 @@ func TestRunRename_JSONSymbolResolutionError(t *testing.T) {
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	flagFile = filePath
-	flagLine = 3
-	flagName = "missing"
-	flagNewName = "renamed"
+	flags.File = filePath
+	flags.Line = 3
+	flags.Name = "missing"
+	flags.NewName = "renamed"
 	flagJSON = true
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runRename(symbol.KindFunction)
+		runErr = runRename(symbol.KindFunction, flags)
 	})
 	var ec *ExitCodeError
 	if !errors.As(runErr, &ec) || ec.Code != 1 {
