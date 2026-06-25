@@ -116,29 +116,35 @@ func countLeadingHashes(line string) int {
 	return 0
 }
 
-// containsCommandName reports whether s contains name as a complete command
-// token — not as a substring of a longer name. Command names consist of
-// letters, digits, and hyphens; a match is valid only when not flanked by
-// those characters. This prevents "rename" from matching inside "rename-function".
+// containsCommandName reports whether s documents name as a command in the
+// backtick code-span form both doc inventories use: either `name` (the
+// docs/current-state CLI Surface list form) or `refute name` (the README
+// Operations table form). Requiring the backtick delimiters — rather than a
+// bare word boundary — is what keeps the guard honest: a prose mention of a
+// command's name cannot satisfy it after the command's real inventory entry is
+// removed, and a prefix name like "rename" cannot match inside a longer name
+// like "rename-function" (its right delimiter would be '-', not a backtick).
 func containsCommandName(s, name string) bool {
-	for i := 0; i <= len(s)-len(name); i++ {
+	const refutePrefix = "`refute " // README Operations: `refute <name>`
+	for i := 0; i+len(name) <= len(s); i++ {
 		if s[i:i+len(name)] != name {
 			continue
 		}
-		before := i == 0 || !isCmdNameChar(s[i-1])
-		after := i+len(name) == len(s) || !isCmdNameChar(s[i+len(name)])
-		if before && after {
+		// Right boundary: the name must be closed by a backtick, so a name
+		// flush against the end of s (no closing delimiter) does not match.
+		if i+len(name) >= len(s) || s[i+len(name)] != '`' {
+			continue
+		}
+		// Left boundary: an opening backtick (`name`) or the README
+		// `refute <name>` form.
+		if i > 0 && s[i-1] == '`' {
+			return true
+		}
+		if i >= len(refutePrefix) && s[i-len(refutePrefix):i] == refutePrefix {
 			return true
 		}
 	}
 	return false
-}
-
-// isCmdNameChar uses byte ranges deliberately — command names are ASCII-only.
-// Using unicode.IsLetter/IsDigit would silently expand the class to non-ASCII
-// and mis-classify multibyte UTF-8 sequences as cmd-name chars.
-func isCmdNameChar(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '-'
 }
 
 // TestContainsCommandNameBoundaries pins the boundary contract directly so the
@@ -152,13 +158,13 @@ func TestContainsCommandNameBoundaries(t *testing.T) {
 		s    string
 		want bool
 	}{
-		{"rename", "| `refute rename` | Rename a symbol. |", true},         // README Operations table form
-		{"rename", "- `rename`;", true},                                    // current-state CLI Surface list form
-		{"doctor", "Run `refute doctor` to check backends.", true},         // inline backtick reference
-		{"rename-function", "- `rename-function`;", true},                  // hyphenated variant
-		{"rename", "variants: `rename-function`, `rename-class`.", false},  // prefix inside a longer command name
-		{"rename", "You can rename a symbol with the tool.", false},        // bare prose mention, no backticks
-		{"rename", "the `refute rename-function` variant", false},          // refute-prefixed but a longer name
+		{"rename", "| `refute rename` | Rename a symbol. |", true},        // README Operations table form
+		{"rename", "- `rename`;", true},                                   // current-state CLI Surface list form
+		{"doctor", "Run `refute doctor` to check backends.", true},        // inline backtick reference
+		{"rename-function", "- `rename-function`;", true},                 // hyphenated variant
+		{"rename", "variants: `rename-function`, `rename-class`.", false}, // prefix inside a longer command name
+		{"rename", "You can rename a symbol with the tool.", false},       // bare prose mention, no backticks
+		{"rename", "the `refute rename-function` variant", false},         // refute-prefixed but a longer name
 	}
 	for _, tc := range cases {
 		if got := containsCommandName(tc.s, tc.name); got != tc.want {
