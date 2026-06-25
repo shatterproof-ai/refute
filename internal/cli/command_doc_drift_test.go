@@ -141,6 +141,32 @@ func isCmdNameChar(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '-'
 }
 
+// TestContainsCommandNameBoundaries pins the boundary contract directly so the
+// inventory guards below cannot silently regress to a loose substring match. A
+// command name counts only as a backtick-delimited code span — the form both
+// doc inventories use — so a bare prose mention or a prefix inside a longer
+// command name does not satisfy the guard.
+func TestContainsCommandNameBoundaries(t *testing.T) {
+	cases := []struct {
+		name string
+		s    string
+		want bool
+	}{
+		{"rename", "| `refute rename` | Rename a symbol. |", true},         // README Operations table form
+		{"rename", "- `rename`;", true},                                    // current-state CLI Surface list form
+		{"doctor", "Run `refute doctor` to check backends.", true},         // inline backtick reference
+		{"rename-function", "- `rename-function`;", true},                  // hyphenated variant
+		{"rename", "variants: `rename-function`, `rename-class`.", false},  // prefix inside a longer command name
+		{"rename", "You can rename a symbol with the tool.", false},        // bare prose mention, no backticks
+		{"rename", "the `refute rename-function` variant", false},          // refute-prefixed but a longer name
+	}
+	for _, tc := range cases {
+		if got := containsCommandName(tc.s, tc.name); got != tc.want {
+			t.Errorf("containsCommandName(%q, %q) = %v, want %v", tc.s, tc.name, got, tc.want)
+		}
+	}
+}
+
 // TestCommandInventoryDocumentedInReadme verifies every registered command
 // appears in the README "## Operations" table. A command shipped without a
 // README entry — or a README that still omits a renamed command — fails here.
