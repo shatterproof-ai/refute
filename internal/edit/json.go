@@ -21,6 +21,7 @@ const (
 	StatusBackendMissing  = "backend-missing"
 	StatusBackendFailed   = "backend-failed"
 	StatusInvalidPosition = "invalid-position"
+	StatusKindMismatch    = "kind-mismatch"
 )
 
 // JSONChange is a single text edit in JSON output. All positions are 1-indexed.

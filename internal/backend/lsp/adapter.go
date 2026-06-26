@@ -887,6 +887,70 @@ func (a *Adapter) DocumentSymbols(path string) ([]DocumentSymbol, error) {
 	return a.client.DocumentSymbol(path)
 }
 
+// ResolveKind reports the actual SymbolKind of the symbol at loc, as the server
+// classifies it via textDocument/documentSymbol. It powers kind validation for
+// the rename-* variants. When the file has no document-symbol entry matching the
+// resolved declaration line (and name, when known), it returns
+// symbol.KindUnknown with a nil error so callers treat the kind as
+// indeterminate rather than as a failure.
+func (a *Adapter) ResolveKind(loc symbol.Location) (symbol.SymbolKind, error) {
+	if a.client == nil {
+		return symbol.KindUnknown, fmt.Errorf("adapter not initialized")
+	}
+	// Open the file so servers that only index opened documents (gopls) answer
+	// the documentSymbol request, mirroring Rename's DidOpen.
+	if err := a.client.DidOpen(loc.File, a.languageID); err != nil {
+		return symbol.KindUnknown, err
+	}
+	syms, err := a.client.DocumentSymbol(loc.File)
+	if err != nil {
+		return symbol.KindUnknown, err
+	}
+	if lspKind, ok := documentSymbolKindAt(syms, loc.Line-1, loc.Name); ok {
+		return lspKindToSymbolKind(lspKind), nil
+	}
+	return symbol.KindUnknown, nil
+}
+
+// documentSymbolKindAt walks a document-symbol tree (depth-first, deepest match
+// wins) for the symbol declared on the 0-indexed targetLine and, when name is
+// non-empty, whose name matches. It returns the raw LSP SymbolKind so the caller
+// maps it through lspKindToSymbolKind. The deepest match wins so a method
+// declared inside a type is preferred over its enclosing type when both
+// nominally start on the same line.
+//
+// It tolerates both response shapes: the hierarchical DocumentSymbol form
+// (declaration line = SelectionRange start) and the flat SymbolInformation form
+// (declaration line = Location range start), since gopls returns the latter.
+func documentSymbolKindAt(syms []DocumentSymbol, targetLine int, name string) (int, bool) {
+	for _, s := range syms {
+		if kind, ok := documentSymbolKindAt(s.Children, targetLine, name); ok {
+			return kind, true
+		}
+		if symbolDeclarationLine(s) != targetLine {
+			continue
+		}
+		if name != "" && s.Name != name {
+			continue
+		}
+		return s.Kind, true
+	}
+	return 0, false
+}
+
+// symbolDeclarationLine returns the 0-indexed line a document symbol is declared
+// on, preferring the hierarchical SelectionRange and falling back to the flat
+// SymbolInformation Location range.
+func symbolDeclarationLine(s DocumentSymbol) int {
+	if s.SelectionRange != (Range{}) {
+		return s.SelectionRange.Start.Line
+	}
+	if s.Location != nil {
+		return s.Location.Range.Start.Line
+	}
+	return s.Range.Start.Line
+}
+
 // profile returns the registered language profile for this adapter's language,
 // or a conservative default for an unregistered language.
 func (a *Adapter) profile() languageProfile {

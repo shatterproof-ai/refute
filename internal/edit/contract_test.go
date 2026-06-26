@@ -29,6 +29,7 @@ func TestJSONResult_StatusConstants(t *testing.T) {
 		"backend-missing":  edit.StatusBackendMissing,
 		"backend-failed":   edit.StatusBackendFailed,
 		"invalid-position": edit.StatusInvalidPosition,
+		"kind-mismatch":    edit.StatusKindMismatch,
 	}
 	for literal, constant := range want {
 		if literal != constant {
@@ -53,6 +54,7 @@ func TestJSONResult_DocumentedStatusesMatchConstants(t *testing.T) {
 		edit.StatusBackendMissing,
 		edit.StatusBackendFailed,
 		edit.StatusInvalidPosition,
+		edit.StatusKindMismatch,
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("documented statuses do not match edit constants\ngot:  %v\nwant: %v", got, want)
