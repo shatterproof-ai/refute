@@ -266,8 +266,8 @@ get refactoring wrong.
 
 | Layer | Trigger | Mechanism | JSON status / code | Exit |
 | --- | --- | --- | --- | --- |
-| **Capability refusal** (up front, no work) | The backend does not advertise the operation for this language | `selector.ErrOperationUnsupported` from `SelectForOperation`; never reaches backend setup | `unsupported` / `operation-unsupported` | 1 |
-| **Language gate** (up front) | The language is `LevelUnsupported` in `SupportMatrix` (Java/Kotlin) | `selector.ErrLanguageUnsupported`, gated in `backendLadder` before any backend constructor | `unsupported` / `language-unsupported` | 1 |
+| **Capability refusal** (up front, no work) | The backend does not advertise the operation for this language | `selector.ErrOperationUnsupported` from `SelectForOperation`; never reaches backend setup | `unsupported` / `unsupported-operation` | 1 |
+| **Language gate** (up front) | The language is `LevelUnsupported` in `SupportMatrix` (Java/Kotlin) | `selector.ErrLanguageUnsupported`, gated in `backendLadder` before any backend constructor | `unsupported` / `unsupported-language` | 1 |
 | **Safety refusal** (after analysis, before edit) | The operation *is* supported in general, but *this* invocation cannot be performed safely | `backend.ErrUnsafeRefactor` (new, §5.3), returned by the backend | `unsupported` / `unsafe-refactor` | 1 |
 
 Capability refusal and the language gate already exist and are guarded by
@@ -434,7 +434,7 @@ not a competing declaration. This is what keeps the richer capability descriptor
 from becoming a second, driftable source of operation status.
 
 **Refusal statuses reuse existing vocabulary:** `unsupported` status with codes
-`operation-unsupported`, `language-unsupported` (both existing), and
+`unsupported-operation`, `unsupported-language` (both existing), and
 `unsafe-refactor` (new, additive). No new status value is introduced.
 
 ---
