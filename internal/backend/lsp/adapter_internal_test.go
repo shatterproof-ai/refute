@@ -410,6 +410,187 @@ func (w *emptySymbolWriter) Write(frame []byte) (int, error) {
 	return len(frame), nil
 }
 
+// TestAdapterMoveToFileUnsupported pins MoveToFile's contract: it is not yet
+// implemented over LSP and must report ErrUnsupported so callers map it to the
+// documented unsupported status rather than a backend crash.
+func TestAdapterMoveToFileUnsupported(t *testing.T) {
+	a := &Adapter{languageID: "go"}
+	_, err := a.MoveToFile(symbol.Location{File: "main.go", Line: 1, Column: 1}, "dest.go")
+	if !errors.Is(err, backend.ErrUnsupported) {
+		t.Fatalf("MoveToFile error = %v, want backend.ErrUnsupported", err)
+	}
+}
+
+// TestAdapterPrimeWorkspaceNilClient covers the guard that an uninitialized
+// adapter (no client) cannot prime a workspace.
+func TestAdapterPrimeWorkspaceNilClient(t *testing.T) {
+	a := &Adapter{languageID: "go"}
+	_, err := a.PrimeWorkspace(t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "not initialized") {
+		t.Fatalf("PrimeWorkspace error = %v, want 'not initialized'", err)
+	}
+}
+
+// TestAdapterPrimeWorkspaceOnInitializeIsNoOp covers the early-return branch for
+// a language whose profile primes during Initialize (rust): PrimeWorkspace must
+// open nothing and return (0, nil) without touching the transport.
+func TestAdapterPrimeWorkspaceOnInitializeIsNoOp(t *testing.T) {
+	writer := &emptySymbolWriter{}
+	client := &Client{
+		transport:      NewTransport(nil, writer),
+		pending:        make(map[int]chan jsonrpcResponse),
+		done:           make(chan struct{}),
+		progress:       newProgressTracker(),
+		requestTimeout: time.Second,
+	}
+	writer.client = client
+	// rust primes on Initialize, so explicit PrimeWorkspace is a no-op.
+	a := &Adapter{languageID: "rust", client: client}
+
+	opened, err := a.PrimeWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatalf("PrimeWorkspace: %v", err)
+	}
+	if opened != 0 {
+		t.Fatalf("opened = %d, want 0 for an onInitialize language", opened)
+	}
+	if writer.symbolCalls != 0 {
+		t.Fatalf("transport was touched (%d workspace/symbol calls) for an onInitialize language", writer.symbolCalls)
+	}
+}
+
+// TestAdapterPrimeWorkspaceGoOpensFilesAndDrains drives the Go priming path
+// against a fake transport: every *.go file under the workspace is opened, then
+// a sentinel workspace/symbol query drains the notification queue. The returned
+// count reflects the files opened.
+func TestAdapterPrimeWorkspaceGoOpensFilesAndDrains(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"main.go", "util.go"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("package main\n"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	// A non-Go file and a skipped directory must not be opened.
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# x\n"), 0o644); err != nil {
+		t.Fatalf("write README.md: %v", err)
+	}
+
+	writer := &emptySymbolWriter{}
+	client := &Client{
+		transport:      NewTransport(nil, writer),
+		pending:        make(map[int]chan jsonrpcResponse),
+		done:           make(chan struct{}),
+		progress:       newProgressTracker(),
+		requestTimeout: time.Second,
+	}
+	writer.client = client
+	a := &Adapter{languageID: "go", client: client}
+
+	opened, err := a.PrimeWorkspace(dir)
+	if err != nil {
+		t.Fatalf("PrimeWorkspace: %v", err)
+	}
+	if opened != 2 {
+		t.Fatalf("opened = %d, want 2 (only the .go files)", opened)
+	}
+	if writer.symbolCalls != 1 {
+		t.Fatalf("workspace/symbol sentinel calls = %d, want 1 drain round-trip", writer.symbolCalls)
+	}
+}
+
+// TestAdapterDocumentSymbolsNilClient covers the guard that an uninitialized
+// adapter cannot request document symbols.
+func TestAdapterDocumentSymbolsNilClient(t *testing.T) {
+	a := &Adapter{languageID: "rust"}
+	_, err := a.DocumentSymbols("main.rs")
+	if err == nil || !strings.Contains(err.Error(), "not initialized") {
+		t.Fatalf("DocumentSymbols error = %v, want 'not initialized'", err)
+	}
+}
+
+// TestAdapterDocumentSymbolsParsesResult drives DocumentSymbols against a fake
+// transport that returns a hierarchical textDocument/documentSymbol result and
+// asserts the adapter parses the nested shape through.
+func TestAdapterDocumentSymbolsParsesResult(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "lib.rs")
+	if err := os.WriteFile(filePath, []byte("struct Greeter;\n"), 0o644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	result := mustMarshalJSON(t, []DocumentSymbol{
+		{
+			Name: "Greeter",
+			Kind: 23, // struct
+			Children: []DocumentSymbol{
+				{Name: "greet", Kind: 6}, // method
+			},
+		},
+	})
+	writer := &documentSymbolWriter{result: json.RawMessage(result)}
+	client := &Client{
+		transport:      NewTransport(nil, writer),
+		pending:        make(map[int]chan jsonrpcResponse),
+		done:           make(chan struct{}),
+		progress:       newProgressTracker(),
+		requestTimeout: time.Second,
+	}
+	writer.client = client
+	a := &Adapter{languageID: "rust", client: client}
+
+	syms, err := a.DocumentSymbols(filePath)
+	if err != nil {
+		t.Fatalf("DocumentSymbols: %v", err)
+	}
+	if len(syms) != 1 || syms[0].Name != "Greeter" {
+		t.Fatalf("symbols = %+v, want one Greeter entry", syms)
+	}
+	if len(syms[0].Children) != 1 || syms[0].Children[0].Name != "greet" {
+		t.Fatalf("children = %+v, want one greet entry", syms[0].Children)
+	}
+	if writer.documentSymbolCalls != 1 {
+		t.Fatalf("textDocument/documentSymbol calls = %d, want 1", writer.documentSymbolCalls)
+	}
+}
+
+// documentSymbolWriter is a fake LSP server transport that answers
+// textDocument/documentSymbol with a fixed result and acknowledges any other
+// request or notification.
+type documentSymbolWriter struct {
+	client              *Client
+	result              json.RawMessage
+	documentSymbolCalls int
+}
+
+func (w *documentSymbolWriter) Write(frame []byte) (int, error) {
+	body, err := NewTransport(bytes.NewReader(frame), nil).Read()
+	if err != nil {
+		return 0, err
+	}
+	var req jsonrpcRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return 0, err
+	}
+	if req.Method == "textDocument/documentSymbol" {
+		if req.ID == nil {
+			return 0, fmt.Errorf("documentSymbol request missing id")
+		}
+		w.documentSymbolCalls++
+		w.client.mu.Lock()
+		ch := w.client.pending[*req.ID]
+		w.client.mu.Unlock()
+		if ch == nil {
+			return 0, fmt.Errorf("missing pending request for id %d", *req.ID)
+		}
+		ch <- jsonrpcResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result:  w.result,
+		}
+	}
+	return len(frame), nil
+}
+
 func symbolRangeFor(filePath string) symbol.SourceRange {
 	return symbol.SourceRange{
 		File:      filePath,
