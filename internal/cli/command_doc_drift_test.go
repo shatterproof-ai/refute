@@ -125,26 +125,12 @@ func countLeadingHashes(line string) int {
 // removed, and a prefix name like "rename" cannot match inside a longer name
 // like "rename-function" (its right delimiter would be '-', not a backtick).
 func containsCommandName(s, name string) bool {
-	const refutePrefix = "`refute " // README Operations: `refute <name>`
-	for i := 0; i+len(name) <= len(s); i++ {
-		if s[i:i+len(name)] != name {
-			continue
-		}
-		// Right boundary: the name must be closed by a backtick, so a name
-		// flush against the end of s (no closing delimiter) does not match.
-		if i+len(name) >= len(s) || s[i+len(name)] != '`' {
-			continue
-		}
-		// Left boundary: an opening backtick (`name`) or the README
-		// `refute <name>` form.
-		if i > 0 && s[i-1] == '`' {
-			return true
-		}
-		if i >= len(refutePrefix) && s[i-len(refutePrefix):i] == refutePrefix {
-			return true
-		}
-	}
-	return false
+	// `name` (docs/current-state CLI Surface list form) or `refute name`
+	// (README Operations table form). The backtick delimiters are what keep a
+	// prose mention from satisfying the guard and stop a prefix name like
+	// "rename" from matching inside "rename-function".
+	return strings.Contains(s, "`"+name+"`") ||
+		strings.Contains(s, "`refute "+name+"`")
 }
 
 // TestContainsCommandNameBoundaries pins the boundary contract directly so the
