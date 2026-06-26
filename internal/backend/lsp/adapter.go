@@ -948,7 +948,7 @@ func symbolDeclarationLine(s DocumentSymbol) int {
 	if s.Location != nil {
 		return s.Location.Range.Start.Line
 	}
-	return s.SelectionRange.Start.Line
+	return s.Range.Start.Line
 }
 
 // profile returns the registered language profile for this adapter's language,
