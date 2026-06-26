@@ -18,6 +18,13 @@ import (
 //
 // The canonical, user-facing version of this table lives in the rename command
 // Long help (see renameKindMappingHelp); keep the two in sync.
+//
+// Cross-reference: this table must be kept in sync with languageProfiles in
+// internal/backend/lsp/profile.go. When a language gains an LSP backend there,
+// add a matching entry here too. Because kindValidForLanguage treats an absent
+// language permissively (every kind allowed), forgetting this entry does not
+// fail loudly — it silently skips upfront kind validation for that language, so
+// rename-class against a language that has no class concept would slip through.
 var languageKinds = map[string]map[symbol.SymbolKind]bool{
 	"go":         kindSet(symbol.KindFunction, symbol.KindField, symbol.KindVariable, symbol.KindParameter, symbol.KindType, symbol.KindMethod),
 	"rust":       kindSet(symbol.KindFunction, symbol.KindField, symbol.KindVariable, symbol.KindParameter, symbol.KindType, symbol.KindMethod),

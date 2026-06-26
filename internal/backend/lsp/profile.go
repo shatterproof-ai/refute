@@ -86,6 +86,13 @@ var (
 
 // languageProfiles is the registry. Adding a language means adding one entry
 // here; no other file in the LSP backend needs to change.
+//
+// Cross-reference: when adding a language here, also add it to languageKinds in
+// internal/cli/renamekind.go. That table records which symbol kinds the
+// rename-* variants accept per language, and kindValidForLanguage treats an
+// absent language permissively (every kind allowed). A missing entry there does
+// not fail loudly — it silently skips upfront kind validation for the new
+// language, so the two registries must be updated together.
 var languageProfiles = map[string]languageProfile{
 	"go": {
 		languageID: "go",
