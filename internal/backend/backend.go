@@ -33,3 +33,13 @@ type RefactoringBackend interface {
 	MoveToFile(loc symbol.Location, destination string) (*edit.WorkspaceEdit, error)
 	Capabilities() []Capability
 }
+
+// KindResolver is an optional backend capability: reporting the actual
+// SymbolKind of the symbol at an already-resolved Location. The rename-* kind
+// variants use it to validate the requested kind against the target before an
+// edit is computed. A backend that cannot determine the kind returns
+// symbol.KindUnknown (no error), which callers treat as "unknown, do not
+// reject". Backends that do not implement this interface are not kind-validated.
+type KindResolver interface {
+	ResolveKind(loc symbol.Location) (symbol.SymbolKind, error)
+}

@@ -183,14 +183,26 @@ func (c *Client) WorkspaceSymbol(query string) ([]WorkspaceSymbolInfo, error) {
 	return syms, nil
 }
 
-// DocumentSymbol holds a hierarchical symbol entry from textDocument/documentSymbol.
+// DocumentSymbol holds a symbol entry from textDocument/documentSymbol. A
+// server that advertises hierarchical support fills Range/SelectionRange/Children;
+// a server returning the flat SymbolInformation form (gopls, since we do not
+// advertise hierarchicalDocumentSymbolSupport) fills Location instead. Callers
+// that need a declaration line must consult both shapes.
 type DocumentSymbol struct {
 	Name           string           `json:"name"`
 	Detail         string           `json:"detail,omitempty"`
 	Kind           int              `json:"kind"`
 	Range          Range            `json:"range"`
 	SelectionRange Range            `json:"selectionRange"`
+	Location       *SymbolInfoLoc   `json:"location,omitempty"`
 	Children       []DocumentSymbol `json:"children,omitempty"`
+}
+
+// SymbolInfoLoc is the location of a flat SymbolInformation entry (the form
+// returned when hierarchical document symbols are not negotiated).
+type SymbolInfoLoc struct {
+	URI   string `json:"uri"`
+	Range Range  `json:"range"`
 }
 
 // Range mirrors the LSP Range type (0-indexed).

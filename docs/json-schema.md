@@ -42,6 +42,7 @@ The status list below is checked against `internal/edit/json.go`.
 - `backend-missing` -- a required backend binary or adapter dependency is not available.
 - `backend-failed` -- the backend was available but failed while serving the request.
 - `invalid-position` -- the requested source position or symbol query did not identify a valid target.
+- `kind-mismatch` -- a `rename-<kind>` variant resolved a symbol whose actual kind differs from the kind that variant requires (or that kind does not exist in the language); use plain `rename` or the variant matching the actual kind.
 <!-- json-statuses:end -->
 
 Do not treat status as a closed enum in consumers. Future schema versions may

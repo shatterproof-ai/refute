@@ -209,7 +209,10 @@ func emitJSONOperationError(ctx jsonContext, err error) error {
 	}
 	var ec exitCoder
 	var symbolMissing *ErrSymbolNotFound
+	var kindMismatch *ErrKindMismatch
 	switch {
+	case errors.As(err, &kindMismatch):
+		return emitJSONError(ctx, edit.StatusKindMismatch, "kind-mismatch", err.Error(), kindMismatch.Hint(), kindMismatch.ExitCode())
 	case isBackendSetupError(err):
 		return emitJSONBackendSetupError(ctx, err)
 	// SelectForOperation refuses unsupported operations before backend setup;

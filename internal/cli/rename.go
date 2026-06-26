@@ -53,8 +53,8 @@ func makeRenameCmd(use string, kind symbol.SymbolKind) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   use,
 		Short: fmt.Sprintf("Rename a %s (Go, Rust, TypeScript)", kind),
-		Long: fmt.Sprintf("Rename a %s at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server).\n\n%s\n\nSee %s.",
-			kind, renameAddressingHelp, supportMatrixURL),
+		Long: fmt.Sprintf("Rename a %s at the given location. Supports Go (gopls), Rust (rust-analyzer), and TypeScript (typescript-language-server).\n\n%s\n\n%s\n\nSee %s.",
+			kind, renameAddressingHelp, renameKindMappingHelp, supportMatrixURL),
 		Args: cobra.NoArgs,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return validateLocationFlags(cmd, modeRename, flags)
@@ -165,6 +165,18 @@ func runRenameInner(kind symbol.SymbolKind, flags *renameFlags, ctx *jsonContext
 	defer func() { _ = sel.Backend.Shutdown() }()
 
 	*ctx = contextFromSelection("rename", sel, workspaceRoot)
+
+	// Validate the kind variant against the resolved symbol before any edit is
+	// computed. Tier 2/3 resolution (symbol.Resolve) only knows the position,
+	// not the symbol's kind, so probe the backend for the actual kind. A
+	// mismatch is a terminal error routed by routeOperationError.
+	validateDone := telemetryPhase("kind-validation")
+	actualKind := probeSymbolKind(sel.Backend, loc)
+	validateDone()
+	if err := validateResolvedKind(sel.Language, kind, actualKind, loc.Name); err != nil {
+		return err
+	}
+
 	return finishRename(sel.Backend, *ctx, loc, flags.NewName)
 }
 
@@ -265,6 +277,11 @@ func runRenameTier1(query symbol.Query, newName string) error {
 	loc, err := resolveTier1Symbol(setup.adapter, setup.language, query)
 	if err != nil {
 		return handleTier1RenameError(setup.ctx, err)
+	}
+	// Tier 1 locations carry the actual kind from workspace/symbol, so validate
+	// directly against the resolved kind before computing an edit.
+	if verr := validateResolvedKind(setup.language, query.Kind, loc.Kind, loc.Name); verr != nil {
+		return handleTier1RenameError(setup.ctx, verr)
 	}
 	return handleTier1RenameError(setup.ctx, finishRename(setup.adapter, setup.ctx, loc, newName))
 }
@@ -415,15 +432,50 @@ func resolveTier1Symbol(adapter tier1Resolver, language string, query symbol.Que
 	if language == "rust" {
 		return resolveRustTier1Symbol(adapter, query)
 	}
-	locs, err := adapter.FindSymbol(query)
+	// Resolve without the kind filter so a wrong-kind symbol is still found and
+	// can be named by the kind validation that runs after resolution; the kind,
+	// when set, still disambiguates same-named symbols below.
+	unfiltered := query
+	unfiltered.Kind = symbol.KindUnknown
+	locs, err := adapter.FindSymbol(unfiltered)
 	if err != nil {
 		return symbol.Location{}, &tier1SymbolResolutionError{err: err}
 	}
-	if len(locs) > 1 {
-		return symbol.Location{}, &backend.ErrAmbiguous{Candidates: locs}
-	}
+	return selectTier1Candidate(locs, query.Kind)
+}
+
+// selectTier1Candidate picks the single Tier 1 match, using the requested kind
+// to disambiguate same-named symbols while still surfacing a lone wrong-kind
+// match by name. With a requested kind: a unique kind-matching candidate wins
+// (kind as a resolution hint); multiple kind matches are ambiguous; when nothing
+// matches the kind but exactly one symbol exists overall, that symbol is
+// returned with its actual kind so the caller's validation can report the
+// mismatch. With KindUnknown (plain rename) a unique symbol wins and anything
+// else is ambiguous or not found.
+func selectTier1Candidate(locs []symbol.Location, kind symbol.SymbolKind) (symbol.Location, error) {
 	if len(locs) == 0 {
 		return symbol.Location{}, &tier1SymbolResolutionError{err: backend.ErrSymbolNotFound}
+	}
+	if kind != symbol.KindUnknown {
+		var matching []symbol.Location
+		for _, l := range locs {
+			if l.Kind == kind {
+				matching = append(matching, l)
+			}
+		}
+		switch {
+		case len(matching) == 1:
+			return matching[0], nil
+		case len(matching) > 1:
+			return symbol.Location{}, &backend.ErrAmbiguous{Candidates: matching}
+		case len(locs) == 1:
+			return locs[0], nil
+		default:
+			return symbol.Location{}, &backend.ErrAmbiguous{Candidates: locs}
+		}
+	}
+	if len(locs) > 1 {
+		return symbol.Location{}, &backend.ErrAmbiguous{Candidates: locs}
 	}
 	return locs[0], nil
 }
