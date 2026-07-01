@@ -11,25 +11,6 @@ import (
 	"github.com/shatterproof-ai/refute/internal/edit"
 )
 
-// resetInvocationFlagsForTest clears the process-global invocation flags so an
-// error-path test for runExtract/runInline starts from a known state, and
-// restores them afterward. It returns nothing; callers set the flags they care
-// about after calling it. Shared by the extract and inline error-path tests.
-func resetInvocationFlagsForTest(t *testing.T) {
-	t.Helper()
-	prevConfig := flagConfig
-	prevJSON := flagJSON
-	prevDryRun := flagDryRun
-	flagJSON = false
-	flagDryRun = false
-	flagConfig = ""
-	t.Cleanup(func() {
-		flagJSON = prevJSON
-		flagDryRun = prevDryRun
-		flagConfig = prevConfig
-	})
-}
-
 // TestRunExtract_HumanUnsupportedLanguage drives runExtract through the
 // buildBackend selection failure for a language the support matrix gates as
 // unsupported (Java). In human (non-JSON) mode the terminal error is returned
@@ -37,7 +18,7 @@ func resetInvocationFlagsForTest(t *testing.T) {
 // because ErrLanguageUnsupported carries no ExitCode of its own. This exercises
 // the CLI-facing error path that feeds runExtract, not just parseCallSite.
 func TestRunExtract_HumanUnsupportedLanguage(t *testing.T) {
-	resetInvocationFlagsForTest(t)
+	t.Parallel()
 	dir := t.TempDir()
 	javaFile := writeJavaFixture(t, dir)
 
@@ -48,9 +29,8 @@ func TestRunExtract_HumanUnsupportedLanguage(t *testing.T) {
 		EndLine:   2,
 		EndCol:    15,
 	}
-	flagJSON = false
 
-	err := runExtract("function", flags)
+	err := runExtract("function", flags, operationFlags{})
 	if err == nil {
 		t.Fatal("expected an error for an unsupported language, got nil")
 	}
@@ -74,7 +54,6 @@ func TestRunExtract_HumanUnsupportedLanguage(t *testing.T) {
 // written to stdout and the returned error is the jsonEmitted sentinel wrapping
 // an ExitCodeError, so Run does not print a second envelope.
 func TestRunExtract_JSONUnsupportedLanguage(t *testing.T) {
-	resetInvocationFlagsForTest(t)
 	dir := t.TempDir()
 	javaFile := writeJavaFixture(t, dir)
 
@@ -85,11 +64,10 @@ func TestRunExtract_JSONUnsupportedLanguage(t *testing.T) {
 		EndLine:   2,
 		EndCol:    15,
 	}
-	flagJSON = true
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runExtract("variable", flags)
+		runErr = runExtract("variable", flags, operationFlags{JSON: true})
 	})
 
 	var emitted *jsonEmitted
@@ -120,10 +98,10 @@ func TestRunExtract_JSONUnsupportedLanguage(t *testing.T) {
 // to exit code 3 ("install a backend"). It drives the full runExtract path,
 // including buildBackend's PATH lookup, in human mode.
 func TestRunExtract_HumanBackendMissingExitCode(t *testing.T) {
-	resetInvocationFlagsForTest(t)
+	t.Parallel()
 	dir := t.TempDir()
 	goFile := writeGoFixture(t, dir)
-	flagConfig = writeServerConfig(t, dir, "go", "refute-nonexistent-lsp-binary-xyz")
+	configPath := writeServerConfig(t, dir, "go", "refute-nonexistent-lsp-binary-xyz")
 
 	flags := &extractFlags{
 		File:      goFile,
@@ -132,9 +110,8 @@ func TestRunExtract_HumanBackendMissingExitCode(t *testing.T) {
 		EndLine:   3,
 		EndCol:    1,
 	}
-	flagJSON = false
 
-	err := runExtract("function", flags)
+	err := runExtract("function", flags, operationFlags{Config: configPath})
 	if err == nil {
 		t.Fatal("expected an error for a missing backend, got nil")
 	}
@@ -152,10 +129,9 @@ func TestRunExtract_HumanBackendMissingExitCode(t *testing.T) {
 // backend-missing case on runExtract: one envelope on stdout with status
 // backend-missing and exit code 3.
 func TestRunExtract_JSONBackendMissing(t *testing.T) {
-	resetInvocationFlagsForTest(t)
 	dir := t.TempDir()
 	goFile := writeGoFixture(t, dir)
-	flagConfig = writeServerConfig(t, dir, "go", "refute-nonexistent-lsp-binary-xyz")
+	configPath := writeServerConfig(t, dir, "go", "refute-nonexistent-lsp-binary-xyz")
 
 	flags := &extractFlags{
 		File:      goFile,
@@ -164,11 +140,10 @@ func TestRunExtract_JSONBackendMissing(t *testing.T) {
 		EndLine:   3,
 		EndCol:    1,
 	}
-	flagJSON = true
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runExtract("function", flags)
+		runErr = runExtract("function", flags, operationFlags{JSON: true, Config: configPath})
 	})
 
 	var ec *ExitCodeError

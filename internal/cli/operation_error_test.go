@@ -61,7 +61,7 @@ func TestOperationCommands_JSONBackendMissing(t *testing.T) {
 					StartCol:  1,
 					EndLine:   3,
 					EndCol:    16,
-				})
+				}, operationFlagsFromGlobals())
 			},
 		},
 		{
@@ -73,7 +73,7 @@ func TestOperationCommands_JSONBackendMissing(t *testing.T) {
 					StartCol:  1,
 					EndLine:   3,
 					EndCol:    16,
-				})
+				}, operationFlagsFromGlobals())
 			},
 		},
 		{
@@ -83,7 +83,7 @@ func TestOperationCommands_JSONBackendMissing(t *testing.T) {
 					File: mainFile,
 					Line: 3,
 					Name: "hello",
-				})
+				}, operationFlagsFromGlobals())
 			},
 		},
 	}
@@ -142,7 +142,7 @@ func TestOperationCommands_JSONUnsupportedOperationBeforeBackendSetup(t *testing
 					StartCol:  1,
 					EndLine:   1,
 					EndCol:    31,
-				})
+				}, operationFlagsFromGlobals())
 			},
 		},
 		{
@@ -154,7 +154,7 @@ func TestOperationCommands_JSONUnsupportedOperationBeforeBackendSetup(t *testing
 					StartCol:  10,
 					EndLine:   2,
 					EndCol:    18,
-				})
+				}, operationFlagsFromGlobals())
 			},
 		},
 		{
@@ -164,7 +164,7 @@ func TestOperationCommands_JSONUnsupportedOperationBeforeBackendSetup(t *testing
 					File: tsFile,
 					Line: 1,
 					Name: "add",
-				})
+				}, operationFlagsFromGlobals())
 			},
 		},
 	}
@@ -400,7 +400,7 @@ func TestApplyFailureAfterPreview_JSONEnvelope(t *testing.T) {
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = emitJSON(we, ctx, edit.StatusApplied)
+		runErr = emitJSON(we, ctx, edit.StatusApplied, operationFlagsFromGlobals())
 	})
 
 	var ec *ExitCodeError
@@ -436,7 +436,7 @@ func TestRouteOperationError_NoDoubleEnvelope(t *testing.T) {
 	out := captureStdout(t, func() {
 		// Mirror the live path: runRenameInner returns the tier-1 handler's
 		// result, then runRename hands it to routeOperationError.
-		runErr = routeOperationError(ctx, handleTier1RenameError(ctx, ambiguous))
+		runErr = routeOperationError(ctx, handleTier1RenameError(ctx, ambiguous), operationFlagsFromGlobals())
 	})
 
 	var ec *ExitCodeError

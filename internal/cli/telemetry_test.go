@@ -58,7 +58,7 @@ func TestApplyOrPreviewCapturesTelemetrySnapshot(t *testing.T) {
 			Language:      "go",
 			Backend:       "lsp",
 			WorkspaceRoot: workspace,
-		})
+		}, operationFlagsFromGlobals())
 	})
 	if err != nil {
 		t.Fatalf("applyOrPreview: %v", err)

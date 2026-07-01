@@ -16,12 +16,12 @@ import (
 // same apply/preview/emit logic outside the CLI command tree.
 
 // applyOrPreview emits the result per --dry-run/--json/default flags.
-func applyOrPreview(we *edit.WorkspaceEdit, ctx jsonContext) error {
+func applyOrPreview(we *edit.WorkspaceEdit, ctx jsonContext, opts operationFlags) error {
 	telemetrySetContext(ctx)
-	if flagJSON {
-		return emitJSON(we, ctx, statusForFlags())
+	if opts.JSON {
+		return emitJSON(we, ctx, statusForFlags(opts), opts)
 	}
-	if flagDryRun {
+	if opts.DryRun {
 		telemetrySetStatus(edit.StatusDryRun)
 		telemetryCaptureSnapshot(we)
 		renderDone := telemetryPhase("output-rendering")
@@ -62,9 +62,9 @@ func applyOrPreview(we *edit.WorkspaceEdit, ctx jsonContext) error {
 	return nil
 }
 
-func emitJSON(we *edit.WorkspaceEdit, ctx jsonContext, status string) error {
+func emitJSON(we *edit.WorkspaceEdit, ctx jsonContext, status string, opts operationFlags) error {
 	telemetrySetContext(ctx)
-	if flagDryRun {
+	if opts.DryRun {
 		telemetrySetStatus(status)
 	}
 	telemetryCaptureSnapshot(we)
@@ -76,7 +76,7 @@ func emitJSON(we *edit.WorkspaceEdit, ctx jsonContext, status string) error {
 	res.BackendVersion = ctx.BackendVersion
 	res.WorkspaceRoot = ctx.WorkspaceRoot
 	renderDone()
-	if !flagDryRun {
+	if !opts.DryRun {
 		applyDone := telemetryPhase("apply")
 		if _, err := edit.ApplyWithin(we, ctx.WorkspaceRoot); err != nil {
 			applyDone()

@@ -45,8 +45,8 @@ func contextFromFile(operation, filePath string) jsonContext {
 	return ctx
 }
 
-func statusForFlags() string {
-	if flagDryRun {
+func statusForFlags(opts operationFlags) string {
+	if opts.DryRun {
 		return edit.StatusDryRun
 	}
 	return edit.StatusApplied
@@ -68,8 +68,8 @@ func (e *jsonEmitted) Unwrap() error { return e.err }
 // printed; outside --json mode the error is returned verbatim for stderr
 // rendering by Run. This is the shared wrapper that rename, extract-function,
 // extract-variable, and inline funnel their terminal errors through.
-func routeOperationError(ctx jsonContext, err error) error {
-	if err == nil || !flagJSON {
+func routeOperationError(ctx jsonContext, err error, opts operationFlags) error {
+	if err == nil || !opts.JSON {
 		return err
 	}
 	var emitted *jsonEmitted

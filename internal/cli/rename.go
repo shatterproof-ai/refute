@@ -97,7 +97,7 @@ func init() {
 func runRename(kind symbol.SymbolKind, flags *renameFlags) error {
 	ctx := jsonContext{Operation: "rename"}
 	err := runRenameInner(kind, flags, &ctx)
-	return routeOperationError(ctx, err)
+	return routeOperationError(ctx, err, operationFlagsFromGlobals())
 }
 
 // runRenameInner performs the rename and returns terminal errors for the shared
@@ -145,7 +145,7 @@ func runRenameInner(kind symbol.SymbolKind, flags *renameFlags, ctx *jsonContext
 		return fmt.Errorf("symbol resolution: %w", err)
 	}
 
-	sel, workspaceRoot, err := buildBackend(loc.File, "rename")
+	sel, workspaceRoot, err := buildBackend(loc.File, "rename", operationFlagsFromGlobals())
 	if err != nil {
 		if flagJSON {
 			*ctx = contextFromFile("rename", loc.File)
@@ -182,14 +182,14 @@ func runRenameInner(kind symbol.SymbolKind, flags *renameFlags, ctx *jsonContext
 
 // buildBackend selects and initializes a refactoring backend for the given file
 // and operation.
-func buildBackend(filePath, operation string) (*selector.Selection, string, error) {
+func buildBackend(filePath, operation string, opts operationFlags) (*selector.Selection, string, error) {
 	selectDone := telemetryPhase("backend-selection")
 	workspaceRoot, err := FindWorkspaceRootFromFile(filePath)
 	if err != nil {
 		selectDone()
 		return nil, "", err
 	}
-	cfg, err := config.Load(flagConfig, workspaceRoot)
+	cfg, err := config.Load(opts.Config, workspaceRoot)
 	if err != nil {
 		selectDone()
 		return nil, "", fmt.Errorf("loading config: %w", err)
@@ -231,7 +231,7 @@ func finishRename(b backend.RefactoringBackend, ctx jsonContext, loc symbol.Loca
 	if len(we.FileEdits) == 0 {
 		return NoEditsError()
 	}
-	return applyOrPreview(we, ctx)
+	return applyOrPreview(we, ctx, operationFlagsFromGlobals())
 }
 
 // translateRenameError maps backend rename failures into refute's vocabulary so

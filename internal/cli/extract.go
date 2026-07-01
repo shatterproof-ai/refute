@@ -43,7 +43,7 @@ func init() {
 			return validateLocationFlags(cmd, modeExtract, funcFlags)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runExtract("function", funcFlags)
+			return runExtract("function", funcFlags, operationFlagsFromCmd(cmd))
 		},
 	}
 	addExtractFlags(extractFuncCmd, funcFlags)
@@ -58,7 +58,7 @@ func init() {
 			return validateLocationFlags(cmd, modeExtract, varFlags)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runExtract("variable", varFlags)
+			return runExtract("variable", varFlags, operationFlagsFromCmd(cmd))
 		},
 	}
 	addExtractFlags(extractVarCmd, varFlags)
@@ -67,17 +67,17 @@ func init() {
 	RootCmd.AddCommand(extractVarCmd)
 }
 
-func runExtract(kind string, flags *extractFlags) error {
+func runExtract(kind string, flags *extractFlags, opts operationFlags) error {
 	ctx := jsonContext{Operation: "extract-" + kind}
-	err := runExtractInner(kind, flags, &ctx)
-	return routeOperationError(ctx, err)
+	err := runExtractInner(kind, flags, &ctx, opts)
+	return routeOperationError(ctx, err, opts)
 }
 
 // runExtractInner performs the extraction and returns terminal errors for the
 // shared wrapper to route. It populates *ctx with best-available metadata
 // (language/workspace from the file, then backend once selected) so an error
 // envelope emitted by routeOperationError is fully attributed.
-func runExtractInner(kind string, flags *extractFlags, ctx *jsonContext) error {
+func runExtractInner(kind string, flags *extractFlags, ctx *jsonContext, opts operationFlags) error {
 	operation := "extract-" + kind
 	telemetrySetContext(*ctx)
 	absFile, err := filepath.Abs(flags.File)
@@ -85,7 +85,7 @@ func runExtractInner(kind string, flags *extractFlags, ctx *jsonContext) error {
 		return fmt.Errorf("resolving file path: %w", err)
 	}
 	*ctx = contextFromFile(operation, absFile)
-	sel, workspaceRoot, err := buildBackend(absFile, operation)
+	sel, workspaceRoot, err := buildBackend(absFile, operation, opts)
 	if err != nil {
 		return err
 	}
@@ -119,5 +119,5 @@ func runExtractInner(kind string, flags *extractFlags, ctx *jsonContext) error {
 	if len(result.FileEdits) == 0 {
 		return NoEditsError()
 	}
-	return applyOrPreview(result, *ctx)
+	return applyOrPreview(result, *ctx, opts)
 }

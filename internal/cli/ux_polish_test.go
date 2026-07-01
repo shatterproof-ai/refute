@@ -129,7 +129,7 @@ func TestTranslateRenameError(t *testing.T) {
 
 		var routed error
 		out := captureStdout(t, func() {
-			routed = routeOperationError(ctx, renameErr)
+			routed = routeOperationError(ctx, renameErr, operationFlagsFromGlobals())
 		})
 		var ec *ExitCodeError
 		if !errors.As(routed, &ec) || ec.Code != noOpExitCode {

@@ -52,6 +52,7 @@ func TestParseCallSite(t *testing.T) {
 // parseCallSite had coverage). Each case asserts a terminal error whose message
 // names the offending flag combination.
 func TestRunInline_InputValidationErrors(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		flags    *inlineFlags
@@ -91,9 +92,8 @@ func TestRunInline_InputValidationErrors(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resetInvocationFlagsForTest(t)
-			flagJSON = false
-			err := runInline(tc.flags)
+			t.Parallel()
+			err := runInline(tc.flags, operationFlags{})
 			if err == nil {
 				t.Fatalf("expected an error, got nil")
 			}
@@ -112,14 +112,11 @@ func TestRunInline_InputValidationErrors(t *testing.T) {
 // produces exactly one structured envelope on stdout and returns the jsonEmitted
 // sentinel, never a bare error that Run would print a second time.
 func TestRunInline_JSONErrorContract(t *testing.T) {
-	resetInvocationFlagsForTest(t)
-	flagJSON = true
-
 	flags := &inlineFlags{Symbol: "Greeter::greet"} // no --call-site
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runInline(flags)
+		runErr = runInline(flags, operationFlags{JSON: true})
 	})
 
 	var emitted *jsonEmitted
@@ -149,16 +146,14 @@ func TestRunInline_JSONErrorContract(t *testing.T) {
 // router must pass that sentinel through unchanged, so stdout holds exactly one
 // envelope with status invalid-position.
 func TestRunInline_SymbolResolutionJSONInvalidPosition(t *testing.T) {
-	resetInvocationFlagsForTest(t)
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "does-not-exist.go")
-	flagJSON = true
 
 	flags := &inlineFlags{File: missing, Line: 1, Name: "x"}
 
 	var runErr error
 	out := captureStdout(t, func() {
-		runErr = runInline(flags)
+		runErr = runInline(flags, operationFlags{JSON: true})
 	})
 
 	var emitted *jsonEmitted
