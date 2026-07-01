@@ -34,7 +34,7 @@ func init() {
 			return validateLocationFlags(cmd, modeInline, flags)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runInline(flags)
+			return runInline(flags, operationFlagsFromCmd(cmd))
 		},
 	}
 	inlineCmd.Flags().StringVar(&flags.File, "file", "", "source file path")
@@ -49,10 +49,10 @@ func init() {
 	RootCmd.AddCommand(inlineCmd)
 }
 
-func runInline(flags *inlineFlags) error {
+func runInline(flags *inlineFlags, opts operationFlags) error {
 	ctx := jsonContext{Operation: "inline"}
-	err := runInlineInner(flags, &ctx)
-	return routeOperationError(ctx, err)
+	err := runInlineInner(flags, &ctx, opts)
+	return routeOperationError(ctx, err, opts)
 }
 
 // runInlineInner performs the inline and returns terminal errors for the shared
@@ -60,7 +60,7 @@ func runInline(flags *inlineFlags) error {
 // error envelope emitted by routeOperationError is fully attributed. A symbol
 // resolution failure emits an invalid-position envelope inline; the wrapper
 // passes the resulting jsonEmitted error through unchanged.
-func runInlineInner(flags *inlineFlags, ctx *jsonContext) error {
+func runInlineInner(flags *inlineFlags, ctx *jsonContext, opts operationFlags) error {
 	telemetrySetContext(*ctx)
 	if flags.Symbol != "" && flags.CallSite == "" {
 		return fmt.Errorf("inline: --symbol requires --call-site <file>:<line>:<column> " +
@@ -102,7 +102,7 @@ func runInlineInner(flags *inlineFlags, ctx *jsonContext) error {
 		resolved, err := symbol.Resolve(query)
 		resolveDone()
 		if err != nil {
-			if flagJSON {
+			if opts.JSON {
 				return emitJSONError(contextFromFile("inline", absFile),
 					edit.StatusInvalidPosition, "invalid-position", err.Error(),
 					"Check --file, --line, --col, and --name.")
@@ -113,7 +113,7 @@ func runInlineInner(flags *inlineFlags, ctx *jsonContext) error {
 	}
 
 	*ctx = contextFromFile("inline", loc.File)
-	sel, workspaceRoot, err := buildBackend(loc.File, "inline")
+	sel, workspaceRoot, err := buildBackend(loc.File, "inline", opts)
 	if err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ func runInlineInner(flags *inlineFlags, ctx *jsonContext) error {
 	if len(we.FileEdits) == 0 {
 		return NoEditsError()
 	}
-	return applyOrPreview(we, *ctx)
+	return applyOrPreview(we, *ctx, opts)
 }
 
 // parseCallSite parses a --call-site value of the form file:line:column. The

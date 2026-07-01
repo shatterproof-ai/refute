@@ -22,6 +22,36 @@ var (
 	flagVerbose bool
 )
 
+// operationFlags carries the invocation-wide output/session flags for a single
+// refactoring operation. Threading it explicitly — instead of reading the
+// flag* process globals — lets the operation entry points (runExtract,
+// runInline) and the shared apply/route helpers avoid mutating shared state, so
+// their tests can run without save/restore and in parallel.
+type operationFlags struct {
+	JSON   bool
+	DryRun bool
+	Config string
+}
+
+// operationFlagsFromCmd snapshots the invocation flags cobra parsed for cmd,
+// including the persistent --config/--dry-run inherited from the root command.
+// It is the call-site bridge from cobra's flag bindings to an explicit
+// operationFlags value passed down the operation call chain.
+func operationFlagsFromCmd(cmd *cobra.Command) operationFlags {
+	jsonOut, _ := cmd.Flags().GetBool("json")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	cfg, _ := cmd.Flags().GetString("config")
+	return operationFlags{JSON: jsonOut, DryRun: dryRun, Config: cfg}
+}
+
+// operationFlagsFromGlobals reads the process-global invocation flags for
+// command paths that still populate them (rename and its shared-helper call
+// sites, plus tests). extract/inline construct an explicit value via
+// operationFlagsFromCmd instead.
+func operationFlagsFromGlobals() operationFlags {
+	return operationFlags{JSON: flagJSON, DryRun: flagDryRun, Config: flagConfig}
+}
+
 // supportMatrixURL is the canonical location of the language/operation support
 // matrix. Command help links here rather than a repo-relative path, which is
 // meaningless for an installed binary.
