@@ -89,6 +89,75 @@ func TestResolveRustTier1Symbol_ParseError(t *testing.T) {
 	}
 }
 
+func TestTier1SymbolResolverFor(t *testing.T) {
+	// Rust has a bespoke grammar registered; every other language falls back to
+	// the generic resolver. The registry is the single dispatch point, so a new
+	// language's Tier-1 grammar is added there rather than in resolveTier1Symbol.
+	if got := tier1SymbolResolverForName(tier1SymbolResolverFor("rust")); got != "rust" {
+		t.Fatalf("resolver for rust = %q, want the rust resolver", got)
+	}
+	for _, lang := range []string{"go", "typescript", "python", "unknown"} {
+		if got := tier1SymbolResolverForName(tier1SymbolResolverFor(lang)); got != "generic" {
+			t.Fatalf("resolver for %q = %q, want the generic resolver", lang, got)
+		}
+	}
+}
+
+// tier1SymbolResolverForName reports which resolver a lookup returned by
+// probing its behavior: only the Rust resolver reduces a "::"-qualified name to
+// its bare leaf before calling FindSymbol, so a probe query distinguishes the
+// two without depending on unexported function identity.
+func tier1SymbolResolverForName(r tier1SymbolResolver) string {
+	f := &fakeTier1Resolver{
+		locs:     []symbol.Location{{Name: "leaf"}},
+		filtered: []symbol.Location{{Name: "leaf"}},
+	}
+	_, _ = r(f, symbol.Query{QualifiedName: "module::leaf"})
+	if f.findQuery.QualifiedName == "leaf" {
+		return "rust"
+	}
+	return "generic"
+}
+
+func TestResolveTier1SymbolDispatchesGeneric(t *testing.T) {
+	want := symbol.Location{File: "main.go", Line: 3, Column: 1, Name: "Widget"}
+	f := &fakeTier1Resolver{locs: []symbol.Location{want}}
+
+	loc, err := resolveTier1Symbol(f, "go", symbol.Query{QualifiedName: "pkg.Widget"})
+	if err != nil {
+		t.Fatalf("resolveTier1Symbol: %v", err)
+	}
+	if loc != want {
+		t.Fatalf("loc = %+v, want %+v", loc, want)
+	}
+	// The generic path passes the qualified name through unchanged; only the
+	// Rust resolver reduces it to a bare leaf.
+	if f.findQuery.QualifiedName != "pkg.Widget" {
+		t.Fatalf("FindSymbol query = %q, want pkg.Widget", f.findQuery.QualifiedName)
+	}
+}
+
+func TestResolveTier1SymbolDispatchesRust(t *testing.T) {
+	want := symbol.Location{File: "src/lib.rs", Line: 9, Column: 1, Name: "fmt"}
+	f := &fakeTier1Resolver{
+		locs:     []symbol.Location{{Name: "fmt"}},
+		filtered: []symbol.Location{want},
+	}
+
+	loc, err := resolveTier1Symbol(f, "rust", symbol.Query{QualifiedName: "module::fmt"})
+	if err != nil {
+		t.Fatalf("resolveTier1Symbol: %v", err)
+	}
+	if loc != want {
+		t.Fatalf("loc = %+v, want %+v", loc, want)
+	}
+	// The Rust resolver reduces the "::"-qualified name to its bare leaf and
+	// narrows via the Rust candidate filter.
+	if f.findQuery.QualifiedName != "fmt" || f.gotName != "fmt" {
+		t.Fatalf("FindSymbol query=%q, filter name=%q, want fmt", f.findQuery.QualifiedName, f.gotName)
+	}
+}
+
 func TestHandleTier1RenameErrorEmitsAmbiguousJSON(t *testing.T) {
 	reset := func() { flagJSON = false }
 	reset()
