@@ -426,12 +426,44 @@ type tier1Resolver interface {
 	FilterRustCandidates(infos []symbol.Location, modulePath []string, trait, name string) []symbol.Location
 }
 
+// tier1SymbolResolver resolves a Tier-1 (--symbol) qualified name to a single
+// declaration for one language's symbol grammar. Registered per language in
+// tier1SymbolResolvers so that teaching refute a new language's Tier-1 grammar
+// is a registry edit there, not another branch in resolveTier1Symbol.
+type tier1SymbolResolver func(adapter tier1Resolver, query symbol.Query) (symbol.Location, error)
+
+// tier1SymbolResolvers registers the languages whose Tier-1 qualified names need
+// a bespoke grammar. Rust qualified names use "::" separators and require
+// trait/impl disambiguation, so they resolve through resolveRustTier1Symbol. A
+// language absent here uses resolveGenericTier1Symbol (a bare workspace/symbol
+// lookup plus kind disambiguation), which is correct for gopls and every other
+// language whose leaf name is a plain identifier. This mirrors the per-language
+// registry pattern used for LSP behavior in internal/backend/lsp (profile.go)
+// and rename-kind validation (renamekind.go): adding a language is a registry
+// edit, not new string dispatch.
+var tier1SymbolResolvers = map[string]tier1SymbolResolver{
+	"rust": resolveRustTier1Symbol,
+}
+
+// tier1SymbolResolverFor returns the registered Tier-1 resolver for a language,
+// or the generic resolver when the language has no bespoke grammar registered.
+func tier1SymbolResolverFor(language string) tier1SymbolResolver {
+	if r, ok := tier1SymbolResolvers[language]; ok {
+		return r
+	}
+	return resolveGenericTier1Symbol
+}
+
 func resolveTier1Symbol(adapter tier1Resolver, language string, query symbol.Query) (symbol.Location, error) {
 	done := telemetryPhase("symbol-resolution")
 	defer done()
-	if language == "rust" {
-		return resolveRustTier1Symbol(adapter, query)
-	}
+	return tier1SymbolResolverFor(language)(adapter, query)
+}
+
+// resolveGenericTier1Symbol resolves a Tier-1 qualified name for languages whose
+// leaf identifier can be matched directly against workspace/symbol results
+// (every language except Rust today).
+func resolveGenericTier1Symbol(adapter tier1Resolver, query symbol.Query) (symbol.Location, error) {
 	// Resolve without the kind filter so a wrong-kind symbol is still found and
 	// can be named by the kind validation that runs after resolution; the kind,
 	// when set, still disambiguates same-named symbols below.
