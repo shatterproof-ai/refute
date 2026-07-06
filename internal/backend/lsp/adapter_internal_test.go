@@ -410,14 +410,48 @@ func (w *emptySymbolWriter) Write(frame []byte) (int, error) {
 	return len(frame), nil
 }
 
-// TestAdapterMoveToFileUnsupported pins MoveToFile's contract: it is not yet
-// implemented over LSP and must report ErrUnsupported so callers map it to the
-// documented unsupported status rather than a backend crash.
-func TestAdapterMoveToFileUnsupported(t *testing.T) {
+// TestAdapterMoveToFileRefusesCrossPackage pins the first move refusal
+// (docs/plans/refactoring-extension-model.md §5.2): a destination in a different
+// directory than the source is a cross-package move that gopls
+// extract-to-new-file cannot perform, so MoveToFile refuses with a typed
+// ErrUnsafeRefactor before touching the backend (the adapter here has no client).
+func TestAdapterMoveToFileRefusesCrossPackage(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "pkg", "orig.go")
+	if err := os.MkdirAll(filepath.Dir(src), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(src, []byte("package p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "other", "moved.go")
+
 	a := &Adapter{languageID: "go"}
-	_, err := a.MoveToFile(symbol.Location{File: "main.go", Line: 1, Column: 1}, "dest.go")
-	if !errors.Is(err, backend.ErrUnsupported) {
-		t.Fatalf("MoveToFile error = %v, want backend.ErrUnsupported", err)
+	_, err := a.MoveToFile(symbol.Location{File: src, Line: 1, Column: 1, Name: "X"}, dest)
+	var unsafe *backend.ErrUnsafeRefactor
+	if !errors.As(err, &unsafe) || unsafe.Code != "cross-package-move" {
+		t.Fatalf("MoveToFile error = %v, want ErrUnsafeRefactor code cross-package-move", err)
+	}
+}
+
+// TestAdapterMoveToFileRefusesExistingDestination pins the collision refusal: a
+// destination that already exists would be clobbered by the create, so
+// MoveToFile refuses rather than overwrite it.
+func TestAdapterMoveToFileRefusesExistingDestination(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "orig.go")
+	dest := filepath.Join(dir, "moved.go")
+	for _, f := range []string{src, dest} {
+		if err := os.WriteFile(f, []byte("package p\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	a := &Adapter{languageID: "go"}
+	_, err := a.MoveToFile(symbol.Location{File: src, Line: 1, Column: 1, Name: "X"}, dest)
+	var unsafe *backend.ErrUnsafeRefactor
+	if !errors.As(err, &unsafe) || unsafe.Code != "destination-exists" {
+		t.Fatalf("MoveToFile error = %v, want ErrUnsafeRefactor code destination-exists", err)
 	}
 }
 

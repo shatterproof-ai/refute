@@ -49,10 +49,11 @@ var (
 	renameOnly     = []string{"rename"}
 	fullOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
 	// goOperations is Go's operation set: the full refactoring set plus
-	// change-signature (gopls removeUnusedParam). Go-specific rather than shared
-	// with Rust, which cannot perform change-signature. Must agree with the Go
-	// LSP profile's operations (guarded by TestAdapterCapabilitiesMatchSupportMatrix).
-	goOperations = []string{"rename", "extract-function", "extract-variable", "inline", "change-signature"}
+	// change-signature (gopls removeUnusedParam) and move-to-file (gopls
+	// extract-to-new-file). Go-specific rather than shared with Rust, which
+	// cannot perform either. Must agree with the Go LSP profile's operations
+	// (guarded by TestAdapterCapabilitiesMatchSupportMatrix).
+	goOperations = []string{"rename", "extract-function", "extract-variable", "inline", "change-signature", "move"}
 )
 
 // SupportMatrix is the ordered support matrix. Order is the order doctor
@@ -67,7 +68,7 @@ var SupportMatrix = []LanguageSupport{
 		Level:       LevelSupported,
 		InstallHint: "go install golang.org/x/tools/gopls@latest",
 		Operations:  goOperations,
-		Caveats:     "Primary v0.1 target.",
+		Caveats:     "Primary v0.1 target. move (move-to-file) is experimental: same-package moves only, backed by gopls extract-to-new-file.",
 	},
 	{
 		Language:    "typescript",

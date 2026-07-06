@@ -10,4 +10,5 @@
 | [extract-function](extract-function.md) | Extract a code selection into a function | active | observed | medium |
 | [extract-variable](extract-variable.md) | Extract a code selection into a variable | active | observed | medium |
 | [change-signature](change-signature.md) | Change a function signature by removing an unused parameter | active | observed | medium |
+| [move-to-file](move-to-file.md) | Move a declaration to another file in the same package | active | observed | medium |
 | [doctor-backend-check](doctor-backend-check.md) | Check backend readiness with doctor | active | observed | low |

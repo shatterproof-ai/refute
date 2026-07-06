@@ -74,12 +74,13 @@ type languageProfile struct {
 var (
 	fullOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
 	// goOperations is Go's operation set: the full refactoring set plus
-	// change-signature, which is backed by gopls's removeUnusedParam code action
-	// and is not offered by the other LSP backends. It is Go-specific rather than
-	// folded into fullOperations so Rust (which shares fullOperations) does not
-	// advertise an operation rust-analyzer does not perform. Must agree with the
+	// change-signature (backed by gopls's removeUnusedParam code action) and
+	// move (backed by gopls's extract-to-new-file command), neither of which is
+	// offered by the other LSP backends. It is Go-specific rather than folded
+	// into fullOperations so Rust (which shares fullOperations) does not
+	// advertise operations rust-analyzer does not perform. Must agree with the
 	// Go row's config.SupportMatrix Operations (guarded by a test).
-	goOperations  = []string{"rename", "extract-function", "extract-variable", "inline", "change-signature"}
+	goOperations  = []string{"rename", "extract-function", "extract-variable", "inline", "change-signature", "move"}
 	renameOnlyOps = []string{"rename"}
 )
 
