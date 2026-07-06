@@ -48,6 +48,11 @@ type LanguageSupport struct {
 var (
 	renameOnly     = []string{"rename"}
 	fullOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
+	// goOperations is Go's operation set: the full refactoring set plus
+	// change-signature (gopls removeUnusedParam). Go-specific rather than shared
+	// with Rust, which cannot perform change-signature. Must agree with the Go
+	// LSP profile's operations (guarded by TestAdapterCapabilitiesMatchSupportMatrix).
+	goOperations = []string{"rename", "extract-function", "extract-variable", "inline", "change-signature"}
 )
 
 // SupportMatrix is the ordered support matrix. Order is the order doctor
@@ -61,7 +66,7 @@ var SupportMatrix = []LanguageSupport{
 		VersionArgs: []string{"version"},
 		Level:       LevelSupported,
 		InstallHint: "go install golang.org/x/tools/gopls@latest",
-		Operations:  fullOperations,
+		Operations:  goOperations,
 		Caveats:     "Primary v0.1 target.",
 	},
 	{

@@ -146,6 +146,48 @@ func TestValidateInlineFlags(t *testing.T) {
 	}
 }
 
+func TestValidateChangeSignatureFlags(t *testing.T) {
+	existing := filepath.Join(t.TempDir(), "main.go")
+	if err := os.WriteFile(existing, []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	base := func(extra map[string]string) map[string]string {
+		m := map[string]string{"file": existing, "line": "5", "col": "26", "remove": "true"}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+
+	cases := []struct {
+		name    string
+		set     map[string]string
+		wantErr string
+	}{
+		{"nonexistent file", base(map[string]string{"file": "/no/such.go"}), "does not exist"},
+		{"directory as file", base(map[string]string{"file": t.TempDir()}), "is a directory"},
+		{"zero line", base(map[string]string{"line": "0"}), ">= 1"},
+		{"negative col", base(map[string]string{"col": "-1"}), ">= 1"},
+		{"missing remove", base(map[string]string{"remove": "false"}), "requires --remove"},
+		{"valid remove", base(nil), ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			flagJSON = false
+			flags := &changeSigFlags{}
+			cmd := &cobra.Command{Use: "change-signature"}
+			addChangeSignatureFlags(cmd, flags)
+			for k, v := range c.set {
+				if err := cmd.Flags().Set(k, v); err != nil {
+					t.Fatalf("set --%s=%q: %v", k, v, err)
+				}
+			}
+			err := validateChangeSignatureFlags(cmd, flags)
+			assertErrContains(t, err, c.wantErr)
+		})
+	}
+}
+
 func TestValidateLocationFlags_WrongFlagTypeReturnsError(t *testing.T) {
 	cases := []struct {
 		name string

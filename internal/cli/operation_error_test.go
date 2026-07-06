@@ -281,6 +281,17 @@ func TestEmitJSONOperationError_StatusRouting(t *testing.T) {
 			wantExit:   1,
 		},
 		{
+			name: "unsafe-refactor",
+			err: fmt.Errorf("change-signature: %w", &backend.ErrUnsafeRefactor{
+				Operation: backend.OperationChangeSignature,
+				Code:      "parameter-in-use",
+				Reason:    "cannot safely remove the parameter: it is used by the function body",
+			}),
+			wantStatus: edit.StatusUnsupported,
+			wantCode:   "unsafe-refactor",
+			wantExit:   1,
+		},
+		{
 			name:       "no-op",
 			err:        NoEditsError(),
 			wantStatus: edit.StatusNoOp,

@@ -23,9 +23,10 @@ func opNames(caps []backend.Capability) []string {
 // unregistered language falls back to the conservative rename-only default.
 func TestAdapterCapabilitiesFromProfile(t *testing.T) {
 	full := []string{"rename", "extract-function", "extract-variable", "inline"}
+	goOps := []string{"rename", "extract-function", "extract-variable", "inline", "change-signature"}
 	renameOnly := []string{"rename"}
 	cases := map[string][]string{
-		"go":         full,
+		"go":         goOps,
 		"rust":       full,
 		"typescript": renameOnly,
 		"javascript": renameOnly,
