@@ -73,7 +73,14 @@ type languageProfile struct {
 // strings match backend.Capability.Operation and config.SupportMatrix.
 var (
 	fullOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
-	renameOnlyOps  = []string{"rename"}
+	// goOperations is Go's operation set: the full refactoring set plus
+	// change-signature, which is backed by gopls's removeUnusedParam code action
+	// and is not offered by the other LSP backends. It is Go-specific rather than
+	// folded into fullOperations so Rust (which shares fullOperations) does not
+	// advertise an operation rust-analyzer does not perform. Must agree with the
+	// Go row's config.SupportMatrix Operations (guarded by a test).
+	goOperations  = []string{"rename", "extract-function", "extract-variable", "inline", "change-signature"}
+	renameOnlyOps = []string{"rename"}
 )
 
 // goSkipDirs and friends are the per-language directory skip sets, named so the
@@ -97,7 +104,7 @@ var languageProfiles = map[string]languageProfile{
 	"go": {
 		languageID: "go",
 		engine:     engineTitleMatch,
-		operations: fullOperations,
+		operations: goOperations,
 		priming: primingProfile{
 			extensions:        map[string]string{".go": "go"},
 			skipDirs:          goSkipDirs,

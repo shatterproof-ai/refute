@@ -404,6 +404,197 @@ func TestEndToEnd_ExtractFunction(t *testing.T) {
 	}
 }
 
+// TestEndToEnd_ChangeSignatureRemoveParam is the headline acceptance check for
+// issue #101: removing an unused parameter rewrites the declaration and every
+// call site (including the cross-file one in caller.go), and the project still
+// compiles. verbosity is at greeter.go:5:26.
+func TestEndToEnd_ChangeSignatureRemoveParam(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/go/changesig")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+	refuteBin := buildRefute(t)
+
+	greeterFile := filepath.Join(dir, "greeter.go")
+	cmd := exec.Command(refuteBin,
+		"change-signature",
+		"--file", greeterFile,
+		"--line", "5",
+		"--col", "26",
+		"--remove",
+	)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("change-signature failed: %s\n%s", err, out)
+	}
+
+	// Declaration no longer carries the removed parameter. (The doc comment above
+	// render still mentions "verbosity", so assert against the declaration itself
+	// rather than the whole file.)
+	greeterContent, _ := os.ReadFile(greeterFile)
+	if !strings.Contains(string(greeterContent), "func render(name string) string") {
+		t.Errorf("greeter.go declaration not rewritten to drop the parameter, got:\n%s", greeterContent)
+	}
+	if strings.Contains(string(greeterContent), "verbosity int") {
+		t.Errorf("greeter.go declaration still contains the verbosity parameter:\n%s", greeterContent)
+	}
+
+	// Call sites updated in both files.
+	mainContent, _ := os.ReadFile(filepath.Join(dir, "main.go"))
+	if !strings.Contains(string(mainContent), `render("world")`) {
+		t.Errorf("main.go call site not rewritten to render(\"world\"), got:\n%s", mainContent)
+	}
+	callerContent, _ := os.ReadFile(filepath.Join(dir, "caller.go"))
+	if !strings.Contains(string(callerContent), `render("local")`) {
+		t.Errorf("caller.go cross-file call site not rewritten to render(\"local\"), got:\n%s", callerContent)
+	}
+
+	goCheck := exec.Command("go", "build", "-buildvcs=false", "./...")
+	goCheck.Dir = dir
+	if out, err := goCheck.CombinedOutput(); err != nil {
+		t.Fatalf("project no longer compiles after change-signature:\n%s", out)
+	}
+}
+
+// TestEndToEnd_ChangeSignatureDryRun confirms --dry-run prints the diff and
+// leaves every file untouched.
+func TestEndToEnd_ChangeSignatureDryRun(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/go/changesig")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+	refuteBin := buildRefute(t)
+
+	greeterFile := filepath.Join(dir, "greeter.go")
+	before, _ := os.ReadFile(greeterFile)
+
+	cmd := exec.Command(refuteBin,
+		"change-signature",
+		"--file", greeterFile,
+		"--line", "5",
+		"--col", "26",
+		"--remove",
+		"--dry-run",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("change-signature --dry-run failed: %s\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "verbosity") {
+		t.Errorf("dry-run output should show the removed parameter in a diff, got:\n%s", out)
+	}
+	after, _ := os.ReadFile(greeterFile)
+	if string(after) != string(before) {
+		t.Error("dry-run must not modify files")
+	}
+}
+
+// TestEndToEnd_ChangeSignatureRefusesUsedParam pins the refusal contract: gopls
+// offers no removeUnusedParam action for a parameter that is in use (name, at
+// greeter.go:5:13), so the backend refuses with ErrUnsafeRefactor. The --json
+// envelope must report the unsupported status with the unsafe-refactor code,
+// exit 1, and leave the file untouched.
+func TestEndToEnd_ChangeSignatureRefusesUsedParam(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/go/changesig")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+	refuteBin := buildRefute(t)
+
+	greeterFile := filepath.Join(dir, "greeter.go")
+	before, _ := os.ReadFile(greeterFile)
+
+	cmd := exec.Command(refuteBin,
+		"change-signature",
+		"--json",
+		"--file", greeterFile,
+		"--line", "5",
+		"--col", "13",
+		"--remove",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected *exec.ExitError for a used parameter, got %v; output:\n%s", err, out)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Fatalf("exit code = %d, want 1; output:\n%s", exitErr.ExitCode(), out)
+	}
+
+	var result struct {
+		Status string `json:"status"`
+		Error  struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		t.Fatalf("unmarshal JSON: %v\nraw:\n%s", err, out)
+	}
+	if result.Status != "unsupported" {
+		t.Errorf("status = %q, want unsupported", result.Status)
+	}
+	if result.Error.Code != "unsafe-refactor" {
+		t.Errorf("error.code = %q, want unsafe-refactor", result.Error.Code)
+	}
+
+	after, _ := os.ReadFile(greeterFile)
+	if string(after) != string(before) {
+		t.Error("a refused change-signature must not modify the file")
+	}
+}
+
+// TestEndToEnd_ChangeSignatureJSON pins the --json success envelope for an
+// applied signature change: status applied with a non-empty edit set.
+func TestEndToEnd_ChangeSignatureJSON(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+	srcDir := filepath.Join("../testdata/fixtures/go/changesig")
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+	refuteBin := buildRefute(t)
+
+	greeterFile := filepath.Join(dir, "greeter.go")
+	cmd := exec.Command(refuteBin,
+		"change-signature",
+		"--json",
+		"--file", greeterFile,
+		"--line", "5",
+		"--col", "26",
+		"--remove",
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("change-signature --json failed: %s\n%s", err, out)
+	}
+
+	var result struct {
+		Status string `json:"status"`
+		Edits  []struct {
+			File string `json:"file"`
+		} `json:"edits"`
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		t.Fatalf("unmarshal JSON: %v\nraw:\n%s", err, out)
+	}
+	if result.Status != "applied" {
+		t.Errorf("status = %q, want applied; raw:\n%s", result.Status, out)
+	}
+	if len(result.Edits) == 0 {
+		t.Errorf("expected a non-empty edits array in the JSON envelope, got:\n%s", out)
+	}
+}
+
 func TestEndToEnd_Tier1Rename(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
 		t.Skip("gopls not found on PATH")

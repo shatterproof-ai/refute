@@ -142,6 +142,11 @@ const languageUnsupportedHint = "Run `refute doctor` to see which languages are 
 // its configured candidates supports the requested operation.
 const unsupportedOperationHint = "Run `refute doctor` to see supported operations for each backend. See " + supportMatrixURL + "."
 
+// unsafeRefactorHint is shown when a backend refused a supported operation
+// because it could not be performed safely for this invocation. Refusal is
+// preview-safe, so it reassures the caller nothing was changed.
+const unsafeRefactorHint = "The operation was refused before any edit was made; the workspace is unchanged."
+
 // emitLanguageUnsupportedError emits the documented unsupported envelope for a
 // language the support matrix marks unsupported (gated in selection before any
 // backend init). It returns false if err is not an ErrLanguageUnsupported so
@@ -210,9 +215,16 @@ func emitJSONOperationError(ctx jsonContext, err error) error {
 	var ec exitCoder
 	var symbolMissing *ErrSymbolNotFound
 	var kindMismatch *ErrKindMismatch
+	var unsafeRefactor *backend.ErrUnsafeRefactor
 	switch {
 	case errors.As(err, &kindMismatch):
 		return emitJSONError(ctx, edit.StatusKindMismatch, "kind-mismatch", err.Error(), kindMismatch.Hint(), kindMismatch.ExitCode())
+	// A backend refused a supported operation for this specific invocation
+	// because it could not be performed safely (design §5.3). It maps to the
+	// unsupported status with the additive unsafe-refactor code; refusal happens
+	// before any edit, so the workspace is unchanged.
+	case errors.As(err, &unsafeRefactor):
+		return emitJSONError(ctx, edit.StatusUnsupported, "unsafe-refactor", err.Error(), unsafeRefactorHint)
 	case isBackendSetupError(err):
 		return emitJSONBackendSetupError(ctx, err)
 	// SelectForOperation refuses unsupported operations before backend setup;

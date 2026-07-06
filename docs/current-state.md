@@ -1,6 +1,6 @@
 # Current State
 
-This assessment reflects the repository state on `main` as of 2026-06-24.
+This assessment reflects the repository state on `main` as of 2026-07-05.
 Review this file before each release candidate; update stale status claims or
 mark historical sections explicitly before tagging.
 
@@ -41,6 +41,11 @@ global `--config`, `--dry-run`, and `--verbose` flags. Implemented subcommands:
 - `extract-function`;
 - `extract-variable`;
 - `inline`;
+- `change-signature` — removes an unused parameter on Go (via gopls's
+  `removeUnusedParam` code action), rewriting the declaration and every call
+  site; refuses via the `unsafe-refactor` error code when the parameter is in
+  use or the call sites cannot all be rewritten safely. Point `--file/--line/--col`
+  at the parameter and pass `--remove`; supports `--json` and `--dry-run`;
 - `list-symbols` — discovers candidate symbols via LSP `workspace/symbol`,
   returning file, line, column, kind, and qualified name; filters by `--query`,
   `--file`, `--kind`, and `--lang`; supports `--json`;
@@ -58,7 +63,13 @@ Rename supports three input tiers:
 
 `internal/backend/backend.go` defines a `RefactoringBackend` interface with
 lifecycle methods, symbol lookup, rename, extract, inline, move, and capability
-reporting. Unsupported operations return `backend.ErrUnsupported`.
+reporting. Unsupported operations return `backend.ErrUnsupported`. Parameterized
+operations (change-signature) use a separate optional `ParameterizedBackend`
+interface (`internal/backend/request.go`) that a backend implements in addition
+to `RefactoringBackend`; the CLI type-asserts for it and refuses the operation
+when a backend does not provide it. A backend that supports an operation in
+general but cannot perform a specific invocation safely returns
+`backend.ErrUnsafeRefactor`.
 
 ### LSP Backend
 
@@ -77,9 +88,11 @@ reporting. Unsupported operations return `backend.ErrUnsupported`.
 - parses LSP `WorkspaceEdit` responses into the common edit model.
 
 The LSP adapter implements rename, extract-function, extract-variable,
-inline-symbol, and symbol lookup. It includes retry handling for rename races
-(LSP content-modified errors). `Capabilities()` now accurately reports all four
-implemented operations.
+inline-symbol, change-signature (Go: remove an unused parameter, via the
+optional `ParameterizedBackend` structured `Refactor` entry point), and symbol
+lookup. It includes retry handling for rename races (LSP content-modified
+errors). `Capabilities()` reports the operations the profile advertises for the
+language.
 
 ### LSP State of the Art
 
