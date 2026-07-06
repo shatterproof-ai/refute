@@ -404,6 +404,84 @@ func TestEndToEnd_ExtractFunction(t *testing.T) {
 	}
 }
 
+// TestEndToEnd_MoveToFile drives the move-to-file happy path against real gopls:
+// a top-level function is moved from its file into a new same-package file, the
+// source file loses the declaration, the destination gains it, and the package
+// still compiles (same-package moves need no reference or import rewrites).
+func TestEndToEnd_MoveToFile(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+	srcDir := "../testdata/fixtures/go/rename"
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	helperFile := filepath.Join(dir, "util", "helper.go")
+
+	// FormatGreeting is the top-level func on line 4 of util/helper.go; move it
+	// to a new sibling file. --destination is resolved relative to the source
+	// file's directory, so "greeting.go" lands in util/.
+	cmd := exec.Command(refuteBin,
+		"move",
+		"--file", helperFile,
+		"--line", "4",
+		"--name", "FormatGreeting",
+		"--destination", "greeting.go",
+	)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("move: %s\n%s", err, out)
+	}
+
+	helperContent, _ := os.ReadFile(helperFile)
+	if strings.Contains(string(helperContent), "func FormatGreeting") {
+		t.Errorf("helper.go still declares FormatGreeting after move:\n%s", helperContent)
+	}
+	movedContent, err := os.ReadFile(filepath.Join(dir, "util", "greeting.go"))
+	if err != nil {
+		t.Fatalf("destination greeting.go not created: %v", err)
+	}
+	if !strings.Contains(string(movedContent), "func FormatGreeting") {
+		t.Errorf("greeting.go missing FormatGreeting after move:\n%s", movedContent)
+	}
+
+	goCheck := exec.Command("go", "build", "-buildvcs=false", "./...")
+	goCheck.Dir = dir
+	if out, err := goCheck.CombinedOutput(); err != nil {
+		t.Fatalf("project does not compile after move:\n%s", out)
+	}
+}
+
+// TestEndToEnd_MoveToFileRefusesCrossPackage pins the refusal contract end to
+// end: a destination in a different directory is a cross-package move that
+// refute refuses (exit non-zero) rather than emitting a broken edit.
+func TestEndToEnd_MoveToFileRefusesCrossPackage(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not found on PATH")
+	}
+	srcDir := "../testdata/fixtures/go/rename"
+	dir := t.TempDir()
+	copyDir(t, srcDir, dir)
+
+	refuteBin := buildRefute(t)
+	cmd := exec.Command(refuteBin,
+		"move",
+		"--file", filepath.Join(dir, "util", "helper.go"),
+		"--line", "4",
+		"--name", "FormatGreeting",
+		"--destination", filepath.Join(dir, "moved.go"), // parent dir = different package
+	)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected refusal for cross-package move, got success:\n%s", out)
+	}
+	if !strings.Contains(string(out), "within a package") {
+		t.Errorf("expected cross-package refusal message, got:\n%s", out)
+	}
+}
+
 func TestEndToEnd_Tier1Rename(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
 		t.Skip("gopls not found on PATH")

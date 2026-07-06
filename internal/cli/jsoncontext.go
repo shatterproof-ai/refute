@@ -210,11 +210,18 @@ func emitJSONOperationError(ctx jsonContext, err error) error {
 	var ec exitCoder
 	var symbolMissing *ErrSymbolNotFound
 	var kindMismatch *ErrKindMismatch
+	var unsafeRefactor *backend.ErrUnsafeRefactor
 	switch {
 	case errors.As(err, &kindMismatch):
 		return emitJSONError(ctx, edit.StatusKindMismatch, "kind-mismatch", err.Error(), kindMismatch.Hint(), kindMismatch.ExitCode())
 	case isBackendSetupError(err):
 		return emitJSONBackendSetupError(ctx, err)
+	// A backend refused this specific invocation as unsafe (e.g. a cross-package
+	// move). The operation is supported in general, so this is a per-request
+	// refusal distinct from unsupported-operation: status unsupported, code
+	// unsafe-refactor, with the backend's specific reason carried as the hint.
+	case errors.As(err, &unsafeRefactor):
+		return emitJSONError(ctx, edit.StatusUnsupported, "unsafe-refactor", err.Error(), unsafeRefactor.Reason)
 	// SelectForOperation refuses unsupported operations before backend setup;
 	// backend.ErrUnsupported is the equivalent refusal from a backend that was
 	// already selected. Consumers see the same JSON contract for both.

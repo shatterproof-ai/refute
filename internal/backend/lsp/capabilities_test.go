@@ -23,9 +23,12 @@ func opNames(caps []backend.Capability) []string {
 // unregistered language falls back to the conservative rename-only default.
 func TestAdapterCapabilitiesFromProfile(t *testing.T) {
 	full := []string{"rename", "extract-function", "extract-variable", "inline"}
+	// Go additionally advertises move-to-file (gopls extract-to-new-file); no
+	// other backend implements move.
+	goOps := []string{"rename", "extract-function", "extract-variable", "inline", "move"}
 	renameOnly := []string{"rename"}
 	cases := map[string][]string{
-		"go":         full,
+		"go":         goOps,
 		"rust":       full,
 		"typescript": renameOnly,
 		"javascript": renameOnly,

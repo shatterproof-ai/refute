@@ -20,6 +20,7 @@ const (
 	modeRename locationMode = iota
 	modeExtract
 	modeInline
+	modeMove
 )
 
 // validateLocationFlags is the shared PreRunE input check for the rename,
@@ -48,9 +49,37 @@ func validateLocationFlags(cmd *cobra.Command, mode locationMode, flags any) err
 			return fmt.Errorf("internal error: inline validator received %T flags", flags)
 		}
 		return validateInlineFlags(cmd, inline)
+	case modeMove:
+		move, ok := flags.(*moveFlags)
+		if !ok {
+			return fmt.Errorf("internal error: move validator received %T flags", flags)
+		}
+		return validateMoveFlags(cmd, move)
 	default:
 		return nil
 	}
+}
+
+// validateMoveFlags is the PreRunE input check for the move command. Move uses
+// position addressing (--file with --line, then --col or --name) and requires a
+// --destination file to move into.
+func validateMoveFlags(cmd *cobra.Command, flags *moveFlags) error {
+	if flags.File == "" {
+		return fmt.Errorf("--file is required")
+	}
+	if !cmd.Flags().Changed("line") {
+		return fmt.Errorf("--line is required with --file")
+	}
+	if flags.Destination == "" {
+		return fmt.Errorf("--destination is required (a file in the same package as --file)")
+	}
+	if err := validateFileExists(flags.File); err != nil {
+		return err
+	}
+	if err := validatePositiveCoord(cmd, "line", flags.Line); err != nil {
+		return err
+	}
+	return validatePositiveCoord(cmd, "col", flags.Col)
 }
 
 func validateRenameFlags(cmd *cobra.Command, flags *renameFlags) error {

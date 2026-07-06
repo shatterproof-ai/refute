@@ -18,6 +18,22 @@ func (e *ErrAmbiguous) Error() string {
 	return "ambiguous symbol: multiple candidates found"
 }
 
+// ErrUnsafeRefactor is returned when a backend supports an operation in general
+// but cannot perform THIS invocation without risking incorrect output. Unlike
+// ErrUnsupported (the operation is not offered at all), it signals a per-request
+// safety refusal: the operation exists, but this target/destination fails a
+// safety check and the backend refuses rather than emit a partial or broken
+// edit. It carries a stable machine Code and a human Reason so the CLI/MCP
+// layers can surface a specific, actionable refusal. See
+// docs/plans/refactoring-extension-model.md §5.
+type ErrUnsafeRefactor struct {
+	Operation string
+	Reason    string // human-readable, names the specific constraint
+	Code      string // stable, e.g. "cross-package-move", "unmovable-symbol"
+}
+
+func (e *ErrUnsafeRefactor) Error() string { return e.Reason }
+
 type Capability struct {
 	Operation string
 }

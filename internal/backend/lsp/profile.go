@@ -73,7 +73,11 @@ type languageProfile struct {
 // strings match backend.Capability.Operation and config.SupportMatrix.
 var (
 	fullOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
-	renameOnlyOps  = []string{"rename"}
+	// goOperations adds move-to-file, which is gopls-only (backed by its
+	// extract-to-new-file command). Rust's rust-analyzer has no equivalent, so it
+	// keeps fullOperations rather than sharing this list.
+	goOperations  = []string{"rename", "extract-function", "extract-variable", "inline", "move"}
+	renameOnlyOps = []string{"rename"}
 )
 
 // goSkipDirs and friends are the per-language directory skip sets, named so the
@@ -97,7 +101,7 @@ var languageProfiles = map[string]languageProfile{
 	"go": {
 		languageID: "go",
 		engine:     engineTitleMatch,
-		operations: fullOperations,
+		operations: goOperations,
 		priming: primingProfile{
 			extensions:        map[string]string{".go": "go"},
 			skipDirs:          goSkipDirs,

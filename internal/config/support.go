@@ -48,6 +48,9 @@ type LanguageSupport struct {
 var (
 	renameOnly     = []string{"rename"}
 	fullOperations = []string{"rename", "extract-function", "extract-variable", "inline"}
+	// goOperations adds move-to-file (gopls extract-to-new-file). It is Go-only;
+	// no other backend implements move for v0.1.
+	goOperations = []string{"rename", "extract-function", "extract-variable", "inline", "move"}
 )
 
 // SupportMatrix is the ordered support matrix. Order is the order doctor
@@ -61,8 +64,8 @@ var SupportMatrix = []LanguageSupport{
 		VersionArgs: []string{"version"},
 		Level:       LevelSupported,
 		InstallHint: "go install golang.org/x/tools/gopls@latest",
-		Operations:  fullOperations,
-		Caveats:     "Primary v0.1 target.",
+		Operations:  goOperations,
+		Caveats:     "Primary v0.1 target. move (move-to-file) is experimental: same-package moves only, backed by gopls extract-to-new-file.",
 	},
 	{
 		Language:    "typescript",

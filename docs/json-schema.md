@@ -115,6 +115,7 @@ Common unsupported error codes:
 | --- | --- | --- | --- |
 | `unsupported` | `unsupported-operation` | `1` | The selected language/backend exists, but none of its configured backend candidates supports the requested operation; `error.hint` points to `refute doctor` and the support matrix. |
 | `unsupported` | `unsupported-language` | `1` | The requested language is outside the current support boundary for the command. |
+| `unsupported` | `unsafe-refactor` | `1` | The backend supports the operation in general, but refused this specific invocation as unsafe rather than emit a broken edit (e.g. `move` onto a cross-package destination, an existing destination file, or a symbol the backend cannot move). `error.hint` carries the specific reason. Additive under `schemaVersion: "1"`. |
 
 Common backend setup error codes:
 
