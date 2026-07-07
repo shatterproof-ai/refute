@@ -6,10 +6,11 @@ import (
 	"testing"
 )
 
-// TestDecodeSignatureParams_RejectsRemoveFromIndexMinusOne is the regression
-// guard for issue #135: a "remove" edit must carry the parameter's real 0-based
-// original position, not the -1 sentinel reserved for "add". Before the fix the
-// CLI hardcoded FromIndex -1 for remove and DecodeSignatureParams accepted it.
+// TestDecodeSignatureParams_RejectsRemoveFromIndexMinusOne asserts the core
+// invariant: a "remove" edit must carry the parameter's real 0-based original
+// position. FromIndex -1 is the sentinel reserved for "add" (no original
+// position), so it is not a valid origin for a removal and must be rejected at
+// decode time rather than silently misread as a parameter reference.
 func TestDecodeSignatureParams_RejectsRemoveFromIndexMinusOne(t *testing.T) {
 	raw := mustMarshal(t, SignatureParams{
 		Parameters: []ParamEdit{{Op: ParamOpRemove, FromIndex: -1, ToIndex: -1}},
