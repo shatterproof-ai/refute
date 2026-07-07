@@ -58,7 +58,7 @@ versions, so the version is captured wherever it is observable:
 
 | Language | Extensions | Backend | Dependency install | Operations | Test coverage | Status | Caveats |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Go | `.go` | `lsp/gopls` | `go install golang.org/x/tools/gopls@latest` | rename, extract-function, extract-variable, inline, change-signature | unit + required integration (`internal/integration_test.go`) | supported | Primary v0.1 dogfood target. change-signature removes an unused parameter only (gopls `removeUnusedParam`); it refuses when the parameter is in use. |
+| Go | `.go` | `lsp/gopls` | `go install golang.org/x/tools/gopls@latest` | rename, extract-function, extract-variable, inline, change-signature, move (experimental) | unit + required integration (`internal/integration_test.go`) | supported | Primary v0.1 dogfood target. change-signature removes an unused parameter only (gopls `removeUnusedParam`); it refuses when the parameter is in use. `move` (move-to-file) is experimental: same-package moves only, backed by gopls extract-to-new-file; cross-package moves, existing destinations, and unmovable symbols are refused (`unsafe-refactor`). |
 | Rust | `.rs` | `lsp/rust-analyzer` | `rustup component add rust-analyzer` | rename, extract-function, extract-variable, inline | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI) | experimental | Tier-1 --symbol supports forms 1–7 (crate::module::Type::method, <Type as Trait>::method). Inline is single-call-site only. Experimental while dogfood confidence is still building. |
 | TypeScript | `.ts`, `.tsx` | `tsmorph` preferred; `lsp/typescript-language-server` fallback | `npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz`; fallback: `npm install -g typescript-language-server typescript` | rename | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI with fixture dependencies installed) | experimental | The adapter is a separate dependency distributed from GitHub Releases rather than the npm registry; fallback is rename-only LSP coverage. The adapter discovers root and nested `tsconfig.json`/`jsconfig.json` files outside `node_modules`. |
 | JavaScript | `.js`, `.jsx` | `tsmorph` preferred; `lsp/typescript-language-server` fallback | `npm install -g https://github.com/shatterproof-ai/refute/releases/download/v0.1.0/refute-ts-adapter-0.1.0.tgz`; fallback: `npm install -g typescript-language-server typescript` | rename | unit + experimental integration (`internal/integration_test.go`; opt-in locally; non-blocking in CI with fixture dependencies installed) | experimental | Same adapter and fallback caveats as TypeScript; the adapter discovers root and nested `tsconfig.json`/`jsconfig.json` files outside `node_modules`. |
@@ -81,16 +81,18 @@ backend in the current release. Operations not listed return the
 `unsupported` JSON status when invoked.
 
 In `--json` mode every operation command (`rename`, `extract-function`,
-`extract-variable`, `inline`, and `change-signature`) emits exactly one
+`extract-variable`, `inline`, `change-signature`, and `move`) emits exactly one
 structured envelope on stdout for both success and failure. Failure envelopes
 carry the matching status from `internal/edit/json.go`: `backend-missing` when
 the language server is absent, `unsupported` for an operation the backend does
 not provide, `invalid-position` when a symbol cannot be resolved, and
 `backend-failed` (error code `apply-failed`) when applying edits fails after the
 preview is computed. A backend that supports an operation in general but cannot
-perform a specific invocation safely — for example `change-signature` on a
-parameter that is still in use — emits `unsupported` with the `unsafe-refactor`
-error code, before any edit is made. A file whose language is `unsupported` in this matrix (Java, Kotlin)
+perform a specific invocation safely emits `unsupported` with the
+`unsafe-refactor` error code, before any edit is made — for example
+`change-signature` on a parameter that is still in use, or `move` for a
+cross-package move, an existing destination, or a symbol the backend cannot
+move. A file whose language is `unsupported` in this matrix (Java, Kotlin)
 is gated during backend selection: the command reports `unsupported` (error
 code `language-unsupported`) before any backend setup, rather than reaching the
 unclaimed backend and surfacing a misleading `backend-missing`.

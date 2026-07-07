@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/shatterproof-ai/refute/internal/backend/capture"
+	"github.com/shatterproof-ai/refute/internal/edit"
 )
 
 // jsonrpcRequest is a JSON-RPC 2.0 request or notification.
@@ -87,12 +88,14 @@ func (c *Client) readLoop() {
 			continue
 		}
 
-		// Server-initiated request (has method AND id) — send empty response.
+		// Server-initiated request (has method AND id).
 		if msg.Method != "" && msg.ID != nil {
-			resp := jsonrpcRequest{
-				JSONRPC: "2.0",
-				ID:      msg.ID,
+			if msg.Method == "workspace/applyEdit" {
+				c.handleApplyEdit(*msg.ID, msg.Params)
+				continue
 			}
+			// Everything else: acknowledge with an empty response.
+			resp := jsonrpcResponse{JSONRPC: "2.0", ID: msg.ID}
 			data, _ := json.Marshal(resp)
 			_ = c.transport.Write(data)
 			continue
@@ -116,6 +119,91 @@ func (c *Client) readLoop() {
 			}
 		}
 	}
+}
+
+// handleApplyEdit responds to a server-initiated workspace/applyEdit request.
+// When an applyEditSink is armed (during ExecuteCommand) it captures the edit
+// payload and answers applied=true so the server believes the client applied
+// it; refute then routes the captured edit through its own preview/apply
+// pipeline rather than letting the server mutate the workspace. When no sink is
+// armed it answers applied=false, since nothing consumed the edit.
+func (c *Client) handleApplyEdit(id int, params json.RawMessage) {
+	var p struct {
+		Edit json.RawMessage `json:"edit"`
+	}
+	_ = json.Unmarshal(params, &p)
+
+	c.mu.Lock()
+	sink := c.applyEditSink
+	if sink != nil && len(p.Edit) > 0 {
+		sink.edits = append(sink.edits, p.Edit)
+	}
+	c.mu.Unlock()
+
+	type applyResult struct {
+		Applied bool `json:"applied"`
+	}
+	idVal := id
+	resp := struct {
+		JSONRPC string      `json:"jsonrpc"`
+		ID      *int        `json:"id"`
+		Result  applyResult `json:"result"`
+	}{JSONRPC: "2.0", ID: &idVal, Result: applyResult{Applied: sink != nil}}
+	data, _ := json.Marshal(resp)
+	_ = c.transport.Write(data)
+}
+
+// armApplyEditCapture installs a sink that captures workspace/applyEdit payloads
+// until disarmApplyEditCapture is called. It returns the sink whose edits field
+// is populated by readLoop as applyEdit requests arrive.
+func (c *Client) armApplyEditCapture() *applyEditSink {
+	sink := &applyEditSink{}
+	c.mu.Lock()
+	c.applyEditSink = sink
+	c.mu.Unlock()
+	return sink
+}
+
+func (c *Client) disarmApplyEditCapture() {
+	c.mu.Lock()
+	c.applyEditSink = nil
+	c.mu.Unlock()
+}
+
+// ExecuteCommand runs workspace/executeCommand and returns any WorkspaceEdits
+// the server pushed via server-initiated workspace/applyEdit while the command
+// ran. gopls implements refactorings like extract_to_new_file as commands that
+// deliver their edit through applyEdit rather than returning it, so callers that
+// want to preview/apply the edit themselves (instead of letting the server write
+// files) must go through this method. The applyEdit requests are handled by
+// readLoop, which populates the armed sink before the executeCommand response
+// arrives, so the captured edits are complete once request returns.
+func (c *Client) ExecuteCommand(command string, arguments []json.RawMessage) ([]*edit.WorkspaceEdit, error) {
+	sink := c.armApplyEditCapture()
+	defer c.disarmApplyEditCapture()
+
+	if _, err := c.request("workspace/executeCommand", map[string]any{
+		"command":   command,
+		"arguments": arguments,
+	}); err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	raws := append([]json.RawMessage(nil), sink.edits...)
+	c.mu.Unlock()
+
+	var edits []*edit.WorkspaceEdit
+	for _, raw := range raws {
+		we, err := parseWorkspaceEdit(raw)
+		if err != nil {
+			return nil, fmt.Errorf("parse applyEdit workspace edit: %w", err)
+		}
+		if we != nil {
+			edits = append(edits, we)
+		}
+	}
+	return edits, nil
 }
 
 // request sends a JSON-RPC request with an auto-incremented ID and blocks until

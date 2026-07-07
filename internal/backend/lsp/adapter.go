@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -760,9 +761,183 @@ func (a *Adapter) InlineSymbol(loc symbol.Location) (*edit.WorkspaceEdit, error)
 	return nil, backend.ErrUnsupported
 }
 
-// MoveToFile returns ErrUnsupported — not yet implemented via LSP.
-func (a *Adapter) MoveToFile(_ symbol.Location, _ string) (*edit.WorkspaceEdit, error) {
-	return nil, backend.ErrUnsupported
+// MoveToFile moves the top-level declaration at loc into destination, in the
+// same package, via gopls's extract_to_new_file command. gopls delivers the
+// move as a workspace/executeCommand whose edit arrives through a server-
+// initiated workspace/applyEdit; the adapter captures that edit and rewrites the
+// gopls-chosen filename to the caller's destination so refute (not the server)
+// owns preview and apply.
+//
+// It is a same-package move only. The refusal contract
+// (docs/plans/refactoring-extension-model.md §5.2) is enforced up front, before
+// any edit is computed, via backend.ErrUnsafeRefactor:
+//
+//   - cross-package-move: destination is in a different directory than the
+//     source (moving across a package boundary needs import rewrites gopls's
+//     extract-to-new-file does not compute).
+//   - destination-exists: the destination file already exists, so the create
+//     would collide with (or clobber) it.
+//   - unmovable-symbol: gopls offers no extract-to-new-file at loc (the target
+//     is not a movable top-level declaration).
+func (a *Adapter) MoveToFile(loc symbol.Location, destination string) (*edit.WorkspaceEdit, error) {
+	absSource, err := filepath.Abs(loc.File)
+	if err != nil {
+		return nil, fmt.Errorf("resolve source path: %w", err)
+	}
+	absDest, err := filepath.Abs(destination)
+	if err != nil {
+		return nil, fmt.Errorf("resolve destination path: %w", err)
+	}
+
+	// Path-based refusals run first: they are deterministic input checks that do
+	// not depend on backend state, so an unsafe request is refused before any
+	// server work (and can be exercised without a live server).
+
+	// Refusal: cross-package move. gopls extract-to-new-file only moves within
+	// the declaration's package (same directory).
+	if filepath.Dir(absSource) != filepath.Dir(absDest) {
+		return nil, &backend.ErrUnsafeRefactor{
+			Operation: "move",
+			Code:      "cross-package-move",
+			Reason: fmt.Sprintf("move-to-file only supports moving within a package: destination %q is in a different directory than source %q",
+				destination, loc.File),
+		}
+	}
+
+	// Refusal: destination collision. The move creates a new file; refuse rather
+	// than overwrite an existing one (this also covers destination == source).
+	if _, statErr := os.Stat(absDest); statErr == nil {
+		return nil, &backend.ErrUnsafeRefactor{
+			Operation: "move",
+			Code:      "destination-exists",
+			Reason:    fmt.Sprintf("destination %q already exists; move-to-file will not overwrite an existing file", destination),
+		}
+	} else if !os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("stat destination %q: %w", destination, statErr)
+	}
+
+	if a.client == nil {
+		return nil, fmt.Errorf("adapter not initialized")
+	}
+
+	if err := a.client.DidOpen(absSource, a.languageID); err != nil {
+		return nil, fmt.Errorf("DidOpen %s: %w", absSource, err)
+	}
+	const analysisTimeout = 30 * time.Second
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), analysisTimeout)
+	defer waitCancel()
+	if err := a.client.WaitForIdle(waitCtx); err != nil {
+		return nil, fmt.Errorf("waiting for analysis: %w", err)
+	}
+
+	// Request the extract-to-new-file action over the symbol's identifier range.
+	startLine := loc.Line - 1
+	startChar, err := byteColumnToUTF16CharacterInFile(absSource, startLine, loc.Column)
+	if err != nil {
+		return nil, err
+	}
+	endChar, err := byteColumnToUTF16CharacterInFile(absSource, startLine, loc.Column+max(len(loc.Name), 1))
+	if err != nil {
+		return nil, err
+	}
+	actions, err := a.client.CodeActions(absSource, startLine, startChar, startLine, endChar, []string{"refactor.extract"})
+	if err != nil {
+		return nil, err
+	}
+	var cmd *json.RawMessage
+	for _, action := range actions {
+		if action.Kind == moveToNewFileKind && action.Command != nil {
+			cmd = action.Command
+			break
+		}
+	}
+	if cmd == nil {
+		return nil, &backend.ErrUnsafeRefactor{
+			Operation: "move",
+			Code:      "unmovable-symbol",
+			Reason: fmt.Sprintf("gopls offers no move for the symbol at %s:%d:%d; only top-level declarations can be moved to a new file",
+				loc.File, loc.Line, loc.Column),
+		}
+	}
+
+	var command struct {
+		Command   string            `json:"command"`
+		Arguments []json.RawMessage `json:"arguments"`
+	}
+	if err := json.Unmarshal(*cmd, &command); err != nil {
+		return nil, fmt.Errorf("parse move command: %w", err)
+	}
+
+	edits, err := a.client.ExecuteCommand(command.Command, command.Arguments)
+	if err != nil {
+		return nil, fmt.Errorf("move command %q: %w", command.Command, err)
+	}
+	we := mergeWorkspaceEdits(edits)
+	if we == nil || (len(we.FileEdits) == 0 && len(we.FileOps) == 0) {
+		return nil, &backend.ErrUnsafeRefactor{
+			Operation: "move",
+			Code:      "unmovable-symbol",
+			Reason:    fmt.Sprintf("move produced no edit for the symbol at %s:%d:%d", loc.File, loc.Line, loc.Column),
+		}
+	}
+
+	// gopls names the new file itself. Rewrite its chosen path to the caller's
+	// destination in both the create op and the text edit that populates it.
+	if err := retargetCreatedFile(we, absDest); err != nil {
+		return nil, err
+	}
+	we.FromCodeAction = true
+	return we, nil
+}
+
+// moveToNewFileKind is the gopls code-action kind for "Extract declarations to
+// new file", the command-based action that backs move-to-file.
+const moveToNewFileKind = "refactor.extract.toNewFile"
+
+// mergeWorkspaceEdits combines the (usually single) edits captured from a
+// command's applyEdit requests into one WorkspaceEdit.
+func mergeWorkspaceEdits(edits []*edit.WorkspaceEdit) *edit.WorkspaceEdit {
+	if len(edits) == 0 {
+		return nil
+	}
+	merged := &edit.WorkspaceEdit{}
+	for _, we := range edits {
+		if we == nil {
+			continue
+		}
+		merged.FileEdits = append(merged.FileEdits, we.FileEdits...)
+		merged.FileOps = append(merged.FileOps, we.FileOps...)
+	}
+	return merged
+}
+
+// retargetCreatedFile rewrites the single create-file operation (and the text
+// edit that populates it) from the server-chosen path to absDest. gopls's
+// extract-to-new-file always emits exactly one create; a within-package move
+// needs no reference or import rewrites elsewhere, so only the created file's
+// path changes. It errors if the edit does not have exactly one create op, since
+// that means the captured shape is not the expected move shape.
+func retargetCreatedFile(we *edit.WorkspaceEdit, absDest string) error {
+	createIdx := -1
+	for i := range we.FileOps {
+		if we.FileOps[i].Kind == edit.FileOpCreate {
+			if createIdx >= 0 {
+				return fmt.Errorf("move produced %d create operations; expected exactly one", 2)
+			}
+			createIdx = i
+		}
+	}
+	if createIdx < 0 {
+		return fmt.Errorf("move produced no create operation; cannot retarget destination")
+	}
+	oldPath := we.FileOps[createIdx].Path
+	we.FileOps[createIdx].Path = absDest
+	for i := range we.FileEdits {
+		if we.FileEdits[i].Path == oldPath {
+			we.FileEdits[i].Path = absDest
+		}
+	}
+	return nil
 }
 
 // Capabilities returns the operations this adapter supports for its language,

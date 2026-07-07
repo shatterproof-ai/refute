@@ -46,6 +46,12 @@ global `--config`, `--dry-run`, and `--verbose` flags. Implemented subcommands:
   site; refuses via the `unsafe-refactor` error code when the parameter is in
   use or the call sites cannot all be rewritten safely. Point `--file/--line/--col`
   at the parameter and pass `--remove`; supports `--json` and `--dry-run`;
+- `move` — moves a top-level declaration into another file in the same package
+  (Go only, experimental; backed by gopls extract-to-new-file). Addressed by
+  `--file`/`--line` with `--col` or `--name`, moved into `--destination`;
+  refuses cross-package moves, existing destinations, and unmovable symbols with
+  JSON status `unsupported` (error code `unsafe-refactor`); supports `--json`
+  and `--dry-run`;
 - `list-symbols` — discovers candidate symbols via LSP `workspace/symbol`,
   returning file, line, column, kind, and qualified name; filters by `--query`,
   `--file`, `--kind`, and `--lang`; supports `--json`;

@@ -57,18 +57,3 @@ type ParameterizedBackend interface {
 	// and ErrUnsupported when it does not handle req.Operation at all.
 	Refactor(req RefactorRequest) (*edit.WorkspaceEdit, error)
 }
-
-// ErrUnsafeRefactor is returned when a backend supports an operation in general
-// but cannot perform THIS invocation without risking incorrect output. It
-// carries a machine code and a human reason so the CLI/MCP layers can surface a
-// specific, actionable refusal rather than a generic "unsupported". Refusal
-// happens before any edit is applied, so it is preview-safe: a refused
-// operation in --dry-run prints the refusal and changes nothing, identically to
-// apply mode (docs/plans/refactoring-extension-model.md §5).
-type ErrUnsafeRefactor struct {
-	Operation string
-	Reason    string // human-readable, names the specific constraint
-	Code      string // stable, e.g. "incomplete-call-sites", "parameter-in-use"
-}
-
-func (e *ErrUnsafeRefactor) Error() string { return e.Reason }

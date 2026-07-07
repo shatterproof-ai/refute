@@ -23,7 +23,10 @@ func opNames(caps []backend.Capability) []string {
 // unregistered language falls back to the conservative rename-only default.
 func TestAdapterCapabilitiesFromProfile(t *testing.T) {
 	full := []string{"rename", "extract-function", "extract-variable", "inline"}
-	goOps := []string{"rename", "extract-function", "extract-variable", "inline", "change-signature"}
+	// Go additionally advertises change-signature (gopls removeUnusedParam) and
+	// move-to-file (gopls extract-to-new-file); no other backend implements
+	// either.
+	goOps := []string{"rename", "extract-function", "extract-variable", "inline", "change-signature", "move"}
 	renameOnly := []string{"rename"}
 	cases := map[string][]string{
 		"go":         goOps,

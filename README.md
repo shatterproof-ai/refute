@@ -176,6 +176,7 @@ real operations; informational commands such as `refute version` and
 | `refute extract-variable` | Extract a selection into a new variable. |
 | `refute inline` | Inline a variable or function call at the given position. Rust also supports `--symbol <qualified-name>` with `--call-site <file>:<line>:<col>` for single-call-site inline. |
 | `refute change-signature` | Change a function's signature, rewriting the declaration and every call site. This release supports removing an unused parameter on Go (via gopls): point `--file/--line/--col` at the parameter and pass `--remove`. When the parameter is in use or call sites cannot all be rewritten safely, the operation is refused and nothing is changed. |
+| `refute move` | Move a top-level declaration into another file in the same package (Go only, experimental). Addressed by `--file`/`--line` with `--col` or `--name`, moved into `--destination`. Cross-package moves, existing destinations, and unmovable symbols are refused. |
 | `refute list-symbols` | Discover candidate symbols (file, line, column, kind, qualified name) before refactoring, resolved via the LSP `workspace/symbol` request. Filters with `--query`, `--file`, `--kind`, and `--lang`. Supports `--json`. |
 | `refute doctor` | Report which language backends are installed and ready. Supports `--json`. |
 | `refute version` | Print version, commit, and build date. |

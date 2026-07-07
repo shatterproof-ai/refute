@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"encoding/json"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -31,6 +32,19 @@ type Client struct {
 	// (e.g. on SIGINT) in-flight requests return promptly. Nil means
 	// context.Background().
 	ctx context.Context
+
+	// applyEditSink, when non-nil, captures the WorkspaceEdit params of any
+	// server-initiated workspace/applyEdit request instead of discarding them.
+	// It is armed for the duration of an ExecuteCommand call so a command-based
+	// refactoring (e.g. gopls extract_to_new_file) can be intercepted rather than
+	// applied by the server. Guarded by mu.
+	applyEditSink *applyEditSink
+}
+
+// applyEditSink collects the raw `edit` payloads of server-initiated
+// workspace/applyEdit requests received while it is armed.
+type applyEditSink struct {
+	edits []json.RawMessage
 }
 
 // baseContext returns the client's base context, defaulting to
