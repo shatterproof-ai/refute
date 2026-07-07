@@ -35,14 +35,20 @@ type SignatureParams struct {
 }
 
 // ParamEdit describes one parameter's edit within a signature change.
+//
+// The FromIndex/ToIndex invariants below are enforced by DecodeSignatureParams
+// so a contradictory edit (e.g. a "remove" carrying FromIndex -1, which would
+// collide with the "add" sentinel) is rejected at decode time rather than being
+// silently misread by a backend or caller that trusts these fields.
 type ParamEdit struct {
 	// Op is one of the ParamOp* kinds.
 	Op string `json:"op"`
-	// FromIndex is the parameter's original 0-based position ("keep", "remove",
-	// "reorder"); -1 for "add".
+	// FromIndex is the parameter's original 0-based position; required for
+	// "keep", "remove", and "reorder". It is -1 for "add", which has no original
+	// position.
 	FromIndex int `json:"fromIndex"`
-	// ToIndex is the parameter's final 0-based position ("keep", "add",
-	// "reorder"); -1 for "remove".
+	// ToIndex is the parameter's final 0-based position; required for "keep",
+	// "add", and "reorder". It is -1 for "remove", which has no final position.
 	ToIndex int `json:"toIndex"`
 	// Name / Type / Default describe an added parameter.
 	Name    string `json:"name,omitempty"`
@@ -67,5 +73,45 @@ func DecodeSignatureParams(raw json.RawMessage) (SignatureParams, error) {
 	if len(p.Parameters) == 0 {
 		return p, fmt.Errorf("change-signature requires at least one parameter edit")
 	}
+	if err := p.validate(); err != nil {
+		return p, fmt.Errorf("invalid change-signature params: %w", err)
+	}
 	return p, nil
+}
+
+// validate enforces the per-op FromIndex/ToIndex invariants documented on
+// ParamEdit. It rejects an edit whose indices contradict its Op — most notably a
+// "remove" (or "keep"/"reorder") that supplies FromIndex -1, which is reserved
+// as the "no original position" sentinel for "add". Without this check such an
+// edit decodes cleanly and a backend that consults FromIndex silently acts on
+// the wrong (or a nonexistent) parameter.
+func (p SignatureParams) validate() error {
+	for i, e := range p.Parameters {
+		switch e.Op {
+		case ParamOpAdd:
+			if e.FromIndex != -1 {
+				return fmt.Errorf("parameter edit %d: op %q requires fromIndex -1 (an added parameter has no original position), got %d", i, e.Op, e.FromIndex)
+			}
+			if e.ToIndex < 0 {
+				return fmt.Errorf("parameter edit %d: op %q requires a final 0-based toIndex, got %d", i, e.Op, e.ToIndex)
+			}
+		case ParamOpRemove:
+			if e.FromIndex < 0 {
+				return fmt.Errorf("parameter edit %d: op %q requires the original 0-based fromIndex, got %d", i, e.Op, e.FromIndex)
+			}
+			if e.ToIndex != -1 {
+				return fmt.Errorf("parameter edit %d: op %q requires toIndex -1 (a removed parameter has no final position), got %d", i, e.Op, e.ToIndex)
+			}
+		case ParamOpKeep, ParamOpReorder:
+			if e.FromIndex < 0 {
+				return fmt.Errorf("parameter edit %d: op %q requires the original 0-based fromIndex, got %d", i, e.Op, e.FromIndex)
+			}
+			if e.ToIndex < 0 {
+				return fmt.Errorf("parameter edit %d: op %q requires the final 0-based toIndex, got %d", i, e.Op, e.ToIndex)
+			}
+		default:
+			return fmt.Errorf("parameter edit %d: unknown op %q (want one of %q, %q, %q, %q)", i, e.Op, ParamOpKeep, ParamOpAdd, ParamOpRemove, ParamOpReorder)
+		}
+	}
+	return nil
 }

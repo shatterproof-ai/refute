@@ -97,8 +97,16 @@ func runChangeSignatureInner(flags *changeSigFlags, ctx *jsonContext, opts opera
 	*ctx = contextFromSelection(operation, sel, workspaceRoot)
 	telemetrySetContext(*ctx)
 
+	// SignatureParams is declarative: a "remove" edit names the parameter by its
+	// original 0-based position, not the -1 "add" sentinel. Resolve that index
+	// from the target location so the request honors the ParamEdit contract even
+	// though the current backend re-derives the parameter from Target.Location.
+	fromIndex, err := resolveGoParamIndex(absFile, flags.Line, flags.Col)
+	if err != nil {
+		return err
+	}
 	params, err := json.Marshal(backend.SignatureParams{
-		Parameters: []backend.ParamEdit{{Op: backend.ParamOpRemove, FromIndex: -1, ToIndex: -1}},
+		Parameters: []backend.ParamEdit{{Op: backend.ParamOpRemove, FromIndex: fromIndex, ToIndex: -1}},
 	})
 	if err != nil {
 		return fmt.Errorf("encoding change-signature params: %w", err)
