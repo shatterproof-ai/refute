@@ -949,13 +949,11 @@ func resolveLocation(loc symbol.Location) (line, char int, err error) {
 }
 
 func rangeToLSP(r symbol.SourceRange) (startLine, startChar, endLine, endChar int, err error) {
-	startLine = r.StartLine - 1
-	endLine = r.EndLine - 1
-	startChar, err = byteColumnToUTF16CharacterInFile(r.File, startLine, r.StartCol)
+	startLine, startChar, err = resolveLocation(symbol.Location{File: r.File, Line: r.StartLine, Column: r.StartCol})
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-	endChar, err = byteColumnToUTF16CharacterInFile(r.File, endLine, r.EndCol)
+	endLine, endChar, err = resolveLocation(symbol.Location{File: r.File, Line: r.EndLine, Column: r.EndCol})
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
@@ -1052,7 +1050,9 @@ func (a *Adapter) ResolveKind(loc symbol.Location) (symbol.SymbolKind, error) {
 		return symbol.KindUnknown, fmt.Errorf("adapter not initialized")
 	}
 	// Open the file so servers that only index opened documents (gopls) answer
-	// the documentSymbol request, mirroring Rename's DidOpen.
+	// the documentSymbol request. Unlike the edit operations, this is a bare
+	// DidOpen with no WaitForIdle: documentSymbol needs the file parsed, not the
+	// background analysis settled, so it does not go through openAndAwaitIdle.
 	if err := a.client.DidOpen(loc.File, a.languageID); err != nil {
 		return symbol.KindUnknown, err
 	}
@@ -1148,10 +1148,10 @@ const analysisTimeout = 30 * time.Second
 
 // openAndAwaitIdle opens file (through the didOpen dedup helper, so an
 // already-open file is not re-sent) and then waits, bounded by analysisTimeout,
-// for the server's DidOpen-triggered background analysis to settle. Every edit
-// operation needs the server to have seen and analyzed the file before it can
-// answer, so this centralizes that open-then-settle step that the rename,
-// extract, inline, move, and change-signature paths otherwise duplicate.
+// for the server's DidOpen-triggered background analysis to settle. A server
+// analyzes a freshly opened document asynchronously, so an edit request issued
+// before that pass completes can be answered against a stale or empty index;
+// callers must settle before requesting.
 func (a *Adapter) openAndAwaitIdle(file string) error {
 	if err := a.didOpen(file); err != nil {
 		return err
