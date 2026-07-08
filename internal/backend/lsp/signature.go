@@ -1,9 +1,7 @@
 package lsp
 
 import (
-	"context"
 	"fmt"
-	"time"
 
 	"github.com/shatterproof-ai/refute/internal/backend"
 	"github.com/shatterproof-ai/refute/internal/edit"
@@ -63,18 +61,11 @@ func (a *Adapter) changeSignature(req backend.RefactorRequest) (*edit.WorkspaceE
 		return nil, fmt.Errorf("change-signature requires a target location identifying the parameter to remove")
 	}
 
-	if err := a.client.DidOpen(loc.File, a.languageID); err != nil {
-		return nil, fmt.Errorf("DidOpen %s: %w", loc.File, err)
-	}
-	const analysisTimeout = 30 * time.Second
-	waitCtx, waitCancel := context.WithTimeout(context.Background(), analysisTimeout)
-	defer waitCancel()
-	if err := a.client.WaitForIdle(waitCtx); err != nil {
-		return nil, fmt.Errorf("waiting for analysis: %w", err)
+	if err := a.openAndAwaitIdle(loc.File); err != nil {
+		return nil, err
 	}
 
-	lspLine := loc.Line - 1
-	lspChar, err := byteColumnToUTF16CharacterInFile(loc.File, lspLine, loc.Column)
+	lspLine, lspChar, err := resolveLocation(*loc)
 	if err != nil {
 		return nil, err
 	}

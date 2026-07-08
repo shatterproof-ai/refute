@@ -349,22 +349,13 @@ func (a *Adapter) Rename(loc symbol.Location, newName string) (*edit.WorkspaceEd
 		return nil, fmt.Errorf("adapter not initialized")
 	}
 
-	lspLine := loc.Line - 1
-	lspCharacter, err := byteColumnToUTF16CharacterInFile(loc.File, lspLine, loc.Column)
+	lspLine, lspCharacter, err := resolveLocation(loc)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := a.client.DidOpen(loc.File, a.languageID); err != nil {
-		return nil, fmt.Errorf("DidOpen %s: %w", loc.File, err)
-	}
-
-	// Wait for any DidOpen-triggered analysis to settle before sending rename.
-	const analysisTimeout = 30 * time.Second
-	waitCtx, waitCancel := context.WithTimeout(context.Background(), analysisTimeout)
-	defer waitCancel()
-	if err := a.client.WaitForIdle(waitCtx); err != nil {
-		return nil, fmt.Errorf("waiting for analysis: %w", err)
+	if err := a.openAndAwaitIdle(loc.File); err != nil {
+		return nil, err
 	}
 
 	// Retry on ContentModified: servers like rust-analyzer cancel rename
@@ -445,14 +436,8 @@ func (a *Adapter) extractImpl(r symbol.SourceRange, kind string) (*edit.Workspac
 	if a.client == nil {
 		return nil, "", fmt.Errorf("adapter not initialized")
 	}
-	if err := a.client.DidOpen(r.File, a.languageID); err != nil {
-		return nil, "", fmt.Errorf("DidOpen %s: %w", r.File, err)
-	}
-	const analysisTimeout = 30 * time.Second
-	waitCtx, waitCancel := context.WithTimeout(context.Background(), analysisTimeout)
-	defer waitCancel()
-	if err := a.client.WaitForIdle(waitCtx); err != nil {
-		return nil, "", fmt.Errorf("waiting for analysis: %w", err)
+	if err := a.openAndAwaitIdle(r.File); err != nil {
+		return nil, "", err
 	}
 	startLine, startChar, endLine, endChar, err := rangeToLSP(r)
 	if err != nil {
@@ -616,16 +601,10 @@ func (a *Adapter) runCodeAction(r symbol.SourceRange, name string, op rustAction
 	if a.client == nil {
 		return nil, fmt.Errorf("adapter not initialized")
 	}
-	if err := a.didOpen(r.File); err != nil {
-		return nil, err
-	}
 	// Rust code actions depend on rust-analyzer's post-open analysis, which can
 	// still be in flight on cold starts even after workspace initialization.
-	const analysisTimeout = 30 * time.Second
-	waitCtx, waitCancel := context.WithTimeout(context.Background(), analysisTimeout)
-	defer waitCancel()
-	if err := a.client.WaitForIdle(waitCtx); err != nil {
-		return nil, fmt.Errorf("waiting for analysis: %w", err)
+	if err := a.openAndAwaitIdle(r.File); err != nil {
+		return nil, err
 	}
 	startLine, startChar, endLine, endChar, err := rangeToLSP(r)
 	if err != nil {
@@ -718,18 +697,11 @@ func (a *Adapter) InlineSymbol(loc symbol.Location) (*edit.WorkspaceEdit, error)
 	if a.client == nil {
 		return nil, fmt.Errorf("adapter not initialized")
 	}
-	if err := a.client.DidOpen(loc.File, a.languageID); err != nil {
-		return nil, fmt.Errorf("DidOpen %s: %w", loc.File, err)
-	}
-	const analysisTimeout = 30 * time.Second
-	waitCtx, waitCancel := context.WithTimeout(context.Background(), analysisTimeout)
-	defer waitCancel()
-	if err := a.client.WaitForIdle(waitCtx); err != nil {
-		return nil, fmt.Errorf("waiting for analysis: %w", err)
+	if err := a.openAndAwaitIdle(loc.File); err != nil {
+		return nil, err
 	}
 
-	startLine := loc.Line - 1
-	startChar, err := byteColumnToUTF16CharacterInFile(loc.File, startLine, loc.Column)
+	startLine, startChar, err := resolveLocation(loc)
 	if err != nil {
 		return nil, err
 	}
@@ -820,14 +792,8 @@ func (a *Adapter) MoveToFile(loc symbol.Location, destination string) (*edit.Wor
 		return nil, fmt.Errorf("adapter not initialized")
 	}
 
-	if err := a.client.DidOpen(absSource, a.languageID); err != nil {
-		return nil, fmt.Errorf("DidOpen %s: %w", absSource, err)
-	}
-	const analysisTimeout = 30 * time.Second
-	waitCtx, waitCancel := context.WithTimeout(context.Background(), analysisTimeout)
-	defer waitCancel()
-	if err := a.client.WaitForIdle(waitCtx); err != nil {
-		return nil, fmt.Errorf("waiting for analysis: %w", err)
+	if err := a.openAndAwaitIdle(absSource); err != nil {
+		return nil, err
 	}
 
 	// Request the extract-to-new-file action over the symbol's identifier range.
@@ -969,14 +935,25 @@ func (a *Adapter) PrimeWorkspace(workspaceRoot string) (int, error) {
 	return a.client.PrimeGoWorkspace(workspaceRoot)
 }
 
+// resolveLocation converts a 1-indexed symbol Location to a 0-indexed LSP
+// position: line is loc.Line-1 and char is the UTF-16 code-unit offset of
+// loc.Column within that line. It is the single-position counterpart to
+// rangeToLSP, shared by the operations that act on one identifier location.
+func resolveLocation(loc symbol.Location) (line, char int, err error) {
+	line = loc.Line - 1
+	char, err = byteColumnToUTF16CharacterInFile(loc.File, line, loc.Column)
+	if err != nil {
+		return 0, 0, err
+	}
+	return line, char, nil
+}
+
 func rangeToLSP(r symbol.SourceRange) (startLine, startChar, endLine, endChar int, err error) {
-	startLine = r.StartLine - 1
-	endLine = r.EndLine - 1
-	startChar, err = byteColumnToUTF16CharacterInFile(r.File, startLine, r.StartCol)
+	startLine, startChar, err = resolveLocation(symbol.Location{File: r.File, Line: r.StartLine, Column: r.StartCol})
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-	endChar, err = byteColumnToUTF16CharacterInFile(r.File, endLine, r.EndCol)
+	endLine, endChar, err = resolveLocation(symbol.Location{File: r.File, Line: r.EndLine, Column: r.EndCol})
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
@@ -1073,7 +1050,9 @@ func (a *Adapter) ResolveKind(loc symbol.Location) (symbol.SymbolKind, error) {
 		return symbol.KindUnknown, fmt.Errorf("adapter not initialized")
 	}
 	// Open the file so servers that only index opened documents (gopls) answer
-	// the documentSymbol request, mirroring Rename's DidOpen.
+	// the documentSymbol request. Unlike the edit operations, this is a bare
+	// DidOpen with no WaitForIdle: documentSymbol needs the file parsed, not the
+	// background analysis settled, so it does not go through openAndAwaitIdle.
 	if err := a.client.DidOpen(loc.File, a.languageID); err != nil {
 		return symbol.KindUnknown, err
 	}
@@ -1157,6 +1136,31 @@ func (a *Adapter) didOpen(filePath string) error {
 		return err
 	}
 	a.markOpen(absPath)
+	return nil
+}
+
+// analysisTimeout bounds how long an edit operation waits for the
+// DidOpen-triggered background analysis to settle before issuing its request.
+// Servers such as gopls and rust-analyzer analyze a freshly opened document
+// asynchronously and cannot reliably answer rename/code-action requests until
+// that pass completes.
+const analysisTimeout = 30 * time.Second
+
+// openAndAwaitIdle opens file (through the didOpen dedup helper, so an
+// already-open file is not re-sent) and then waits, bounded by analysisTimeout,
+// for the server's DidOpen-triggered background analysis to settle. A server
+// analyzes a freshly opened document asynchronously, so an edit request issued
+// before that pass completes can be answered against a stale or empty index;
+// callers must settle before requesting.
+func (a *Adapter) openAndAwaitIdle(file string) error {
+	if err := a.didOpen(file); err != nil {
+		return err
+	}
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), analysisTimeout)
+	defer waitCancel()
+	if err := a.client.WaitForIdle(waitCtx); err != nil {
+		return fmt.Errorf("waiting for analysis: %w", err)
+	}
 	return nil
 }
 
