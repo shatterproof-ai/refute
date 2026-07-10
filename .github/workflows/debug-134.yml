@@ -2,6 +2,9 @@ name: Debug Issue 134 (temporary)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/issue-134-release-exit-128
 
 permissions:
   contents: read
