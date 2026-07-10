@@ -32,5 +32,9 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Compute version
+        id: meta
+        run: echo "version=nightly-$(date -u +%Y%m%d)-$(git rev-parse --short=7 HEAD)-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
       - name: Build archives (traced)
-        run: bash -x ./scripts/release.sh "nightly-20260709-debug134-${GITHUB_RUN_ID}"
+        run: bash -x ./scripts/release.sh "${{ steps.meta.outputs.version }}"
