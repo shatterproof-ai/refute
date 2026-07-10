@@ -112,7 +112,13 @@ ts_adapter_staging="${dist_dir}/ts-adapter-package"
 mkdir -p "${ts_adapter_staging}"
 cp -R adapters/tsmorph/. "${ts_adapter_staging}/"
 sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${package_version}\"/" "${ts_adapter_staging}/package.json"
-packed_adapter="$(npm pack "${ts_adapter_staging}" --pack-destination "${dist_dir}" --silent)"
+# npm misparses a bare relative "word/word" path (e.g. "dist/ts-adapter-package")
+# as a GitHub owner/repo shorthand instead of a local directory, so resolve to
+# an absolute path first. --silent is intentionally omitted: it previously
+# suppressed npm's own diagnostics, turning this exact failure into a silent
+# exit 128 (issue #134).
+ts_adapter_staging_abs="$(cd "${ts_adapter_staging}" && pwd)"
+packed_adapter="$(npm pack "${ts_adapter_staging_abs}" --pack-destination "${dist_dir}")"
 mv "${dist_dir}/${packed_adapter}" "${dist_dir}/refute-ts-adapter-${package_version}.tgz"
 rm -rf "${ts_adapter_staging}"
 
