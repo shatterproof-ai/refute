@@ -17,6 +17,13 @@ import (
 // shorthand rather than a local directory, so the build failed with exit
 // 128 and no diagnostic output (issue #134). The fix must keep working when
 // DIST_DIR is left at its default relative value.
+//
+// This exercises the real Go/npm release path shipped for v0.1 (not an
+// experimental language backend), so it skips only on a missing npm/javac
+// rather than gating behind REFUTE_EXPERIMENTAL_INTEGRATION like the
+// backend-integration tests in this package. It builds real cross-platform
+// archives via release.sh end to end, so it runs on the order of tens of
+// seconds, heavier than the other fixtures in this package.
 func TestReleaseScriptDefaultDistDir(t *testing.T) {
 	if _, err := exec.LookPath("npm"); err != nil {
 		t.Skip("npm not on PATH")
@@ -43,7 +50,9 @@ func TestReleaseScriptDefaultDistDir(t *testing.T) {
 	t.Cleanup(func() {
 		rmCmd := exec.Command("git", "worktree", "remove", "--force", worktree)
 		rmCmd.Dir = repoRoot
-		_ = rmCmd.Run()
+		if out, err := rmCmd.CombinedOutput(); err != nil {
+			t.Logf("git worktree remove %s: %v\n%s", worktree, err, out)
+		}
 	})
 
 	cmd := exec.Command("./scripts/release.sh", "v0.0.0-releasetest")
